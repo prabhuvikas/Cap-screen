@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bug Reporter</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <h1>Bug Reporter</h1>
+      <button id="settingsBtn" class="icon-btn" title="Settings">
+        ⚙️
+      </button>
+    </header>
+
+    <!-- Main Content -->
+    <main id="mainContent">
+      <!-- Step 1: Capture Screenshot -->
+      <section id="captureSection" class="section active">
+        <h2>1. Capture Screenshot</h2>
+        <div class="button-group">
+          <button id="captureViewport" class="btn btn-primary">
+            📸 Capture Viewport
+          </button>
+          <button id="captureFullPage" class="btn btn-secondary">
+            📄 Capture Full Page
+          </button>
+        </div>
+        <div id="captureStatus" class="status-message"></div>
+      </section>
+
+      <!-- Step 2: Annotate Screenshot -->
+      <section id="annotateSection" class="section hidden">
+        <h2>2. Annotate Screenshot</h2>
+
+        <div class="canvas-container">
+          <canvas id="annotationCanvas"></canvas>
+        </div>
+
+        <div class="toolbar">
+          <div class="tool-group">
+            <button class="tool-btn active" data-tool="pen" title="Pen">
+              ✏️
+            </button>
+            <button class="tool-btn" data-tool="rectangle" title="Rectangle">
+              ▭
+            </button>
+            <button class="tool-btn" data-tool="circle" title="Circle">
+              ⭕
+            </button>
+            <button class="tool-btn" data-tool="arrow" title="Arrow">
+              ➜
+            </button>
+            <button class="tool-btn" data-tool="blackout" title="Blackout/Redact">
+              ⬛
+            </button>
+            <button class="tool-btn" data-tool="text" title="Text">
+              T
+            </button>
+          </div>
+
+          <div class="tool-group">
+            <label for="colorPicker" class="color-picker-label">Color:</label>
+            <input type="color" id="colorPicker" value="#ff0000">
+          </div>
+
+          <div class="tool-group">
+            <label for="lineWidth">Width:</label>
+            <input type="range" id="lineWidth" min="1" max="10" value="3">
+            <span id="lineWidthValue">3</span>
+          </div>
+
+          <div class="tool-group">
+            <button id="undoBtn" class="btn btn-small" title="Undo">
+              ↶ Undo
+            </button>
+            <button id="redoBtn" class="btn btn-small" title="Redo">
+              ↷ Redo
+            </button>
+            <button id="clearAnnotations" class="btn btn-small" title="Clear All">
+              🗑️ Clear
+            </button>
+          </div>
+        </div>
+
+        <div class="button-group">
+          <button id="continueToReport" class="btn btn-primary">
+            Continue to Report →
+          </button>
+          <button id="retakeScreenshot" class="btn btn-secondary">
+            ← Retake Screenshot
+          </button>
+        </div>
+      </section>
+
+      <!-- Step 3: Fill Bug Report -->
+      <section id="reportSection" class="section hidden">
+        <h2>3. Bug Report Details</h2>
+
+        <form id="bugReportForm">
+          <div class="form-group">
+            <label for="project">Project *</label>
+            <select id="project" required>
+              <option value="">-- Select Project --</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="tracker">Tracker *</label>
+            <select id="tracker" required>
+              <option value="">-- Select Tracker --</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="subject">Subject *</label>
+            <input type="text" id="subject" placeholder="Brief description of the issue" required>
+          </div>
+
+          <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" rows="5" placeholder="Detailed description of the bug"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="priority">Priority *</label>
+            <select id="priority" required>
+              <option value="">-- Select Priority --</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="assignee">Assignee</label>
+            <select id="assignee">
+              <option value="">-- Unassigned --</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="category">Category</label>
+            <select id="category">
+              <option value="">-- No Category --</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="version">Target Version</label>
+            <select id="version">
+              <option value="">-- No Version --</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="stepsToReproduce">Steps to Reproduce</label>
+            <textarea id="stepsToReproduce" rows="4" placeholder="1. Go to...\n2. Click on...\n3. Observe..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="expectedBehavior">Expected Behavior</label>
+            <textarea id="expectedBehavior" rows="3" placeholder="What should happen?"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="actualBehavior">Actual Behavior</label>
+            <textarea id="actualBehavior" rows="3" placeholder="What actually happened?"></textarea>
+          </div>
+
+          <div class="form-group checkbox-group">
+            <label>
+              <input type="checkbox" id="attachTechnicalData" checked>
+              <span>Attach technical data (page info, network requests, console logs)</span>
+            </label>
+          </div>
+
+          <div class="button-group">
+            <button type="submit" id="submitBtn" class="btn btn-primary">
+              <span class="btn-text">Submit Bug Report</span>
+              <span class="spinner hidden"></span>
+            </button>
+            <button type="button" id="backToAnnotate" class="btn btn-secondary">
+              ← Back to Annotations
+            </button>
+          </div>
+
+          <div id="submitStatus" class="status-message"></div>
+        </form>
+      </section>
+
+      <!-- Success Section -->
+      <section id="successSection" class="section hidden">
+        <div class="success-container">
+          <div class="success-icon">✓</div>
+          <h2>Bug Report Submitted!</h2>
+          <p>Your bug report has been successfully submitted to Redmine.</p>
+          <div id="issueLink"></div>
+          <div class="button-group">
+            <button id="createAnother" class="btn btn-primary">
+              Create Another Report
+            </button>
+            <button id="closePopup" class="btn btn-secondary">
+              Close
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Error/No Configuration Section -->
+      <section id="noConfigSection" class="section hidden">
+        <div class="info-container">
+          <div class="info-icon">⚠️</div>
+          <h2>Configuration Required</h2>
+          <p>Please configure your Redmine server settings before creating bug reports.</p>
+          <button id="openSettings" class="btn btn-primary">
+            Open Settings
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Review Modal -->
+    <div id="reviewModal" class="modal hidden">
+      <div class="modal-overlay" id="modalOverlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Review Data Before Submission</h2>
+          <button id="closeReviewModal" class="icon-btn">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <p class="review-description">Please review all data that will be submitted to Redmine. Click confirm to proceed.</p>
+
+          <!-- Tab Navigation -->
+          <div class="tab-nav">
+            <button class="tab-btn active" data-tab="formData">Form Data</button>
+            <button class="tab-btn" data-tab="screenshot">Screenshot</button>
+            <button class="tab-btn" data-tab="pageInfo">Page Info</button>
+            <button class="tab-btn" data-tab="network">Network (<span id="networkCount">0</span>)</button>
+            <button class="tab-btn" data-tab="console">Console (<span id="consoleCount">0</span>)</button>
+          </div>
+
+          <!-- Tab Content -->
+          <div class="tab-content">
+            <!-- Form Data Tab -->
+            <div id="formDataTab" class="tab-pane active">
+              <div class="review-section">
+                <div class="review-item">
+                  <label>Project:</label>
+                  <span id="reviewProject"></span>
+                </div>
+                <div class="review-item">
+                  <label>Tracker:</label>
+                  <span id="reviewTracker"></span>
+                </div>
+                <div class="review-item">
+                  <label>Subject:</label>
+                  <span id="reviewSubject"></span>
+                </div>
+                <div class="review-item">
+                  <label>Priority:</label>
+                  <span id="reviewPriority"></span>
+                </div>
+                <div class="review-item">
+                  <label>Assignee:</label>
+                  <span id="reviewAssignee"></span>
+                </div>
+                <div class="review-item full-width">
+                  <label>Description:</label>
+                  <pre id="reviewDescription"></pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- Screenshot Tab -->
+            <div id="screenshotTab" class="tab-pane">
+              <div class="review-section">
+                <p class="tab-info">Annotated screenshot that will be attached:</p>
+                <img id="reviewScreenshot" class="review-image" />
+              </div>
+            </div>
+
+            <!-- Page Info Tab -->
+            <div id="pageInfoTab" class="tab-pane">
+              <div class="review-section">
+                <pre id="reviewPageInfo" class="code-block"></pre>
+              </div>
+            </div>
+
+            <!-- Network Tab -->
+            <div id="networkTab" class="tab-pane">
+              <div class="review-section">
+                <p class="tab-info"><span id="networkCountText">0</span> network requests captured</p>
+                <div id="reviewNetwork" class="data-list"></div>
+              </div>
+            </div>
+
+            <!-- Console Tab -->
+            <div id="consoleTab" class="tab-pane">
+              <div class="review-section">
+                <p class="tab-info"><span id="consoleCountText">0</span> console logs captured</p>
+                <div id="reviewConsole" class="data-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button id="cancelSubmit" class="btn btn-secondary">Cancel</button>
+          <button id="confirmSubmit" class="btn btn-primary">
+            <span class="btn-text">Confirm & Submit</span>
+            <span class="spinner hidden"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+      <small>Bug Reporter v1.0.0</small>
+    </footer>
+  </div>
+
+  <script src="../lib/utils.js"></script>
+  <script src="../lib/redmine-api.js"></script>
+  <script src="../content/annotator.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
