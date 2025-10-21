@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bug Reporter Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Bug Reporter Settings</h1>
+    </header>
+
+    <main>
+      <section class="settings-section">
+        <h2>Redmine Configuration</h2>
+        <div class="form-group">
+          <label for="redmineUrl">Redmine Server URL</label>
+          <input
+            type="url"
+            id="redmineUrl"
+            placeholder="https://redmine.example.com"
+            required
+          >
+          <small>Enter your Redmine server URL (e.g., https://redmine.example.com)</small>
+        </div>
+
+        <div class="form-group">
+          <label for="apiKey">API Key</label>
+          <input
+            type="password"
+            id="apiKey"
+            placeholder="Enter your Redmine API key"
+            required
+          >
+          <small>Find your API key in Redmine under My account → API access key</small>
+        </div>
+
+        <div class="form-group">
+          <button id="testConnection" class="btn btn-secondary">
+            <span class="btn-text">Test Connection</span>
+            <span class="spinner hidden"></span>
+          </button>
+          <span id="connectionStatus" class="status-message"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="defaultProject">Default Project (Optional)</label>
+          <select id="defaultProject">
+            <option value="">-- Select Project --</option>
+          </select>
+          <small>Choose a default project for bug reports</small>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Privacy Settings</h2>
+
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="includeNetworkRequests" checked>
+            <span>Include Network Requests</span>
+          </label>
+        </div>
+
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="includeConsoleLogs" checked>
+            <span>Include Console Logs</span>
+          </label>
+        </div>
+
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="includeLocalStorage">
+            <span>Include LocalStorage Data</span>
+          </label>
+        </div>
+
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="includeCookies">
+            <span>Include Cookies</span>
+          </label>
+        </div>
+
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="sanitizeSensitiveData" checked>
+            <span>Sanitize Sensitive Data (API keys, tokens, passwords)</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Screenshot Settings</h2>
+
+        <div class="form-group">
+          <label for="screenshotQuality">Screenshot Quality</label>
+          <select id="screenshotQuality">
+            <option value="high">High Quality (Larger file size)</option>
+            <option value="medium" selected>Medium Quality (Balanced)</option>
+            <option value="low">Low Quality (Smaller file size)</option>
+          </select>
+        </div>
+
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="autoFullPageScreenshot">
+            <span>Capture Full Page by Default</span>
+          </label>
+          <small>Automatically capture full page instead of visible viewport</small>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button id="saveSettings" class="btn btn-primary">
+          <span class="btn-text">Save Settings</span>
+          <span class="spinner hidden"></span>
+        </button>
+        <button id="resetSettings" class="btn btn-secondary">Reset to Defaults</button>
+      </div>
+
+      <div id="saveStatus" class="status-message"></div>
+    </main>
+
+    <footer>
+      <p>Bug Reporter Extension v1.0.0</p>
+    </footer>
+  </div>
+
+  <script src="../lib/redmine-api.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
