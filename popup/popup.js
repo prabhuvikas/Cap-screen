@@ -98,6 +98,17 @@ function setupEventListeners() {
   document.getElementById('closePopup').addEventListener('click', () => window.close());
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('openSettings').addEventListener('click', openSettings);
+
+  // Review Modal
+  document.getElementById('closeReviewModal').addEventListener('click', closeReviewModal);
+  document.getElementById('modalOverlay').addEventListener('click', closeReviewModal);
+  document.getElementById('cancelSubmit').addEventListener('click', closeReviewModal);
+  document.getElementById('confirmSubmit').addEventListener('click', actuallySubmitBugReport);
+
+  // Tab navigation
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => switchTab(e.target.dataset.tab));
+  });
 }
 
 // Capture screenshot
@@ -346,11 +357,20 @@ async function onProjectChange() {
   }
 }
 
-// Submit bug report
+// Submit bug report - Show review modal first
 async function submitBugReport(e) {
   e.preventDefault();
 
-  const submitBtn = document.getElementById('submitBtn');
+  // Populate review modal with all data
+  await populateReviewModal();
+
+  // Show review modal
+  document.getElementById('reviewModal').classList.remove('hidden');
+}
+
+// Actually submit bug report after review confirmation
+async function actuallySubmitBugReport() {
+  const submitBtn = document.getElementById('confirmSubmit');
   const btnText = submitBtn.querySelector('.btn-text');
   const spinner = submitBtn.querySelector('.spinner');
 
@@ -358,7 +378,6 @@ async function submitBugReport(e) {
     submitBtn.disabled = true;
     btnText.textContent = 'Submitting...';
     spinner.classList.remove('hidden');
-    showStatus('submitStatus', 'Creating issue...', 'info');
 
     // Get form data
     const formData = {
@@ -414,19 +433,18 @@ async function submitBugReport(e) {
     // Create issue with attachments
     const issue = await redmineAPI.createIssueWithAttachments(formData, attachments);
 
-    showStatus('submitStatus', 'Issue created successfully!', 'success');
+    // Close review modal
+    closeReviewModal();
 
     // Show success screen
-    setTimeout(() => {
-      showSuccessScreen(issue);
-    }, 1000);
+    showSuccessScreen(issue);
 
   } catch (error) {
     console.error('Error submitting bug report:', error);
-    showStatus('submitStatus', `Error: ${error.message}`, 'error');
+    alert(`Error submitting bug report: ${error.message}`);
   } finally {
     submitBtn.disabled = false;
-    btnText.textContent = 'Submit Bug Report';
+    btnText.textContent = 'Confirm & Submit';
     spinner.classList.add('hidden');
   }
 }
@@ -533,4 +551,127 @@ function showStatus(elementId, message, type) {
   const element = document.getElementById(elementId);
   element.textContent = message;
   element.className = `status-message ${type}`;
+}
+
+// Populate review modal with all data
+async function populateReviewModal() {
+  // Get form data with labels
+  const projectSelect = document.getElementById('project');
+  const trackerSelect = document.getElementById('tracker');
+  const prioritySelect = document.getElementById('priority');
+  const assigneeSelect = document.getElementById('assignee');
+
+  // Form Data Tab
+  document.getElementById('reviewProject').textContent = projectSelect.options[projectSelect.selectedIndex]?.text || 'N/A';
+  document.getElementById('reviewTracker').textContent = trackerSelect.options[trackerSelect.selectedIndex]?.text || 'N/A';
+  document.getElementById('reviewSubject').textContent = document.getElementById('subject').value || 'N/A';
+  document.getElementById('reviewPriority').textContent = prioritySelect.options[prioritySelect.selectedIndex]?.text || 'N/A';
+  document.getElementById('reviewAssignee').textContent = assigneeSelect.options[assigneeSelect.selectedIndex]?.text || 'Unassigned';
+  document.getElementById('reviewDescription').textContent = buildDescription();
+
+  // Screenshot Tab
+  if (annotator) {
+    document.getElementById('reviewScreenshot').src = annotator.getAnnotatedImage();
+  }
+
+  // Page Info Tab
+  document.getElementById('reviewPageInfo').textContent = JSON.stringify(pageInfo, null, 2);
+
+  // Network Tab
+  const networkCount = networkRequests.length;
+  document.getElementById('networkCount').textContent = networkCount;
+  document.getElementById('networkCountText').textContent = networkCount;
+
+  const networkContainer = document.getElementById('reviewNetwork');
+  networkContainer.innerHTML = '';
+
+  if (networkCount === 0) {
+    networkContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No network requests captured</p>';
+  } else {
+    networkRequests.slice(0, 50).forEach(req => {
+      const item = document.createElement('div');
+      item.className = 'data-item';
+
+      const statusClass = req.failed ? 'error' : (req.statusCode >= 200 && req.statusCode < 300) ? 'success' : '';
+
+      item.innerHTML = `
+        <div class="data-item-header">
+          <div>
+            <span class="data-item-method">${req.method || 'GET'}</span>
+            <span class="data-item-url">${truncateUrl(req.url)}</span>
+          </div>
+          <span class="data-item-status ${statusClass}">
+            ${req.failed ? 'Failed' : (req.statusCode || 'Pending')}
+          </span>
+        </div>
+      `;
+
+      networkContainer.appendChild(item);
+    });
+
+    if (networkCount > 50) {
+      const more = document.createElement('p');
+      more.style.cssText = 'color: #666; font-size: 11px; margin-top: 8px;';
+      more.textContent = `... and ${networkCount - 50} more requests`;
+      networkContainer.appendChild(more);
+    }
+  }
+
+  // Console Tab
+  const consoleCount = consoleLogs.length;
+  document.getElementById('consoleCount').textContent = consoleCount;
+  document.getElementById('consoleCountText').textContent = consoleCount;
+
+  const consoleContainer = document.getElementById('reviewConsole');
+  consoleContainer.innerHTML = '';
+
+  if (consoleCount === 0) {
+    consoleContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No console logs captured</p>';
+  } else {
+    consoleLogs.slice(0, 50).forEach(log => {
+      const item = document.createElement('div');
+      item.className = `console-item ${log.type}`;
+
+      item.innerHTML = `
+        <div class="console-timestamp">${log.timestamp || ''}</div>
+        <div class="console-message">${log.message || ''}</div>
+      `;
+
+      consoleContainer.appendChild(item);
+    });
+
+    if (consoleCount > 50) {
+      const more = document.createElement('p');
+      more.style.cssText = 'color: #666; font-size: 11px; margin-top: 8px;';
+      more.textContent = `... and ${consoleCount - 50} more log entries`;
+      consoleContainer.appendChild(more);
+    }
+  }
+}
+
+// Switch tabs in review modal
+function switchTab(tabName) {
+  // Update tab buttons
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+  // Update tab panes
+  document.querySelectorAll('.tab-pane').forEach(pane => {
+    pane.classList.remove('active');
+  });
+  document.getElementById(`${tabName}Tab`).classList.add('active');
+}
+
+// Close review modal
+function closeReviewModal() {
+  document.getElementById('reviewModal').classList.add('hidden');
+}
+
+// Helper function to truncate URL
+function truncateUrl(url, maxLength = 80) {
+  if (!url) return '';
+  if (url.length <= maxLength) return url;
+  return url.substring(0, maxLength) + '...';
 }

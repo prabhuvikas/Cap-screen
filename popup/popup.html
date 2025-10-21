@@ -220,6 +220,102 @@
       </section>
     </main>
 
+    <!-- Review Modal -->
+    <div id="reviewModal" class="modal hidden">
+      <div class="modal-overlay" id="modalOverlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Review Data Before Submission</h2>
+          <button id="closeReviewModal" class="icon-btn">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <p class="review-description">Please review all data that will be submitted to Redmine. Click confirm to proceed.</p>
+
+          <!-- Tab Navigation -->
+          <div class="tab-nav">
+            <button class="tab-btn active" data-tab="formData">Form Data</button>
+            <button class="tab-btn" data-tab="screenshot">Screenshot</button>
+            <button class="tab-btn" data-tab="pageInfo">Page Info</button>
+            <button class="tab-btn" data-tab="network">Network (<span id="networkCount">0</span>)</button>
+            <button class="tab-btn" data-tab="console">Console (<span id="consoleCount">0</span>)</button>
+          </div>
+
+          <!-- Tab Content -->
+          <div class="tab-content">
+            <!-- Form Data Tab -->
+            <div id="formDataTab" class="tab-pane active">
+              <div class="review-section">
+                <div class="review-item">
+                  <label>Project:</label>
+                  <span id="reviewProject"></span>
+                </div>
+                <div class="review-item">
+                  <label>Tracker:</label>
+                  <span id="reviewTracker"></span>
+                </div>
+                <div class="review-item">
+                  <label>Subject:</label>
+                  <span id="reviewSubject"></span>
+                </div>
+                <div class="review-item">
+                  <label>Priority:</label>
+                  <span id="reviewPriority"></span>
+                </div>
+                <div class="review-item">
+                  <label>Assignee:</label>
+                  <span id="reviewAssignee"></span>
+                </div>
+                <div class="review-item full-width">
+                  <label>Description:</label>
+                  <pre id="reviewDescription"></pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- Screenshot Tab -->
+            <div id="screenshotTab" class="tab-pane">
+              <div class="review-section">
+                <p class="tab-info">Annotated screenshot that will be attached:</p>
+                <img id="reviewScreenshot" class="review-image" />
+              </div>
+            </div>
+
+            <!-- Page Info Tab -->
+            <div id="pageInfoTab" class="tab-pane">
+              <div class="review-section">
+                <pre id="reviewPageInfo" class="code-block"></pre>
+              </div>
+            </div>
+
+            <!-- Network Tab -->
+            <div id="networkTab" class="tab-pane">
+              <div class="review-section">
+                <p class="tab-info"><span id="networkCountText">0</span> network requests captured</p>
+                <div id="reviewNetwork" class="data-list"></div>
+              </div>
+            </div>
+
+            <!-- Console Tab -->
+            <div id="consoleTab" class="tab-pane">
+              <div class="review-section">
+                <p class="tab-info"><span id="consoleCountText">0</span> console logs captured</p>
+                <div id="reviewConsole" class="data-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button id="cancelSubmit" class="btn btn-secondary">Cancel</button>
+          <button id="confirmSubmit" class="btn btn-primary">
+            <span class="btn-text">Confirm & Submit</span>
+            <span class="spinner hidden"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Footer -->
     <footer>
       <small>Bug Reporter v1.0.0</small>

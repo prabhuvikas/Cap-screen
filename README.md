@@ -64,6 +64,15 @@ A comprehensive Chrome extension for capturing, annotating, and reporting bugs d
   - Toggle localStorage collection
   - Toggle cookie collection
   - Automatic sensitive data sanitization
+  - Pre-submission data review modal
+  - Tab-based interface to inspect all data before sending
+
+- **User Interface**
+  - Minimalistic and subtle design
+  - Clean, modern aesthetics
+  - Tab-based data review before submission
+  - Complete transparency on what data is shared
+  - No data sent without explicit user confirmation
 
 ## Installation
 
@@ -145,9 +154,16 @@ Configure what information to include in bug reports:
    - **Actual Behavior**: What actually happened
    - **Attach Technical Data**: Include page info, network requests, and console logs
 
-6. **Submit**
+6. **Review & Submit**
    - Click "Submit Bug Report"
-   - Wait for confirmation
+   - Review modal will appear with all data in tabs:
+     - **Form Data**: Your bug report details
+     - **Screenshot**: Preview of annotated screenshot
+     - **Page Info**: Browser and page information
+     - **Network**: All captured network requests
+     - **Console**: All captured console logs
+   - Review all data carefully
+   - Click "Confirm & Submit" to proceed or "Cancel" to go back
    - Issue link will be displayed on success
 
 ## File Structure
