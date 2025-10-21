@@ -84,7 +84,7 @@ class Annotator {
     if (this.currentTool === 'pen') {
       this.ctx.lineTo(x, y);
       this.ctx.stroke();
-    } else if (['rectangle', 'circle', 'arrow'].includes(this.currentTool)) {
+    } else if (['rectangle', 'circle', 'arrow', 'blackout'].includes(this.currentTool)) {
       // For shapes, we need to redraw from history and show preview
       this.restoreState();
       this.drawShape(this.startX, this.startY, x, y, this.currentTool, true);
@@ -98,7 +98,7 @@ class Annotator {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    if (['rectangle', 'circle', 'arrow'].includes(this.currentTool)) {
+    if (['rectangle', 'circle', 'arrow', 'blackout'].includes(this.currentTool)) {
       this.drawShape(this.startX, this.startY, x, y, this.currentTool, false);
     }
 
@@ -149,6 +149,8 @@ class Annotator {
       this.ctx.stroke();
     } else if (shape === 'arrow') {
       this.drawArrow(startX, startY, endX, endY);
+    } else if (shape === 'blackout') {
+      this.drawBlackout(startX, startY, endX, endY);
     }
   }
 
@@ -175,6 +177,15 @@ class Annotator {
       toY - headLength * Math.sin(angle + Math.PI / 6)
     );
     this.ctx.stroke();
+  }
+
+  drawBlackout(startX, startY, endX, endY) {
+    // Draw a filled black rectangle to redact/hide sensitive information
+    const width = endX - startX;
+    const height = endY - startY;
+
+    this.ctx.fillStyle = '#000000';
+    this.ctx.fillRect(startX, startY, width, height);
   }
 
   addText(x, y, text) {

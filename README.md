@@ -14,6 +14,7 @@ A comprehensive Chrome extension for capturing, annotating, and reporting bugs d
 - **Annotation Tools**
   - Freehand drawing/pen tool
   - Shapes (rectangle, circle, arrow)
+  - Blackout/redaction tool (hide sensitive information)
   - Text annotations
   - Color picker
   - Adjustable line width
@@ -57,6 +58,7 @@ A comprehensive Chrome extension for capturing, annotating, and reporting bugs d
   - Issue link on success
 
 - **Privacy Controls**
+  - Blackout/redaction tool to hide sensitive areas in screenshots
   - Toggle network request collection
   - Toggle console log collection
   - Toggle localStorage collection
@@ -123,6 +125,7 @@ Configure what information to include in bug reports:
 4. **Annotate Screenshot** (Optional)
    - Use pen tool to draw freehand
    - Add shapes (rectangle, circle, arrow) to highlight issues
+   - Use blackout tool to hide sensitive information (passwords, API keys, personal data)
    - Add text annotations
    - Change colors and line width as needed
    - Use undo/redo to refine annotations
