@@ -58,7 +58,10 @@ function setupEventListeners() {
 
   // Annotation tools
   document.querySelectorAll('.tool-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => selectTool(e.target.dataset.tool));
+    btn.addEventListener('click', (e) => {
+      const tool = e.currentTarget.dataset.tool;
+      selectTool(tool, e.currentTarget);
+    });
   });
 
   document.getElementById('colorPicker').addEventListener('change', (e) => {
@@ -107,7 +110,7 @@ function setupEventListeners() {
 
   // Tab navigation
   document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => switchTab(e.target.dataset.tab));
+    btn.addEventListener('click', (e) => switchTab(e.currentTarget.dataset.tab));
   });
 }
 
@@ -165,9 +168,11 @@ function initializeAnnotation() {
 }
 
 // Select annotation tool
-function selectTool(tool) {
+function selectTool(tool, buttonElement) {
   document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
-  event.target.classList.add('active');
+  if (buttonElement) {
+    buttonElement.classList.add('active');
+  }
 
   if (annotator) {
     annotator.setTool(tool);
@@ -198,6 +203,17 @@ async function continueToReport() {
 // Collect technical data
 async function collectTechnicalData() {
   try {
+    // Ensure content script is injected
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: currentTab.id },
+        files: ['content/content.js']
+      });
+    } catch (e) {
+      // Content script might already be injected
+      console.log('Content script injection skipped:', e.message);
+    }
+
     // Collect page information
     const pageInfoResponse = await chrome.tabs.sendMessage(currentTab.id, {
       action: 'collectPageInfo'
