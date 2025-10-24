@@ -1,5 +1,11 @@
 // Content script for page information collection
 
+// Prevent multiple injections
+if (window.bugReporterContentScriptLoaded) {
+  console.log('Bug Reporter Content Script already loaded');
+} else {
+  window.bugReporterContentScriptLoaded = true;
+
 // Collect console logs
 const consoleLogs = [];
 const originalConsole = {
@@ -174,3 +180,5 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 console.log('Bug Reporter Content Script Loaded');
+
+} // End of if block to prevent multiple injections
