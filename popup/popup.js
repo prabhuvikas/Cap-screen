@@ -557,68 +557,38 @@ function buildDescription() {
   const actual = document.getElementById('actualBehavior').value;
 
   if (steps) {
-    description += '\n\n## Steps to Reproduce\n' + steps;
+    description += '\n\n## Steps to Reproduce\n' + sanitizeText(steps);
   }
 
   if (expected) {
-    description += '\n\n## Expected Behavior\n' + expected;
+    description += '\n\n## Expected Behavior\n' + sanitizeText(expected);
   }
 
   if (actual) {
-    description += '\n\n## Actual Behavior\n' + actual;
+    description += '\n\n## Actual Behavior\n' + sanitizeText(actual);
   }
 
-  // Add page URL
+  // Add basic page info (sanitized to prevent unicode issues)
   description += '\n\n## Page Information\n';
-  description += `- URL: ${pageInfo.url || currentTab.url}\n`;
-  description += `- Title: ${pageInfo.title || currentTab.title}\n`;
-  description += `- Timestamp: ${pageInfo.timestamp || new Date().toISOString()}\n`;
+  description += `- URL: ${sanitizeText(pageInfo.url || currentTab.url)}\n`;
+  description += `- Title: ${sanitizeText(pageInfo.title || currentTab.title)}\n`;
+  description += `- Timestamp: ${new Date().toISOString()}\n`;
 
-  // Add system information
-  if (pageInfo.browser || pageInfo.system || pageInfo.network) {
-    description += '\n\n## System Information\n';
+  // Reference attached files instead of embedding all details
+  description += '\n\n## Additional Information\n';
+  description += 'Detailed technical information (browser, system, network, performance data) ';
+  description += 'is available in the attached technical-data.json file.\n';
 
-    // Browser details
-    if (pageInfo.browser) {
-      description += '\n**Browser:**\n';
-      description += `- Name: ${pageInfo.browser.name || 'Unknown'}\n`;
-      description += `- Version: ${pageInfo.browser.version || 'Unknown'}\n`;
-      description += `- Vendor: ${pageInfo.browser.vendor || 'Unknown'}\n`;
-      description += `- Language: ${pageInfo.browser.language || 'Unknown'}\n`;
-      description += `- Online: ${pageInfo.browser.onLine ? 'Yes' : 'No'}\n`;
-    }
-
-    // OS and system details
-    if (pageInfo.system) {
-      description += '\n**Operating System:**\n';
-      if (pageInfo.system.os) {
-        description += `- Name: ${pageInfo.system.os.name || 'Unknown'}\n`;
-        description += `- Version: ${pageInfo.system.os.version || 'Unknown'}\n`;
-        description += `- Architecture: ${pageInfo.system.os.architecture || 'Unknown'}\n`;
-      }
-
-      description += '\n**Hardware:**\n';
-      description += `- CPU Cores: ${pageInfo.system.cpuCores || 'Unknown'}\n`;
-      description += `- RAM: ${pageInfo.system.deviceMemory || 'Unknown'}\n`;
-
-      if (pageInfo.screen) {
-        description += `- Screen Resolution: ${pageInfo.screen.width}x${pageInfo.screen.height}\n`;
-        description += `- Device Pixel Ratio: ${pageInfo.screen.devicePixelRatio || 1}\n`;
-      }
-    }
-
-    // Network information
-    if (pageInfo.network) {
-      description += '\n**Network:**\n';
-      description += `- Connection Type: ${pageInfo.network.connectionType || 'Unknown'}\n`;
-      description += `- Effective Type: ${pageInfo.network.effectiveType || 'Unknown'}\n`;
-      description += `- Download Speed: ${pageInfo.network.downlink || 'Unknown'}\n`;
-      description += `- Latency (RTT): ${pageInfo.network.rtt || 'Unknown'}\n`;
-      description += `- Data Saver: ${pageInfo.network.saveData ? 'Enabled' : 'Disabled'}\n`;
-    }
+  if (settings.includeNetworkRequests && networkRequests.length > 0) {
+    description += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
   }
 
-  return description;
+  if (settings.includeConsoleLogs && consoleLogs.length > 0) {
+    description += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
+  }
+
+  // Sanitize the entire description to remove any remaining unicode
+  return sanitizeText(description);
 }
 
 // Build technical data JSON
