@@ -397,17 +397,22 @@ async function actuallySubmitBugReport() {
     btnText.textContent = 'Submitting...';
     spinner.classList.remove('hidden');
 
-    // Get form data
+    // Get form data from review modal (user may have edited these)
     const formData = {
-      project_id: document.getElementById('project').value,
-      tracker_id: document.getElementById('tracker').value,
-      subject: document.getElementById('subject').value,
-      description: buildDescription(),
-      priority_id: document.getElementById('priority').value
+      project_id: document.getElementById('reviewProjectSelect').value,
+      tracker_id: document.getElementById('reviewTrackerSelect').value,
+      subject: document.getElementById('reviewSubjectInput').value,
+      description: document.getElementById('reviewDescriptionText').value,
+      priority_id: document.getElementById('reviewPrioritySelect').value
     };
 
+    // Validate required fields
+    if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id) {
+      throw new Error('Please fill in all required fields (marked with *)');
+    }
+
     // Optional fields
-    const assignee = document.getElementById('assignee').value;
+    const assignee = document.getElementById('reviewAssigneeSelect').value;
     if (assignee) formData.assigned_to_id = assignee;
 
     const category = document.getElementById('category').value;
@@ -579,13 +584,48 @@ async function populateReviewModal() {
   const prioritySelect = document.getElementById('priority');
   const assigneeSelect = document.getElementById('assignee');
 
-  // Form Data Tab
-  document.getElementById('reviewProject').textContent = projectSelect.options[projectSelect.selectedIndex]?.text || 'N/A';
-  document.getElementById('reviewTracker').textContent = trackerSelect.options[trackerSelect.selectedIndex]?.text || 'N/A';
-  document.getElementById('reviewSubject').textContent = document.getElementById('subject').value || 'N/A';
-  document.getElementById('reviewPriority').textContent = prioritySelect.options[prioritySelect.selectedIndex]?.text || 'N/A';
-  document.getElementById('reviewAssignee').textContent = assigneeSelect.options[assigneeSelect.selectedIndex]?.text || 'Unassigned';
-  document.getElementById('reviewDescription').textContent = buildDescription();
+  // Form Data Tab - Populate editable fields
+  // Clone project options
+  const reviewProjectSelect = document.getElementById('reviewProjectSelect');
+  reviewProjectSelect.innerHTML = '';
+  Array.from(projectSelect.options).forEach(option => {
+    const newOption = option.cloneNode(true);
+    reviewProjectSelect.appendChild(newOption);
+  });
+  reviewProjectSelect.value = projectSelect.value;
+
+  // Clone tracker options
+  const reviewTrackerSelect = document.getElementById('reviewTrackerSelect');
+  reviewTrackerSelect.innerHTML = '';
+  Array.from(trackerSelect.options).forEach(option => {
+    const newOption = option.cloneNode(true);
+    reviewTrackerSelect.appendChild(newOption);
+  });
+  reviewTrackerSelect.value = trackerSelect.value;
+
+  // Set subject/title
+  document.getElementById('reviewSubjectInput').value = document.getElementById('subject').value || '';
+
+  // Clone priority options
+  const reviewPrioritySelect = document.getElementById('reviewPrioritySelect');
+  reviewPrioritySelect.innerHTML = '';
+  Array.from(prioritySelect.options).forEach(option => {
+    const newOption = option.cloneNode(true);
+    reviewPrioritySelect.appendChild(newOption);
+  });
+  reviewPrioritySelect.value = prioritySelect.value;
+
+  // Clone assignee options
+  const reviewAssigneeSelect = document.getElementById('reviewAssigneeSelect');
+  reviewAssigneeSelect.innerHTML = '';
+  Array.from(assigneeSelect.options).forEach(option => {
+    const newOption = option.cloneNode(true);
+    reviewAssigneeSelect.appendChild(newOption);
+  });
+  reviewAssigneeSelect.value = assigneeSelect.value;
+
+  // Set description
+  document.getElementById('reviewDescriptionText').value = buildDescription();
 
   // Screenshot Tab
   if (annotator) {
