@@ -225,12 +225,12 @@
       <div class="modal-overlay" id="modalOverlay"></div>
       <div class="modal-content">
         <div class="modal-header">
-          <h2>Review Data Before Submission</h2>
+          <h2>Review & Edit Before Submission</h2>
           <button id="closeReviewModal" class="icon-btn">✕</button>
         </div>
 
         <div class="modal-body">
-          <p class="review-description">Please review all data that will be submitted to Redmine. Click confirm to proceed.</p>
+          <p class="review-description">Review and edit all information below. All changes will be included in the submission to Redmine.</p>
 
           <!-- Tab Navigation -->
           <div class="tab-nav">
@@ -246,29 +246,32 @@
             <!-- Form Data Tab -->
             <div id="formDataTab" class="tab-pane active">
               <div class="review-section">
+                <p class="review-description" style="margin-bottom: 16px; color: #4CAF50;">✏️ You can edit any field below before submitting</p>
                 <div class="review-item">
-                  <label>Project:</label>
-                  <span id="reviewProject"></span>
+                  <label for="reviewProjectSelect">Project: *</label>
+                  <select id="reviewProjectSelect" class="review-select" required></select>
                 </div>
                 <div class="review-item">
-                  <label>Tracker:</label>
-                  <span id="reviewTracker"></span>
+                  <label for="reviewTrackerSelect">Issue Type: *</label>
+                  <select id="reviewTrackerSelect" class="review-select" required></select>
                 </div>
                 <div class="review-item">
-                  <label>Subject:</label>
-                  <span id="reviewSubject"></span>
+                  <label for="reviewSubjectInput">Title: *</label>
+                  <input type="text" id="reviewSubjectInput" class="review-input" required placeholder="Enter issue title">
                 </div>
                 <div class="review-item">
-                  <label>Priority:</label>
-                  <span id="reviewPriority"></span>
+                  <label for="reviewPrioritySelect">Priority: *</label>
+                  <select id="reviewPrioritySelect" class="review-select" required></select>
                 </div>
                 <div class="review-item">
-                  <label>Assignee:</label>
-                  <span id="reviewAssignee"></span>
+                  <label for="reviewAssigneeSelect">Assignee:</label>
+                  <select id="reviewAssigneeSelect" class="review-select">
+                    <option value="">Unassigned</option>
+                  </select>
                 </div>
                 <div class="review-item full-width">
-                  <label>Description:</label>
-                  <pre id="reviewDescription"></pre>
+                  <label for="reviewDescriptionText">Description: *</label>
+                  <textarea id="reviewDescriptionText" class="review-textarea" rows="10" required placeholder="Enter description"></textarea>
                 </div>
               </div>
             </div>

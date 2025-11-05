@@ -379,11 +379,26 @@ async function onProjectChange() {
 async function submitBugReport(e) {
   e.preventDefault();
 
-  // Populate review modal with all data
-  await populateReviewModal();
+  try {
+    console.log('submitBugReport called');
 
-  // Show review modal
-  document.getElementById('reviewModal').classList.remove('hidden');
+    // Populate review modal with all data
+    await populateReviewModal();
+
+    console.log('Modal populated, showing modal');
+
+    // Show review modal
+    const modal = document.getElementById('reviewModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      console.log('Modal shown, hidden class removed');
+    } else {
+      console.error('Review modal element not found!');
+    }
+  } catch (error) {
+    console.error('Error in submitBugReport:', error);
+    alert('Error showing review modal: ' + error.message);
+  }
 }
 
 // Actually submit bug report after review confirmation
@@ -397,17 +412,22 @@ async function actuallySubmitBugReport() {
     btnText.textContent = 'Submitting...';
     spinner.classList.remove('hidden');
 
-    // Get form data
+    // Get form data from review modal (user may have edited these)
     const formData = {
-      project_id: document.getElementById('project').value,
-      tracker_id: document.getElementById('tracker').value,
-      subject: document.getElementById('subject').value,
-      description: buildDescription(),
-      priority_id: document.getElementById('priority').value
+      project_id: document.getElementById('reviewProjectSelect').value,
+      tracker_id: document.getElementById('reviewTrackerSelect').value,
+      subject: document.getElementById('reviewSubjectInput').value,
+      description: document.getElementById('reviewDescriptionText').value,
+      priority_id: document.getElementById('reviewPrioritySelect').value
     };
 
+    // Validate required fields
+    if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id) {
+      throw new Error('Please fill in all required fields (marked with *)');
+    }
+
     // Optional fields
-    const assignee = document.getElementById('assignee').value;
+    const assignee = document.getElementById('reviewAssigneeSelect').value;
     if (assignee) formData.assigned_to_id = assignee;
 
     const category = document.getElementById('category').value;
@@ -560,8 +580,11 @@ function openSettings() {
 function showSection(sectionId) {
   document.querySelectorAll('.section').forEach(section => {
     section.classList.remove('active');
+    section.classList.add('hidden');
   });
-  document.getElementById(sectionId).classList.add('active');
+  const targetSection = document.getElementById(sectionId);
+  targetSection.classList.add('active');
+  targetSection.classList.remove('hidden');
 }
 
 // Show status message
@@ -573,97 +596,170 @@ function showStatus(elementId, message, type) {
 
 // Populate review modal with all data
 async function populateReviewModal() {
-  // Get form data with labels
-  const projectSelect = document.getElementById('project');
-  const trackerSelect = document.getElementById('tracker');
-  const prioritySelect = document.getElementById('priority');
-  const assigneeSelect = document.getElementById('assignee');
+  try {
+    console.log('populateReviewModal started');
 
-  // Form Data Tab
-  document.getElementById('reviewProject').textContent = projectSelect.options[projectSelect.selectedIndex]?.text || 'N/A';
-  document.getElementById('reviewTracker').textContent = trackerSelect.options[trackerSelect.selectedIndex]?.text || 'N/A';
-  document.getElementById('reviewSubject').textContent = document.getElementById('subject').value || 'N/A';
-  document.getElementById('reviewPriority').textContent = prioritySelect.options[prioritySelect.selectedIndex]?.text || 'N/A';
-  document.getElementById('reviewAssignee').textContent = assigneeSelect.options[assigneeSelect.selectedIndex]?.text || 'Unassigned';
-  document.getElementById('reviewDescription').textContent = buildDescription();
+    // Get form data with labels
+    const projectSelect = document.getElementById('project');
+    const trackerSelect = document.getElementById('tracker');
+    const prioritySelect = document.getElementById('priority');
+    const assigneeSelect = document.getElementById('assignee');
 
-  // Screenshot Tab
-  if (annotator) {
-    document.getElementById('reviewScreenshot').src = annotator.getAnnotatedImage();
-  }
+    console.log('Form elements found:', {
+      project: !!projectSelect,
+      tracker: !!trackerSelect,
+      priority: !!prioritySelect,
+      assignee: !!assigneeSelect
+    });
 
-  // Page Info Tab
-  document.getElementById('reviewPageInfo').textContent = JSON.stringify(pageInfo, null, 2);
+    // Form Data Tab - Populate editable fields
+    // Clone project options
+    const reviewProjectSelect = document.getElementById('reviewProjectSelect');
+    if (!reviewProjectSelect) {
+      throw new Error('reviewProjectSelect not found in DOM');
+    }
+    reviewProjectSelect.innerHTML = '';
+    Array.from(projectSelect.options).forEach(option => {
+      const newOption = option.cloneNode(true);
+      reviewProjectSelect.appendChild(newOption);
+    });
+    reviewProjectSelect.value = projectSelect.value;
 
-  // Network Tab
-  const networkCount = networkRequests.length;
-  document.getElementById('networkCount').textContent = networkCount;
-  document.getElementById('networkCountText').textContent = networkCount;
+    // Clone tracker options
+    const reviewTrackerSelect = document.getElementById('reviewTrackerSelect');
+    if (!reviewTrackerSelect) {
+      throw new Error('reviewTrackerSelect not found in DOM');
+    }
+    reviewTrackerSelect.innerHTML = '';
+    Array.from(trackerSelect.options).forEach(option => {
+      const newOption = option.cloneNode(true);
+      reviewTrackerSelect.appendChild(newOption);
+    });
+    reviewTrackerSelect.value = trackerSelect.value;
 
-  const networkContainer = document.getElementById('reviewNetwork');
-  networkContainer.innerHTML = '';
+    // Set subject/title
+    const reviewSubjectInput = document.getElementById('reviewSubjectInput');
+    if (!reviewSubjectInput) {
+      throw new Error('reviewSubjectInput not found in DOM');
+    }
+    reviewSubjectInput.value = document.getElementById('subject').value || '';
 
-  if (networkCount === 0) {
-    networkContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No network requests captured</p>';
-  } else {
-    networkRequests.slice(0, 50).forEach(req => {
-      const item = document.createElement('div');
-      item.className = 'data-item';
+    // Clone priority options
+    const reviewPrioritySelect = document.getElementById('reviewPrioritySelect');
+    if (!reviewPrioritySelect) {
+      throw new Error('reviewPrioritySelect not found in DOM');
+    }
+    reviewPrioritySelect.innerHTML = '';
+    Array.from(prioritySelect.options).forEach(option => {
+      const newOption = option.cloneNode(true);
+      reviewPrioritySelect.appendChild(newOption);
+    });
+    reviewPrioritySelect.value = prioritySelect.value;
 
-      const statusClass = req.failed ? 'error' : (req.statusCode >= 200 && req.statusCode < 300) ? 'success' : '';
+    // Clone assignee options
+    const reviewAssigneeSelect = document.getElementById('reviewAssigneeSelect');
+    if (!reviewAssigneeSelect) {
+      throw new Error('reviewAssigneeSelect not found in DOM');
+    }
+    reviewAssigneeSelect.innerHTML = '';
+    Array.from(assigneeSelect.options).forEach(option => {
+      const newOption = option.cloneNode(true);
+      reviewAssigneeSelect.appendChild(newOption);
+    });
+    reviewAssigneeSelect.value = assigneeSelect.value;
 
-      item.innerHTML = `
-        <div class="data-item-header">
-          <div>
-            <span class="data-item-method">${req.method || 'GET'}</span>
-            <span class="data-item-url">${truncateUrl(req.url)}</span>
+    // Set description
+    const reviewDescriptionText = document.getElementById('reviewDescriptionText');
+    if (!reviewDescriptionText) {
+      throw new Error('reviewDescriptionText not found in DOM');
+    }
+    reviewDescriptionText.value = buildDescription();
+
+    console.log('All editable fields populated successfully');
+
+    // Screenshot Tab
+    if (annotator) {
+      document.getElementById('reviewScreenshot').src = annotator.getAnnotatedImage();
+    }
+
+    // Page Info Tab
+    document.getElementById('reviewPageInfo').textContent = JSON.stringify(pageInfo, null, 2);
+
+    // Network Tab
+    const networkCount = networkRequests.length;
+    document.getElementById('networkCount').textContent = networkCount;
+    document.getElementById('networkCountText').textContent = networkCount;
+
+    const networkContainer = document.getElementById('reviewNetwork');
+    networkContainer.innerHTML = '';
+
+    if (networkCount === 0) {
+      networkContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No network requests captured</p>';
+    } else {
+      networkRequests.slice(0, 50).forEach(req => {
+        const item = document.createElement('div');
+        item.className = 'data-item';
+
+        const statusClass = req.failed ? 'error' : (req.statusCode >= 200 && req.statusCode < 300) ? 'success' : '';
+
+        item.innerHTML = `
+          <div class="data-item-header">
+            <div>
+              <span class="data-item-method">${req.method || 'GET'}</span>
+              <span class="data-item-url">${truncateUrl(req.url)}</span>
+            </div>
+            <span class="data-item-status ${statusClass}">
+              ${req.failed ? 'Failed' : (req.statusCode || 'Pending')}
+            </span>
           </div>
-          <span class="data-item-status ${statusClass}">
-            ${req.failed ? 'Failed' : (req.statusCode || 'Pending')}
-          </span>
-        </div>
-      `;
+        `;
 
-      networkContainer.appendChild(item);
-    });
+        networkContainer.appendChild(item);
+      });
 
-    if (networkCount > 50) {
-      const more = document.createElement('p');
-      more.style.cssText = 'color: #666; font-size: 11px; margin-top: 8px;';
-      more.textContent = `... and ${networkCount - 50} more requests`;
-      networkContainer.appendChild(more);
+      if (networkCount > 50) {
+        const more = document.createElement('p');
+        more.style.cssText = 'color: #666; font-size: 11px; margin-top: 8px;';
+        more.textContent = `... and ${networkCount - 50} more requests`;
+        networkContainer.appendChild(more);
+      }
     }
-  }
 
-  // Console Tab
-  const consoleCount = consoleLogs.length;
-  document.getElementById('consoleCount').textContent = consoleCount;
-  document.getElementById('consoleCountText').textContent = consoleCount;
+    // Console Tab
+    const consoleCount = consoleLogs.length;
+    document.getElementById('consoleCount').textContent = consoleCount;
+    document.getElementById('consoleCountText').textContent = consoleCount;
 
-  const consoleContainer = document.getElementById('reviewConsole');
-  consoleContainer.innerHTML = '';
+    const consoleContainer = document.getElementById('reviewConsole');
+    consoleContainer.innerHTML = '';
 
-  if (consoleCount === 0) {
-    consoleContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No console logs captured</p>';
-  } else {
-    consoleLogs.slice(0, 50).forEach(log => {
-      const item = document.createElement('div');
-      item.className = `console-item ${log.type}`;
+    if (consoleCount === 0) {
+      consoleContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No console logs captured</p>';
+    } else {
+      consoleLogs.slice(0, 50).forEach(log => {
+        const item = document.createElement('div');
+        item.className = `console-item ${log.type}`;
 
-      item.innerHTML = `
-        <div class="console-timestamp">${log.timestamp || ''}</div>
-        <div class="console-message">${log.message || ''}</div>
-      `;
+        item.innerHTML = `
+          <div class="console-timestamp">${log.timestamp || ''}</div>
+          <div class="console-message">${log.message || ''}</div>
+        `;
 
-      consoleContainer.appendChild(item);
-    });
+        consoleContainer.appendChild(item);
+      });
 
-    if (consoleCount > 50) {
-      const more = document.createElement('p');
-      more.style.cssText = 'color: #666; font-size: 11px; margin-top: 8px;';
-      more.textContent = `... and ${consoleCount - 50} more log entries`;
-      consoleContainer.appendChild(more);
+      if (consoleCount > 50) {
+        const more = document.createElement('p');
+        more.style.cssText = 'color: #666; font-size: 11px; margin-top: 8px;';
+        more.textContent = `... and ${consoleCount - 50} more log entries`;
+        consoleContainer.appendChild(more);
+      }
     }
+
+    console.log('populateReviewModal completed successfully');
+  } catch (error) {
+    console.error('Error in populateReviewModal:', error);
+    throw error;
   }
 }
 
