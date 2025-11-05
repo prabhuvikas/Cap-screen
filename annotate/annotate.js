@@ -1,6 +1,5 @@
-// Popup JavaScript - Main bug reporter functionality
+// Annotate Page JavaScript - Full-screen annotation and bug report submission
 
-let currentTab = null;
 let screenshotDataUrl = null;
 let annotator = null;
 let settings = {};
@@ -8,63 +7,78 @@ let pageInfo = {};
 let networkRequests = [];
 let consoleLogs = [];
 let redmineAPI = null;
+let currentTab = null;
 
 // Sanitize text to remove unicode/emoji characters that cause 500 errors
-// Redmine with standard UTF-8 (not utf8mb4) cannot handle 4-byte UTF-8 characters
 function sanitizeText(text) {
   if (!text) return text;
 
   const str = typeof text === 'string' ? text : String(text);
 
   // Remove 4-byte UTF-8 characters (emojis, surrogate pairs) first
-  // Standard UTF-8 in MySQL only supports up to 3 bytes
-  let sanitized = str.replace(/[\uD800-\uDFFF]/g, ''); // Remove surrogate pairs
+  let sanitized = str.replace(/[\uD800-\uDFFF]/g, '');
 
   // Replace problematic unicode characters with safe equivalents
   sanitized = sanitized
-    .normalize('NFD') // Decompose unicode characters
-    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
-    .replace(/[\u2018\u2019]/g, "'") // Smart single quotes
-    .replace(/[\u201C\u201D]/g, '"') // Smart double quotes
-    .replace(/[\u2013\u2014]/g, '-') // Em/en dashes
-    .replace(/[\u2026]/g, '...') // Ellipsis
-    .replace(/[\u2022]/g, '*') // Bullet point
-    .replace(/[\u00A0]/g, ' ') // Non-breaking space
-    .replace(/[^\x00-\x7F]/g, ''); // Remove ALL remaining non-ASCII
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/[\u2026]/g, '...')
+    .replace(/[\u2022]/g, '*')
+    .replace(/[\u00A0]/g, ' ')
+    .replace(/[^\x00-\x7F]/g, '');
 
-  // Normalize line endings: convert CRLF (\r\n) to LF (\n) for consistency
+  // Normalize line endings
   sanitized = sanitized.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
   return sanitized;
 }
 
-// Initialize popup
+// Initialize the page
 document.addEventListener('DOMContentLoaded', async () => {
-  // Get current tab
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  currentTab = tabs[0];
+  console.log('[Annotate] Page loaded, initializing...');
 
-  // Load settings
-  await loadSettings();
+  // Show loading section initially
+  showSection('loadingSection');
 
-  // Setup settings button listeners (must be set up before early return)
-  document.getElementById('settingsBtn').addEventListener('click', openSettings);
-  document.getElementById('openSettings').addEventListener('click', openSettings);
+  try {
+    // Load settings
+    await loadSettings();
 
-  // Check if Redmine is configured
-  if (!settings.redmineUrl || !settings.apiKey) {
-    showSection('noConfigSection');
-    return;
+    // Check if Redmine is configured
+    if (!settings.redmineUrl || !settings.apiKey) {
+      showError('Please configure your Redmine server settings first.');
+      return;
+    }
+
+    // Initialize Redmine API
+    redmineAPI = new RedmineAPI(settings.redmineUrl, settings.apiKey);
+
+    // Load screenshot data from session storage
+    const result = await chrome.storage.session.get(['screenshotData', 'tabId']);
+
+    if (!result.screenshotData) {
+      showError('No screenshot data found. Please capture a screenshot first.');
+      return;
+    }
+
+    screenshotDataUrl = result.screenshotData;
+    currentTab = { id: result.tabId };
+
+    console.log('[Annotate] Screenshot data loaded successfully');
+
+    // Setup event listeners
+    setupEventListeners();
+
+    // Initialize annotation
+    initializeAnnotation();
+
+  } catch (error) {
+    console.error('[Annotate] Initialization error:', error);
+    showError(`Error initializing page: ${error.message}`);
   }
-
-  // Initialize Redmine API
-  redmineAPI = new RedmineAPI(settings.redmineUrl, settings.apiKey);
-
-  // Setup event listeners
-  setupEventListeners();
-
-  // Show initial section
-  showSection('captureSection');
 });
 
 // Load settings from storage
@@ -85,9 +99,9 @@ async function loadSettings() {
 
 // Setup event listeners
 function setupEventListeners() {
-  // Screenshot capture
-  document.getElementById('captureViewport').addEventListener('click', () => captureScreenshot('viewport'));
-  document.getElementById('captureFullPage').addEventListener('click', () => captureScreenshot('fullpage'));
+  // Header actions
+  document.getElementById('settingsBtn').addEventListener('click', openSettings);
+  document.getElementById('closeTab').addEventListener('click', () => window.close());
 
   // Annotation tools
   document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -122,16 +136,16 @@ function setupEventListeners() {
 
   // Navigation
   document.getElementById('continueToReport').addEventListener('click', continueToReport);
-  document.getElementById('retakeScreenshot').addEventListener('click', () => showSection('captureSection'));
   document.getElementById('backToAnnotate').addEventListener('click', () => showSection('annotateSection'));
+  document.getElementById('backToAnnotateBtn').addEventListener('click', () => showSection('annotateSection'));
 
   // Form
   document.getElementById('project').addEventListener('change', onProjectChange);
   document.getElementById('bugReportForm').addEventListener('submit', submitBugReport);
 
-  // Success
-  document.getElementById('createAnother').addEventListener('click', resetForm);
-  document.getElementById('closePopup').addEventListener('click', () => window.close());
+  // Success/Error
+  document.getElementById('closeAfterSuccess').addEventListener('click', () => window.close());
+  document.getElementById('closeAfterError').addEventListener('click', () => window.close());
 
   // Review Modal
   document.getElementById('closeReviewModal').addEventListener('click', closeReviewModal);
@@ -145,71 +159,17 @@ function setupEventListeners() {
   });
 }
 
-// Capture screenshot
-async function captureScreenshot(type) {
-  const button = type === 'viewport' ? document.getElementById('captureViewport') : document.getElementById('captureFullPage');
-  const statusEl = document.getElementById('captureStatus');
-
-  try {
-    button.disabled = true;
-    showStatus('captureStatus', 'Capturing screenshot...', 'info');
-
-    // Inject content script if needed
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId: currentTab.id },
-        files: ['content/content.js']
-      });
-    } catch (e) {
-      // Content script might already be injected
-      console.log('Content script injection skipped:', e.message);
-    }
-
-    // Capture the screenshot
-    screenshotDataUrl = await chrome.tabs.captureVisibleTab(null, {
-      format: 'png',
-      quality: 100
-    });
-
-    if (!screenshotDataUrl) {
-      throw new Error('Failed to capture screenshot');
-    }
-
-    showStatus('captureStatus', 'Screenshot captured successfully!', 'success');
-
-    // Save screenshot to session storage
-    await chrome.storage.session.set({
-      screenshotData: screenshotDataUrl,
-      tabId: currentTab.id
-    });
-
-    // Open annotation page in new tab
-    const annotateTab = await chrome.tabs.create({
-      url: chrome.runtime.getURL('annotate/annotate.html'),
-      active: true
-    });
-
-    console.log('[Popup] Opened annotation tab:', annotateTab.id);
-
-    // Close popup after opening new tab
-    setTimeout(() => {
-      window.close();
-    }, 300);
-
-  } catch (error) {
-    console.error('Error capturing screenshot:', error);
-    showStatus('captureStatus', `Error: ${error.message}`, 'error');
-  } finally {
-    button.disabled = false;
-  }
-}
-
 // Initialize annotation
 function initializeAnnotation() {
-  showSection('annotateSection');
+  console.log('[Annotate] Initializing annotation canvas...');
 
   const canvas = document.getElementById('annotationCanvas');
   annotator = new Annotator(canvas, screenshotDataUrl);
+
+  // Show annotation section
+  showSection('annotateSection');
+
+  console.log('[Annotate] Annotation initialized successfully');
 }
 
 // Select annotation tool
@@ -227,8 +187,6 @@ function selectTool(tool, buttonElement) {
   if (tool === 'text') {
     const text = prompt('Enter text:');
     if (text && annotator) {
-      const canvas = document.getElementById('annotationCanvas');
-      const rect = canvas.getBoundingClientRect();
       annotator.addText(50, 50, text);
     }
   }
@@ -236,6 +194,14 @@ function selectTool(tool, buttonElement) {
 
 // Continue to report form
 async function continueToReport() {
+  console.log('[Annotate] Continuing to report section...');
+
+  // Update preview
+  if (annotator) {
+    const previewImg = document.getElementById('previewImage');
+    previewImg.src = annotator.getAnnotatedImage();
+  }
+
   showSection('reportSection');
 
   // Collect technical data
@@ -247,7 +213,14 @@ async function continueToReport() {
 
 // Collect technical data
 async function collectTechnicalData() {
+  if (!currentTab || !currentTab.id) {
+    console.warn('[Annotate] No tab ID available for data collection');
+    return;
+  }
+
   try {
+    console.log('[Annotate] Collecting technical data...');
+
     // Ensure content script is injected
     try {
       await chrome.scripting.executeScript({
@@ -255,61 +228,81 @@ async function collectTechnicalData() {
         files: ['content/content.js']
       });
     } catch (e) {
-      // Content script might already be injected
-      console.log('Content script injection skipped:', e.message);
+      console.log('[Annotate] Content script injection skipped:', e.message);
     }
 
     // Collect page information
-    const pageInfoResponse = await chrome.tabs.sendMessage(currentTab.id, {
-      action: 'collectPageInfo'
-    });
+    try {
+      const pageInfoResponse = await chrome.tabs.sendMessage(currentTab.id, {
+        action: 'collectPageInfo'
+      });
 
-    if (pageInfoResponse && pageInfoResponse.success) {
-      pageInfo = pageInfoResponse.data;
+      if (pageInfoResponse && pageInfoResponse.success) {
+        pageInfo = pageInfoResponse.data;
+        console.log('[Annotate] Page info collected:', pageInfo);
+      }
+    } catch (e) {
+      console.warn('[Annotate] Could not collect page info:', e.message);
     }
 
     // Collect console logs
     if (settings.includeConsoleLogs) {
-      const logsResponse = await chrome.runtime.sendMessage({
-        action: 'getConsoleLogs',
-        tabId: currentTab.id
-      });
+      try {
+        const logsResponse = await chrome.runtime.sendMessage({
+          action: 'getConsoleLogs',
+          tabId: currentTab.id
+        });
 
-      if (logsResponse && logsResponse.success) {
-        consoleLogs = logsResponse.data;
+        if (logsResponse && logsResponse.success) {
+          consoleLogs = logsResponse.data;
+          console.log('[Annotate] Console logs collected:', consoleLogs.length);
+        }
+      } catch (e) {
+        console.warn('[Annotate] Could not collect console logs:', e.message);
       }
     }
 
     // Collect network requests
     if (settings.includeNetworkRequests) {
-      const networkResponse = await chrome.runtime.sendMessage({
-        action: 'getNetworkRequests',
-        tabId: currentTab.id
-      });
+      try {
+        const networkResponse = await chrome.runtime.sendMessage({
+          action: 'getNetworkRequests',
+          tabId: currentTab.id
+        });
 
-      if (networkResponse && networkResponse.success) {
-        networkRequests = networkResponse.data;
+        if (networkResponse && networkResponse.success) {
+          networkRequests = networkResponse.data;
+          console.log('[Annotate] Network requests collected:', networkRequests.length);
+        }
+      } catch (e) {
+        console.warn('[Annotate] Could not collect network requests:', e.message);
       }
     }
 
     // Collect storage data
     if (settings.includeLocalStorage || settings.includeCookies) {
-      const storageResponse = await chrome.tabs.sendMessage(currentTab.id, {
-        action: 'collectStorageData'
-      });
+      try {
+        const storageResponse = await chrome.tabs.sendMessage(currentTab.id, {
+          action: 'collectStorageData'
+        });
 
-      if (storageResponse && storageResponse.success) {
-        pageInfo.storage = storageResponse.data;
+        if (storageResponse && storageResponse.success) {
+          pageInfo.storage = storageResponse.data;
+        }
+      } catch (e) {
+        console.warn('[Annotate] Could not collect storage data:', e.message);
       }
     }
   } catch (error) {
-    console.error('Error collecting technical data:', error);
+    console.error('[Annotate] Error collecting technical data:', error);
   }
 }
 
 // Load Redmine data
 async function loadRedmineData() {
   try {
+    console.log('[Annotate] Loading Redmine data...');
+
     // Load projects
     const projects = await redmineAPI.getProjects();
     const projectSelect = document.getElementById('project');
@@ -334,7 +327,6 @@ async function loadRedmineData() {
       const option = document.createElement('option');
       option.value = tracker.id;
       option.textContent = tracker.name;
-      // Select "Bug" by default if available
       if (tracker.name.toLowerCase() === 'bug') {
         option.selected = true;
       }
@@ -350,7 +342,6 @@ async function loadRedmineData() {
       const option = document.createElement('option');
       option.value = priority.id;
       option.textContent = priority.name;
-      // Select "Normal" by default if available
       if (priority.name.toLowerCase() === 'normal') {
         option.selected = true;
       }
@@ -362,8 +353,9 @@ async function loadRedmineData() {
       await onProjectChange();
     }
 
+    console.log('[Annotate] Redmine data loaded successfully');
   } catch (error) {
-    console.error('Error loading Redmine data:', error);
+    console.error('[Annotate] Error loading Redmine data:', error);
     showStatus('submitStatus', 'Error loading Redmine data. Please check your settings.', 'error');
   }
 }
@@ -414,7 +406,7 @@ async function onProjectChange() {
     });
 
   } catch (error) {
-    console.error('Error loading project data:', error);
+    console.error('[Annotate] Error loading project data:', error);
   }
 }
 
@@ -423,23 +415,16 @@ async function submitBugReport(e) {
   e.preventDefault();
 
   try {
-    console.log('submitBugReport called');
+    console.log('[Annotate] Preparing bug report submission...');
 
     // Populate review modal with all data
     await populateReviewModal();
 
-    console.log('Modal populated, showing modal');
-
     // Show review modal
     const modal = document.getElementById('reviewModal');
-    if (modal) {
-      modal.classList.remove('hidden');
-      console.log('Modal shown, hidden class removed');
-    } else {
-      console.error('Review modal element not found!');
-    }
+    modal.classList.remove('hidden');
   } catch (error) {
-    console.error('Error in submitBugReport:', error);
+    console.error('[Annotate] Error showing review modal:', error);
     alert('Error showing review modal: ' + error.message);
   }
 }
@@ -455,7 +440,7 @@ async function actuallySubmitBugReport() {
     btnText.textContent = 'Submitting...';
     spinner.classList.remove('hidden');
 
-    // Get form data from review modal (user may have edited these)
+    // Get form data from review modal
     const formData = {
       project_id: document.getElementById('reviewProjectSelect').value,
       tracker_id: document.getElementById('reviewTrackerSelect').value,
@@ -465,13 +450,12 @@ async function actuallySubmitBugReport() {
       assigned_to_id: document.getElementById('reviewAssigneeSelect').value
     };
 
-    // Validate required fields (including mandatory assignee)
+    // Validate required fields
     if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id || !formData.assigned_to_id) {
       throw new Error('Please fill in all required fields (marked with *)');
     }
 
     // Optional fields
-
     const category = document.getElementById('category').value;
     if (category) formData.category_id = category;
 
@@ -494,25 +478,7 @@ async function actuallySubmitBugReport() {
     // Add technical data if requested
     if (document.getElementById('attachTechnicalData').checked) {
       const technicalData = buildTechnicalData();
-      console.log('[Bug Reporter] Technical data before sanitization:', technicalData.substring(0, 200));
-
-      const sanitizedData = sanitizeText(technicalData); // Remove unicode/emojis
-
-      // Debug: Check if sanitization worked
-      const hasNonASCII = /[^\x00-\x7F]/.test(sanitizedData);
-      if (hasNonASCII) {
-        console.warn('[Bug Reporter] WARNING: Technical data still contains non-ASCII characters after sanitization!');
-        // Find and log the first non-ASCII character
-        for (let i = 0; i < sanitizedData.length; i++) {
-          if (sanitizedData.charCodeAt(i) > 127) {
-            console.warn(`[Bug Reporter] First non-ASCII at position ${i}: '${sanitizedData[i]}' (code: ${sanitizedData.charCodeAt(i)})`);
-            console.warn(`[Bug Reporter] Context: ...${sanitizedData.substring(Math.max(0, i-50), i+50)}...`);
-            break;
-          }
-        }
-      } else {
-        console.log('[Bug Reporter] Technical data is clean (all ASCII)');
-      }
+      const sanitizedData = sanitizeText(technicalData);
 
       const blob = new Blob([sanitizedData], { type: 'application/json' });
       const reader = new FileReader();
@@ -533,7 +499,7 @@ async function actuallySubmitBugReport() {
     // Add HAR file if network requests are available
     if (settings.includeNetworkRequests && networkRequests.length > 0) {
       const harData = buildHARFile();
-      const sanitizedHar = sanitizeText(harData); // Remove unicode/emojis
+      const sanitizedHar = sanitizeText(harData);
       const harBlob = new Blob([sanitizedHar], { type: 'application/json' });
       const harReader = new FileReader();
 
@@ -553,7 +519,7 @@ async function actuallySubmitBugReport() {
     // Add console logs file if available
     if (settings.includeConsoleLogs && consoleLogs.length > 0) {
       const consoleLogsData = buildConsoleLogsFile();
-      const sanitizedLogs = sanitizeText(consoleLogsData); // Remove unicode/emojis
+      const sanitizedLogs = sanitizeText(consoleLogsData);
       const logsBlob = new Blob([sanitizedLogs], { type: 'text/plain' });
       const logsReader = new FileReader();
 
@@ -570,17 +536,24 @@ async function actuallySubmitBugReport() {
       });
     }
 
+    console.log('[Annotate] Creating issue with', attachments.length, 'attachments...');
+
     // Create issue with attachments
     const issue = await redmineAPI.createIssueWithAttachments(formData, attachments);
 
+    console.log('[Annotate] Issue created successfully:', issue);
+
     // Close review modal
     closeReviewModal();
+
+    // Clear session storage
+    await chrome.storage.session.remove(['screenshotData', 'tabId']);
 
     // Show success screen
     showSuccessScreen(issue);
 
   } catch (error) {
-    console.error('Error submitting bug report:', error);
+    console.error('[Annotate] Error submitting bug report:', error);
     alert(`Error submitting bug report: ${error.message}`);
   } finally {
     submitBtn.disabled = false;
@@ -609,13 +582,13 @@ function buildDescription() {
     description += '\n\n## Actual Behavior\n' + sanitizeText(actual);
   }
 
-  // Add basic page info (sanitized to prevent unicode issues)
+  // Add basic page info
   description += '\n\n## Page Information\n';
-  description += `- URL: ${sanitizeText(pageInfo.url || currentTab.url)}\n`;
-  description += `- Title: ${sanitizeText(pageInfo.title || currentTab.title)}\n`;
+  description += `- URL: ${sanitizeText(pageInfo.url || 'N/A')}\n`;
+  description += `- Title: ${sanitizeText(pageInfo.title || 'N/A')}\n`;
   description += `- Timestamp: ${new Date().toISOString()}\n`;
 
-  // Reference attached files instead of embedding all details
+  // Reference attached files
   description += '\n\n## Additional Information\n';
   description += 'Detailed technical information (browser, system, network, performance data) ';
   description += 'is available in the attached technical-data.json file.\n';
@@ -628,7 +601,6 @@ function buildDescription() {
     description += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
   }
 
-  // Sanitize the entire description to remove any remaining unicode
   return sanitizeText(description);
 }
 
@@ -654,15 +626,10 @@ function buildTechnicalData() {
     }));
   }
 
-  // Sanitize if needed
-  if (settings.sanitizeSensitiveData) {
-    return JSON.stringify(data, null, 2);
-  }
-
   return JSON.stringify(data, null, 2);
 }
 
-// Build HAR (HTTP Archive) file from network requests
+// Build HAR file
 function buildHARFile() {
   const harLog = {
     log: {
@@ -735,12 +702,10 @@ function buildHARFile() {
           connection: ''
         };
 
-        // Add error information if request failed
         if (req.failed || req.error) {
           entry._error = req.error || 'Request failed';
         }
 
-        // Add resource type
         if (req.type) {
           entry._resourceType = req.type;
         }
@@ -780,7 +745,7 @@ function getContentType(headers) {
   return contentTypeHeader ? contentTypeHeader.value : null;
 }
 
-// Build console logs file content
+// Build console logs file
 function buildConsoleLogsFile() {
   if (!consoleLogs || consoleLogs.length === 0) {
     return 'No console logs captured.';
@@ -821,65 +786,18 @@ function showSuccessScreen(issue) {
   `;
 }
 
-// Reset form for new report
-function resetForm() {
-  screenshotDataUrl = null;
-  annotator = null;
-  pageInfo = {};
-  networkRequests = [];
-  consoleLogs = [];
-
-  document.getElementById('bugReportForm').reset();
-  showSection('captureSection');
-}
-
-// Open settings
-function openSettings() {
-  chrome.runtime.openOptionsPage();
-}
-
-// Show section
-function showSection(sectionId) {
-  document.querySelectorAll('.section').forEach(section => {
-    section.classList.remove('active');
-    section.classList.add('hidden');
-  });
-  const targetSection = document.getElementById(sectionId);
-  targetSection.classList.add('active');
-  targetSection.classList.remove('hidden');
-}
-
-// Show status message
-function showStatus(elementId, message, type) {
-  const element = document.getElementById(elementId);
-  element.textContent = message;
-  element.className = `status-message ${type}`;
-}
-
-// Populate review modal with all data
+// Populate review modal
 async function populateReviewModal() {
   try {
-    console.log('populateReviewModal started');
+    console.log('[Annotate] Populating review modal...');
 
-    // Get form data with labels
     const projectSelect = document.getElementById('project');
     const trackerSelect = document.getElementById('tracker');
     const prioritySelect = document.getElementById('priority');
     const assigneeSelect = document.getElementById('assignee');
 
-    console.log('Form elements found:', {
-      project: !!projectSelect,
-      tracker: !!trackerSelect,
-      priority: !!prioritySelect,
-      assignee: !!assigneeSelect
-    });
-
     // Form Data Tab - Populate editable fields
-    // Clone project options
     const reviewProjectSelect = document.getElementById('reviewProjectSelect');
-    if (!reviewProjectSelect) {
-      throw new Error('reviewProjectSelect not found in DOM');
-    }
     reviewProjectSelect.innerHTML = '';
     Array.from(projectSelect.options).forEach(option => {
       const newOption = option.cloneNode(true);
@@ -887,11 +805,7 @@ async function populateReviewModal() {
     });
     reviewProjectSelect.value = projectSelect.value;
 
-    // Clone tracker options
     const reviewTrackerSelect = document.getElementById('reviewTrackerSelect');
-    if (!reviewTrackerSelect) {
-      throw new Error('reviewTrackerSelect not found in DOM');
-    }
     reviewTrackerSelect.innerHTML = '';
     Array.from(trackerSelect.options).forEach(option => {
       const newOption = option.cloneNode(true);
@@ -899,18 +813,10 @@ async function populateReviewModal() {
     });
     reviewTrackerSelect.value = trackerSelect.value;
 
-    // Set subject/title
     const reviewSubjectInput = document.getElementById('reviewSubjectInput');
-    if (!reviewSubjectInput) {
-      throw new Error('reviewSubjectInput not found in DOM');
-    }
     reviewSubjectInput.value = document.getElementById('subject').value || '';
 
-    // Clone priority options
     const reviewPrioritySelect = document.getElementById('reviewPrioritySelect');
-    if (!reviewPrioritySelect) {
-      throw new Error('reviewPrioritySelect not found in DOM');
-    }
     reviewPrioritySelect.innerHTML = '';
     Array.from(prioritySelect.options).forEach(option => {
       const newOption = option.cloneNode(true);
@@ -918,11 +824,7 @@ async function populateReviewModal() {
     });
     reviewPrioritySelect.value = prioritySelect.value;
 
-    // Clone assignee options
     const reviewAssigneeSelect = document.getElementById('reviewAssigneeSelect');
-    if (!reviewAssigneeSelect) {
-      throw new Error('reviewAssigneeSelect not found in DOM');
-    }
     reviewAssigneeSelect.innerHTML = '';
     Array.from(assigneeSelect.options).forEach(option => {
       const newOption = option.cloneNode(true);
@@ -930,25 +832,18 @@ async function populateReviewModal() {
     });
     reviewAssigneeSelect.value = assigneeSelect.value;
 
-    // Set description
     const reviewDescriptionText = document.getElementById('reviewDescriptionText');
-    if (!reviewDescriptionText) {
-      throw new Error('reviewDescriptionText not found in DOM');
-    }
     reviewDescriptionText.value = buildDescription();
-
-    console.log('All editable fields populated successfully');
 
     // Screenshot Tab
     if (annotator) {
       document.getElementById('reviewScreenshot').src = annotator.getAnnotatedImage();
     }
 
-    // Page Info Tab - Format for better readability
+    // Page Info Tab
     const pageInfoContainer = document.getElementById('reviewPageInfo');
-    pageInfoContainer.innerHTML = ''; // Clear to add formatted content
+    pageInfoContainer.innerHTML = '';
 
-    // Create structured display instead of raw JSON
     const pageInfoHtml = `
       <div class="info-section">
         <h4>📄 Page Details</h4>
@@ -1096,7 +991,6 @@ async function populateReviewModal() {
         const item = document.createElement('div');
         item.className = `console-item ${log.type}`;
 
-        // Get icon and color for log type
         let typeIcon = '📝';
         let typeColor = '#666';
         if (log.type === 'error') {
@@ -1142,22 +1036,20 @@ async function populateReviewModal() {
       }
     }
 
-    console.log('populateReviewModal completed successfully');
+    console.log('[Annotate] Review modal populated successfully');
   } catch (error) {
-    console.error('Error in populateReviewModal:', error);
+    console.error('[Annotate] Error populating review modal:', error);
     throw error;
   }
 }
 
 // Switch tabs in review modal
 function switchTab(tabName) {
-  // Update tab buttons
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.remove('active');
   });
   document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
 
-  // Update tab panes
   document.querySelectorAll('.tab-pane').forEach(pane => {
     pane.classList.remove('active');
   });
@@ -1169,6 +1061,35 @@ function closeReviewModal() {
   document.getElementById('reviewModal').classList.add('hidden');
 }
 
+// Open settings
+function openSettings() {
+  chrome.runtime.openOptionsPage();
+}
+
+// Show section
+function showSection(sectionId) {
+  document.querySelectorAll('.section').forEach(section => {
+    section.classList.remove('active');
+    section.classList.add('hidden');
+  });
+  const targetSection = document.getElementById(sectionId);
+  targetSection.classList.add('active');
+  targetSection.classList.remove('hidden');
+}
+
+// Show status message
+function showStatus(elementId, message, type) {
+  const element = document.getElementById(elementId);
+  element.textContent = message;
+  element.className = `status-message ${type}`;
+}
+
+// Show error
+function showError(message) {
+  showSection('errorSection');
+  document.getElementById('errorMessage').textContent = message;
+}
+
 // Helper function to truncate URL
 function truncateUrl(url, maxLength = 80) {
   if (!url) return '';
@@ -1176,7 +1097,7 @@ function truncateUrl(url, maxLength = 80) {
   return url.substring(0, maxLength) + '...';
 }
 
-// Helper function to escape HTML to prevent XSS
+// Helper function to escape HTML
 function escapeHtml(text) {
   if (!text) return '';
   const div = document.createElement('div');
