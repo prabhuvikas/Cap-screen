@@ -580,8 +580,11 @@ function openSettings() {
 function showSection(sectionId) {
   document.querySelectorAll('.section').forEach(section => {
     section.classList.remove('active');
+    section.classList.add('hidden');
   });
-  document.getElementById(sectionId).classList.add('active');
+  const targetSection = document.getElementById(sectionId);
+  targetSection.classList.add('active');
+  targetSection.classList.remove('hidden');
 }
 
 // Show status message
