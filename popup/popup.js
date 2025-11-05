@@ -18,6 +18,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load settings
   await loadSettings();
 
+  // Setup settings button listeners (must be set up before early return)
+  document.getElementById('settingsBtn').addEventListener('click', openSettings);
+  document.getElementById('openSettings').addEventListener('click', openSettings);
+
   // Check if Redmine is configured
   if (!settings.redmineUrl || !settings.apiKey) {
     showSection('noConfigSection');
@@ -96,11 +100,9 @@ function setupEventListeners() {
   document.getElementById('project').addEventListener('change', onProjectChange);
   document.getElementById('bugReportForm').addEventListener('submit', submitBugReport);
 
-  // Success/Settings
+  // Success
   document.getElementById('createAnother').addEventListener('click', resetForm);
   document.getElementById('closePopup').addEventListener('click', () => window.close());
-  document.getElementById('settingsBtn').addEventListener('click', openSettings);
-  document.getElementById('openSettings').addEventListener('click', openSettings);
 
   // Review Modal
   document.getElementById('closeReviewModal').addEventListener('click', closeReviewModal);

@@ -7,6 +7,7 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   width: 600px;
+  min-height: 400px;
   max-height: 700px;
   overflow-y: auto;
   background-color: #ffffff;
@@ -16,7 +17,7 @@ body {
 .container {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  min-height: 400px;
 }
 
 /* Header */
@@ -34,22 +35,25 @@ header h1 {
   font-size: 15px;
   font-weight: 500;
   letter-spacing: -0.01em;
+  flex-shrink: 0;
+  margin-right: auto;
 }
 
 .icon-btn {
-  background: none;
-  border: none;
+  background: #f5f5f5;
+  border: 1px solid #e5e5e5;
   font-size: 16px;
   cursor: pointer;
-  padding: 6px;
-  color: #666;
-  transition: color 0.2s;
-  border-radius: 4px;
+  padding: 8px;
+  color: #1a1a1a;
+  transition: all 0.2s;
+  border-radius: 6px;
 }
 
 .icon-btn:hover {
   color: #1a1a1a;
-  background-color: #f5f5f5;
+  background-color: #e5e5e5;
+  border-color: #d0d0d0;
 }
 
 /* Main Content */
@@ -105,6 +109,7 @@ main {
   background-color: #1a1a1a;
   color: #fff;
   border-color: #1a1a1a;
+  font-weight: 500;
 }
 
 .btn-primary:hover {
@@ -114,13 +119,14 @@ main {
 
 .btn-secondary {
   background-color: #ffffff;
-  color: #666;
-  border-color: #e5e5e5;
+  color: #1a1a1a;
+  border-color: #d0d0d0;
+  font-weight: 500;
 }
 
 .btn-secondary:hover {
-  border-color: #d0d0d0;
-  color: #1a1a1a;
+  border-color: #999;
+  background-color: #fafafa;
 }
 
 .btn-small {
