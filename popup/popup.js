@@ -418,17 +418,16 @@ async function actuallySubmitBugReport() {
       tracker_id: document.getElementById('reviewTrackerSelect').value,
       subject: document.getElementById('reviewSubjectInput').value,
       description: document.getElementById('reviewDescriptionText').value,
-      priority_id: document.getElementById('reviewPrioritySelect').value
+      priority_id: document.getElementById('reviewPrioritySelect').value,
+      assigned_to_id: document.getElementById('reviewAssigneeSelect').value
     };
 
-    // Validate required fields
-    if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id) {
+    // Validate required fields (including mandatory assignee)
+    if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id || !formData.assigned_to_id) {
       throw new Error('Please fill in all required fields (marked with *)');
     }
 
     // Optional fields
-    const assignee = document.getElementById('reviewAssigneeSelect').value;
-    if (assignee) formData.assigned_to_id = assignee;
 
     const category = document.getElementById('category').value;
     if (category) formData.category_id = category;
