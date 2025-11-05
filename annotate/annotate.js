@@ -536,6 +536,34 @@ async function actuallySubmitBugReport() {
       });
     }
 
+    // Add user-uploaded documents
+    const fileInput = document.getElementById('additionalDocuments');
+    if (fileInput && fileInput.files && fileInput.files.length > 0) {
+      console.log('[Annotate] Processing', fileInput.files.length, 'additional documents...');
+
+      for (let i = 0; i < fileInput.files.length; i++) {
+        const file = fileInput.files[i];
+        const fileReader = new FileReader();
+
+        await new Promise((resolve, reject) => {
+          fileReader.onloadend = () => {
+            attachments.push({
+              data: fileReader.result,
+              filename: file.name,
+              type: file.type || 'application/octet-stream'
+            });
+            console.log('[Annotate] Added document:', file.name, `(${file.type}, ${file.size} bytes)`);
+            resolve();
+          };
+          fileReader.onerror = () => {
+            console.error('[Annotate] Error reading file:', file.name);
+            reject(new Error(`Failed to read file: ${file.name}`));
+          };
+          fileReader.readAsDataURL(file);
+        });
+      }
+    }
+
     console.log('[Annotate] Creating issue with', attachments.length, 'attachments...');
 
     // Create issue with attachments
@@ -599,6 +627,17 @@ function buildDescription() {
 
   if (settings.includeConsoleLogs && consoleLogs.length > 0) {
     description += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
+  }
+
+  // Mention additional user-uploaded documents
+  const fileInput = document.getElementById('additionalDocuments');
+  if (fileInput && fileInput.files && fileInput.files.length > 0) {
+    description += `\n### User-Uploaded Documents\n`;
+    description += `${fileInput.files.length} additional document(s) attached:\n`;
+    for (let i = 0; i < fileInput.files.length; i++) {
+      const file = fileInput.files[i];
+      description += `- ${file.name} (${(file.size / 1024).toFixed(2)} KB)\n`;
+    }
   }
 
   return sanitizeText(description);
