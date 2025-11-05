@@ -9,6 +9,27 @@ let networkRequests = [];
 let consoleLogs = [];
 let redmineAPI = null;
 
+// Sanitize text to remove unicode/emoji characters that cause 500 errors
+function sanitizeText(text) {
+  if (!text) return text;
+
+  const str = typeof text === 'string' ? text : String(text);
+
+  // Replace problematic unicode characters with safe equivalents
+  return str
+    .normalize('NFD') // Decompose unicode characters
+    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+    .replace(/[\u2018\u2019]/g, "'") // Smart single quotes
+    .replace(/[\u201C\u201D]/g, '"') // Smart double quotes
+    .replace(/[\u2013\u2014]/g, '-') // Em/en dashes
+    .replace(/[\u2026]/g, '...') // Ellipsis
+    .replace(/[\u2022]/g, '*') // Bullet point
+    .replace(/[\u00A0]/g, ' ') // Non-breaking space
+    .replace(/[\u2705\u274C\u2714\u2716]/g, '') // Remove checkmarks and X marks
+    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // Remove emojis (all emoji ranges)
+    .replace(/[^\x00-\x7F]/g, '?'); // Replace remaining non-ASCII with ?
+}
+
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
   // Get current tab
@@ -451,7 +472,8 @@ async function actuallySubmitBugReport() {
     // Add technical data if requested
     if (document.getElementById('attachTechnicalData').checked) {
       const technicalData = buildTechnicalData();
-      const blob = new Blob([technicalData], { type: 'application/json' });
+      const sanitizedData = sanitizeText(technicalData); // Remove unicode/emojis
+      const blob = new Blob([sanitizedData], { type: 'application/json' });
       const reader = new FileReader();
 
       await new Promise((resolve) => {
@@ -470,7 +492,8 @@ async function actuallySubmitBugReport() {
     // Add HAR file if network requests are available
     if (settings.includeNetworkRequests && networkRequests.length > 0) {
       const harData = buildHARFile();
-      const harBlob = new Blob([harData], { type: 'application/json' });
+      const sanitizedHar = sanitizeText(harData); // Remove unicode/emojis
+      const harBlob = new Blob([sanitizedHar], { type: 'application/json' });
       const harReader = new FileReader();
 
       await new Promise((resolve) => {
@@ -489,7 +512,8 @@ async function actuallySubmitBugReport() {
     // Add console logs file if available
     if (settings.includeConsoleLogs && consoleLogs.length > 0) {
       const consoleLogsData = buildConsoleLogsFile();
-      const logsBlob = new Blob([consoleLogsData], { type: 'text/plain' });
+      const sanitizedLogs = sanitizeText(consoleLogsData); // Remove unicode/emojis
+      const logsBlob = new Blob([sanitizedLogs], { type: 'text/plain' });
       const logsReader = new FileReader();
 
       await new Promise((resolve) => {
