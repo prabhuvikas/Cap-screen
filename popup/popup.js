@@ -32,6 +32,9 @@ function sanitizeText(text) {
     .replace(/[\u00A0]/g, ' ') // Non-breaking space
     .replace(/[^\x00-\x7F]/g, ''); // Remove ALL remaining non-ASCII
 
+  // Normalize line endings: convert CRLF (\r\n) to LF (\n) for consistency
+  sanitized = sanitized.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
   return sanitized;
 }
 
