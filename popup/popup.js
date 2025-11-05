@@ -9,6 +9,32 @@ let networkRequests = [];
 let consoleLogs = [];
 let redmineAPI = null;
 
+// Sanitize text to remove unicode/emoji characters that cause 500 errors
+// Redmine with standard UTF-8 (not utf8mb4) cannot handle 4-byte UTF-8 characters
+function sanitizeText(text) {
+  if (!text) return text;
+
+  const str = typeof text === 'string' ? text : String(text);
+
+  // Remove 4-byte UTF-8 characters (emojis, surrogate pairs) first
+  // Standard UTF-8 in MySQL only supports up to 3 bytes
+  let sanitized = str.replace(/[\uD800-\uDFFF]/g, ''); // Remove surrogate pairs
+
+  // Replace problematic unicode characters with safe equivalents
+  sanitized = sanitized
+    .normalize('NFD') // Decompose unicode characters
+    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+    .replace(/[\u2018\u2019]/g, "'") // Smart single quotes
+    .replace(/[\u201C\u201D]/g, '"') // Smart double quotes
+    .replace(/[\u2013\u2014]/g, '-') // Em/en dashes
+    .replace(/[\u2026]/g, '...') // Ellipsis
+    .replace(/[\u2022]/g, '*') // Bullet point
+    .replace(/[\u00A0]/g, ' ') // Non-breaking space
+    .replace(/[^\x00-\x7F]/g, ''); // Remove ALL remaining non-ASCII
+
+  return sanitized;
+}
+
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
   // Get current tab
@@ -418,17 +444,16 @@ async function actuallySubmitBugReport() {
       tracker_id: document.getElementById('reviewTrackerSelect').value,
       subject: document.getElementById('reviewSubjectInput').value,
       description: document.getElementById('reviewDescriptionText').value,
-      priority_id: document.getElementById('reviewPrioritySelect').value
+      priority_id: document.getElementById('reviewPrioritySelect').value,
+      assigned_to_id: document.getElementById('reviewAssigneeSelect').value
     };
 
-    // Validate required fields
-    if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id) {
+    // Validate required fields (including mandatory assignee)
+    if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id || !formData.assigned_to_id) {
       throw new Error('Please fill in all required fields (marked with *)');
     }
 
     // Optional fields
-    const assignee = document.getElementById('reviewAssigneeSelect').value;
-    if (assignee) formData.assigned_to_id = assignee;
 
     const category = document.getElementById('category').value;
     if (category) formData.category_id = category;
@@ -452,7 +477,27 @@ async function actuallySubmitBugReport() {
     // Add technical data if requested
     if (document.getElementById('attachTechnicalData').checked) {
       const technicalData = buildTechnicalData();
-      const blob = new Blob([technicalData], { type: 'application/json' });
+      console.log('[Bug Reporter] Technical data before sanitization:', technicalData.substring(0, 200));
+
+      const sanitizedData = sanitizeText(technicalData); // Remove unicode/emojis
+
+      // Debug: Check if sanitization worked
+      const hasNonASCII = /[^\x00-\x7F]/.test(sanitizedData);
+      if (hasNonASCII) {
+        console.warn('[Bug Reporter] WARNING: Technical data still contains non-ASCII characters after sanitization!');
+        // Find and log the first non-ASCII character
+        for (let i = 0; i < sanitizedData.length; i++) {
+          if (sanitizedData.charCodeAt(i) > 127) {
+            console.warn(`[Bug Reporter] First non-ASCII at position ${i}: '${sanitizedData[i]}' (code: ${sanitizedData.charCodeAt(i)})`);
+            console.warn(`[Bug Reporter] Context: ...${sanitizedData.substring(Math.max(0, i-50), i+50)}...`);
+            break;
+          }
+        }
+      } else {
+        console.log('[Bug Reporter] Technical data is clean (all ASCII)');
+      }
+
+      const blob = new Blob([sanitizedData], { type: 'application/json' });
       const reader = new FileReader();
 
       await new Promise((resolve) => {
@@ -471,7 +516,8 @@ async function actuallySubmitBugReport() {
     // Add HAR file if network requests are available
     if (settings.includeNetworkRequests && networkRequests.length > 0) {
       const harData = buildHARFile();
-      const harBlob = new Blob([harData], { type: 'application/json' });
+      const sanitizedHar = sanitizeText(harData); // Remove unicode/emojis
+      const harBlob = new Blob([sanitizedHar], { type: 'application/json' });
       const harReader = new FileReader();
 
       await new Promise((resolve) => {
@@ -490,7 +536,8 @@ async function actuallySubmitBugReport() {
     // Add console logs file if available
     if (settings.includeConsoleLogs && consoleLogs.length > 0) {
       const consoleLogsData = buildConsoleLogsFile();
-      const logsBlob = new Blob([consoleLogsData], { type: 'text/plain' });
+      const sanitizedLogs = sanitizeText(consoleLogsData); // Remove unicode/emojis
+      const logsBlob = new Blob([sanitizedLogs], { type: 'text/plain' });
       const logsReader = new FileReader();
 
       await new Promise((resolve) => {
@@ -534,68 +581,38 @@ function buildDescription() {
   const actual = document.getElementById('actualBehavior').value;
 
   if (steps) {
-    description += '\n\n## Steps to Reproduce\n' + steps;
+    description += '\n\n## Steps to Reproduce\n' + sanitizeText(steps);
   }
 
   if (expected) {
-    description += '\n\n## Expected Behavior\n' + expected;
+    description += '\n\n## Expected Behavior\n' + sanitizeText(expected);
   }
 
   if (actual) {
-    description += '\n\n## Actual Behavior\n' + actual;
+    description += '\n\n## Actual Behavior\n' + sanitizeText(actual);
   }
 
-  // Add page URL
+  // Add basic page info (sanitized to prevent unicode issues)
   description += '\n\n## Page Information\n';
-  description += `- URL: ${pageInfo.url || currentTab.url}\n`;
-  description += `- Title: ${pageInfo.title || currentTab.title}\n`;
-  description += `- Timestamp: ${pageInfo.timestamp || new Date().toISOString()}\n`;
+  description += `- URL: ${sanitizeText(pageInfo.url || currentTab.url)}\n`;
+  description += `- Title: ${sanitizeText(pageInfo.title || currentTab.title)}\n`;
+  description += `- Timestamp: ${new Date().toISOString()}\n`;
 
-  // Add system information
-  if (pageInfo.browser || pageInfo.system || pageInfo.network) {
-    description += '\n\n## System Information\n';
+  // Reference attached files instead of embedding all details
+  description += '\n\n## Additional Information\n';
+  description += 'Detailed technical information (browser, system, network, performance data) ';
+  description += 'is available in the attached technical-data.json file.\n';
 
-    // Browser details
-    if (pageInfo.browser) {
-      description += '\n**Browser:**\n';
-      description += `- Name: ${pageInfo.browser.name || 'Unknown'}\n`;
-      description += `- Version: ${pageInfo.browser.version || 'Unknown'}\n`;
-      description += `- Vendor: ${pageInfo.browser.vendor || 'Unknown'}\n`;
-      description += `- Language: ${pageInfo.browser.language || 'Unknown'}\n`;
-      description += `- Online: ${pageInfo.browser.onLine ? 'Yes' : 'No'}\n`;
-    }
-
-    // OS and system details
-    if (pageInfo.system) {
-      description += '\n**Operating System:**\n';
-      if (pageInfo.system.os) {
-        description += `- Name: ${pageInfo.system.os.name || 'Unknown'}\n`;
-        description += `- Version: ${pageInfo.system.os.version || 'Unknown'}\n`;
-        description += `- Architecture: ${pageInfo.system.os.architecture || 'Unknown'}\n`;
-      }
-
-      description += '\n**Hardware:**\n';
-      description += `- CPU Cores: ${pageInfo.system.cpuCores || 'Unknown'}\n`;
-      description += `- RAM: ${pageInfo.system.deviceMemory || 'Unknown'}\n`;
-
-      if (pageInfo.screen) {
-        description += `- Screen Resolution: ${pageInfo.screen.width}x${pageInfo.screen.height}\n`;
-        description += `- Device Pixel Ratio: ${pageInfo.screen.devicePixelRatio || 1}\n`;
-      }
-    }
-
-    // Network information
-    if (pageInfo.network) {
-      description += '\n**Network:**\n';
-      description += `- Connection Type: ${pageInfo.network.connectionType || 'Unknown'}\n`;
-      description += `- Effective Type: ${pageInfo.network.effectiveType || 'Unknown'}\n`;
-      description += `- Download Speed: ${pageInfo.network.downlink || 'Unknown'}\n`;
-      description += `- Latency (RTT): ${pageInfo.network.rtt || 'Unknown'}\n`;
-      description += `- Data Saver: ${pageInfo.network.saveData ? 'Enabled' : 'Disabled'}\n`;
-    }
+  if (settings.includeNetworkRequests && networkRequests.length > 0) {
+    description += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
   }
 
-  return description;
+  if (settings.includeConsoleLogs && consoleLogs.length > 0) {
+    description += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
+  }
+
+  // Sanitize the entire description to remove any remaining unicode
+  return sanitizeText(description);
 }
 
 // Build technical data JSON

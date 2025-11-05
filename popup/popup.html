@@ -133,9 +133,9 @@
           </div>
 
           <div class="form-group">
-            <label for="assignee">Assignee</label>
-            <select id="assignee">
-              <option value="">-- Unassigned --</option>
+            <label for="assignee">Assignee *</label>
+            <select id="assignee" required>
+              <option value="">-- Select Assignee --</option>
             </select>
           </div>
 
@@ -264,9 +264,9 @@
                   <select id="reviewPrioritySelect" class="review-select" required></select>
                 </div>
                 <div class="review-item">
-                  <label for="reviewAssigneeSelect">Assignee:</label>
-                  <select id="reviewAssigneeSelect" class="review-select">
-                    <option value="">Unassigned</option>
+                  <label for="reviewAssigneeSelect">Assignee: *</label>
+                  <select id="reviewAssigneeSelect" class="review-select" required>
+                    <option value="">-- Select Assignee --</option>
                   </select>
                 </div>
                 <div class="review-item full-width">
