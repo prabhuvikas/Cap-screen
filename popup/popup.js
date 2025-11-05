@@ -477,7 +477,26 @@ async function actuallySubmitBugReport() {
     // Add technical data if requested
     if (document.getElementById('attachTechnicalData').checked) {
       const technicalData = buildTechnicalData();
+      console.log('[Bug Reporter] Technical data before sanitization:', technicalData.substring(0, 200));
+
       const sanitizedData = sanitizeText(technicalData); // Remove unicode/emojis
+
+      // Debug: Check if sanitization worked
+      const hasNonASCII = /[^\x00-\x7F]/.test(sanitizedData);
+      if (hasNonASCII) {
+        console.warn('[Bug Reporter] WARNING: Technical data still contains non-ASCII characters after sanitization!');
+        // Find and log the first non-ASCII character
+        for (let i = 0; i < sanitizedData.length; i++) {
+          if (sanitizedData.charCodeAt(i) > 127) {
+            console.warn(`[Bug Reporter] First non-ASCII at position ${i}: '${sanitizedData[i]}' (code: ${sanitizedData.charCodeAt(i)})`);
+            console.warn(`[Bug Reporter] Context: ...${sanitizedData.substring(Math.max(0, i-50), i+50)}...`);
+            break;
+          }
+        }
+      } else {
+        console.log('[Bug Reporter] Technical data is clean (all ASCII)');
+      }
+
       const blob = new Blob([sanitizedData], { type: 'application/json' });
       const reader = new FileReader();
 
