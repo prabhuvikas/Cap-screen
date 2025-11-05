@@ -10,13 +10,18 @@ let consoleLogs = [];
 let redmineAPI = null;
 
 // Sanitize text to remove unicode/emoji characters that cause 500 errors
+// Redmine with standard UTF-8 (not utf8mb4) cannot handle 4-byte UTF-8 characters
 function sanitizeText(text) {
   if (!text) return text;
 
   const str = typeof text === 'string' ? text : String(text);
 
+  // Remove 4-byte UTF-8 characters (emojis, surrogate pairs) first
+  // Standard UTF-8 in MySQL only supports up to 3 bytes
+  let sanitized = str.replace(/[\uD800-\uDFFF]/g, ''); // Remove surrogate pairs
+
   // Replace problematic unicode characters with safe equivalents
-  return str
+  sanitized = sanitized
     .normalize('NFD') // Decompose unicode characters
     .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
     .replace(/[\u2018\u2019]/g, "'") // Smart single quotes
@@ -25,9 +30,9 @@ function sanitizeText(text) {
     .replace(/[\u2026]/g, '...') // Ellipsis
     .replace(/[\u2022]/g, '*') // Bullet point
     .replace(/[\u00A0]/g, ' ') // Non-breaking space
-    .replace(/[\u2705\u274C\u2714\u2716]/g, '') // Remove checkmarks and X marks
-    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // Remove emojis (all emoji ranges)
-    .replace(/[^\x00-\x7F]/g, '?'); // Replace remaining non-ASCII with ?
+    .replace(/[^\x00-\x7F]/g, ''); // Remove ALL remaining non-ASCII
+
+  return sanitized;
 }
 
 // Initialize popup
