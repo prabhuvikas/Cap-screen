@@ -65,6 +65,102 @@ window.addEventListener('unhandledrejection', (event) => {
   });
 });
 
+// Helper function to detect browser name
+function getBrowserName(userAgent) {
+  if (userAgent.includes('Edg/')) return 'Microsoft Edge';
+  if (userAgent.includes('Chrome/') && !userAgent.includes('Edg/')) return 'Google Chrome';
+  if (userAgent.includes('Firefox/')) return 'Mozilla Firefox';
+  if (userAgent.includes('Safari/') && !userAgent.includes('Chrome/')) return 'Safari';
+  if (userAgent.includes('Opera/') || userAgent.includes('OPR/')) return 'Opera';
+  if (userAgent.includes('MSIE') || userAgent.includes('Trident/')) return 'Internet Explorer';
+  return 'Unknown';
+}
+
+// Helper function to extract browser version
+function getBrowserVersion(userAgent) {
+  let match;
+  if (userAgent.includes('Edg/')) {
+    match = userAgent.match(/Edg\/(\d+\.\d+)/);
+  } else if (userAgent.includes('Chrome/')) {
+    match = userAgent.match(/Chrome\/(\d+\.\d+\.\d+\.\d+)/);
+  } else if (userAgent.includes('Firefox/')) {
+    match = userAgent.match(/Firefox\/(\d+\.\d+)/);
+  } else if (userAgent.includes('Safari/')) {
+    match = userAgent.match(/Version\/(\d+\.\d+)/);
+  } else if (userAgent.includes('OPR/')) {
+    match = userAgent.match(/OPR\/(\d+\.\d+)/);
+  }
+  return match ? match[1] : 'Unknown';
+}
+
+// Helper function to get detailed OS information
+function getOSInfo(userAgent, platform) {
+  let osName = 'Unknown';
+  let osVersion = 'Unknown';
+
+  // Windows
+  if (userAgent.includes('Windows NT 10.0')) {
+    osName = 'Windows';
+    osVersion = '10/11';
+  } else if (userAgent.includes('Windows NT 6.3')) {
+    osName = 'Windows';
+    osVersion = '8.1';
+  } else if (userAgent.includes('Windows NT 6.2')) {
+    osName = 'Windows';
+    osVersion = '8';
+  } else if (userAgent.includes('Windows NT 6.1')) {
+    osName = 'Windows';
+    osVersion = '7';
+  } else if (userAgent.includes('Windows')) {
+    osName = 'Windows';
+    const match = userAgent.match(/Windows NT (\d+\.\d+)/);
+    osVersion = match ? match[1] : 'Unknown';
+  }
+  // macOS
+  else if (userAgent.includes('Mac OS X')) {
+    osName = 'macOS';
+    const match = userAgent.match(/Mac OS X (\d+[._]\d+([._]\d+)?)/);
+    if (match) {
+      osVersion = match[1].replace(/_/g, '.');
+    }
+  }
+  // Linux
+  else if (userAgent.includes('Linux') || platform.includes('Linux')) {
+    osName = 'Linux';
+    if (userAgent.includes('Ubuntu')) osVersion = 'Ubuntu';
+    else if (userAgent.includes('Fedora')) osVersion = 'Fedora';
+    else if (userAgent.includes('Debian')) osVersion = 'Debian';
+    else osVersion = 'Unknown Distribution';
+  }
+  // Android
+  else if (userAgent.includes('Android')) {
+    osName = 'Android';
+    const match = userAgent.match(/Android (\d+(\.\d+)?)/);
+    osVersion = match ? match[1] : 'Unknown';
+  }
+  // iOS
+  else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) {
+    osName = userAgent.includes('iPhone') ? 'iOS' : 'iPadOS';
+    const match = userAgent.match(/OS (\d+[._]\d+([._]\d+)?)/);
+    if (match) {
+      osVersion = match[1].replace(/_/g, '.');
+    }
+  }
+  // Chrome OS
+  else if (userAgent.includes('CrOS')) {
+    osName = 'Chrome OS';
+    const match = userAgent.match(/CrOS \w+ (\d+\.\d+\.\d+)/);
+    osVersion = match ? match[1] : 'Unknown';
+  }
+
+  return {
+    name: osName,
+    version: osVersion,
+    platform: platform,
+    architecture: platform.includes('64') ? '64-bit' : platform.includes('32') ? '32-bit' : 'Unknown'
+  };
+}
+
 // Function to collect page information
 function collectPageInfo() {
   const pageInfo = {
@@ -89,7 +185,31 @@ function collectPageInfo() {
       platform: navigator.platform,
       language: navigator.language,
       cookieEnabled: navigator.cookieEnabled,
-      onLine: navigator.onLine
+      onLine: navigator.onLine,
+      // Detailed browser info
+      name: getBrowserName(navigator.userAgent),
+      version: getBrowserVersion(navigator.userAgent),
+      vendor: navigator.vendor,
+      appName: navigator.appName,
+      appVersion: navigator.appVersion
+    },
+    system: {
+      // OS Information
+      os: getOSInfo(navigator.userAgent, navigator.platform),
+      // CPU Information
+      cpuCores: navigator.hardwareConcurrency || 'Unknown',
+      // RAM Information (available in some browsers)
+      deviceMemory: navigator.deviceMemory ? `${navigator.deviceMemory} GB` : 'Unknown',
+      // Max touch points
+      maxTouchPoints: navigator.maxTouchPoints || 0
+    },
+    network: {
+      // Network Information API (if available)
+      connectionType: navigator.connection?.type || navigator.connection?.effectiveType || 'Unknown',
+      effectiveType: navigator.connection?.effectiveType || 'Unknown',
+      downlink: navigator.connection?.downlink ? `${navigator.connection.downlink} Mbps` : 'Unknown',
+      rtt: navigator.connection?.rtt ? `${navigator.connection.rtt} ms` : 'Unknown',
+      saveData: navigator.connection?.saveData || false
     },
     document: {
       readyState: document.readyState,

@@ -468,6 +468,44 @@ async function actuallySubmitBugReport() {
       });
     }
 
+    // Add HAR file if network requests are available
+    if (settings.includeNetworkRequests && networkRequests.length > 0) {
+      const harData = buildHARFile();
+      const harBlob = new Blob([harData], { type: 'application/json' });
+      const harReader = new FileReader();
+
+      await new Promise((resolve) => {
+        harReader.onloadend = () => {
+          attachments.push({
+            data: harReader.result,
+            filename: `network-requests-${Date.now()}.har`,
+            type: 'application/json'
+          });
+          resolve();
+        };
+        harReader.readAsDataURL(harBlob);
+      });
+    }
+
+    // Add console logs file if available
+    if (settings.includeConsoleLogs && consoleLogs.length > 0) {
+      const consoleLogsData = buildConsoleLogsFile();
+      const logsBlob = new Blob([consoleLogsData], { type: 'text/plain' });
+      const logsReader = new FileReader();
+
+      await new Promise((resolve) => {
+        logsReader.onloadend = () => {
+          attachments.push({
+            data: logsReader.result,
+            filename: `console-logs-${Date.now()}.txt`,
+            type: 'text/plain'
+          });
+          resolve();
+        };
+        logsReader.readAsDataURL(logsBlob);
+      });
+    }
+
     // Create issue with attachments
     const issue = await redmineAPI.createIssueWithAttachments(formData, attachments);
 
@@ -513,6 +551,50 @@ function buildDescription() {
   description += `- Title: ${pageInfo.title || currentTab.title}\n`;
   description += `- Timestamp: ${pageInfo.timestamp || new Date().toISOString()}\n`;
 
+  // Add system information
+  if (pageInfo.browser || pageInfo.system || pageInfo.network) {
+    description += '\n\n## System Information\n';
+
+    // Browser details
+    if (pageInfo.browser) {
+      description += '\n**Browser:**\n';
+      description += `- Name: ${pageInfo.browser.name || 'Unknown'}\n`;
+      description += `- Version: ${pageInfo.browser.version || 'Unknown'}\n`;
+      description += `- Vendor: ${pageInfo.browser.vendor || 'Unknown'}\n`;
+      description += `- Language: ${pageInfo.browser.language || 'Unknown'}\n`;
+      description += `- Online: ${pageInfo.browser.onLine ? 'Yes' : 'No'}\n`;
+    }
+
+    // OS and system details
+    if (pageInfo.system) {
+      description += '\n**Operating System:**\n';
+      if (pageInfo.system.os) {
+        description += `- Name: ${pageInfo.system.os.name || 'Unknown'}\n`;
+        description += `- Version: ${pageInfo.system.os.version || 'Unknown'}\n`;
+        description += `- Architecture: ${pageInfo.system.os.architecture || 'Unknown'}\n`;
+      }
+
+      description += '\n**Hardware:**\n';
+      description += `- CPU Cores: ${pageInfo.system.cpuCores || 'Unknown'}\n`;
+      description += `- RAM: ${pageInfo.system.deviceMemory || 'Unknown'}\n`;
+
+      if (pageInfo.screen) {
+        description += `- Screen Resolution: ${pageInfo.screen.width}x${pageInfo.screen.height}\n`;
+        description += `- Device Pixel Ratio: ${pageInfo.screen.devicePixelRatio || 1}\n`;
+      }
+    }
+
+    // Network information
+    if (pageInfo.network) {
+      description += '\n**Network:**\n';
+      description += `- Connection Type: ${pageInfo.network.connectionType || 'Unknown'}\n`;
+      description += `- Effective Type: ${pageInfo.network.effectiveType || 'Unknown'}\n`;
+      description += `- Download Speed: ${pageInfo.network.downlink || 'Unknown'}\n`;
+      description += `- Latency (RTT): ${pageInfo.network.rtt || 'Unknown'}\n`;
+      description += `- Data Saver: ${pageInfo.network.saveData ? 'Enabled' : 'Disabled'}\n`;
+    }
+  }
+
   return description;
 }
 
@@ -544,6 +626,152 @@ function buildTechnicalData() {
   }
 
   return JSON.stringify(data, null, 2);
+}
+
+// Build HAR (HTTP Archive) file from network requests
+function buildHARFile() {
+  const harLog = {
+    log: {
+      version: '1.2',
+      creator: {
+        name: 'Cap-screen Bug Reporter',
+        version: '1.0'
+      },
+      browser: {
+        name: pageInfo.browser?.name || 'Unknown',
+        version: pageInfo.browser?.version || 'Unknown'
+      },
+      pages: [
+        {
+          startedDateTime: pageInfo.timestamp || new Date().toISOString(),
+          id: 'page_1',
+          title: pageInfo.title || 'Unknown',
+          pageTimings: {
+            onContentLoad: pageInfo.performance?.timing?.domReadyTime || -1,
+            onLoad: pageInfo.performance?.timing?.loadTime || -1
+          }
+        }
+      ],
+      entries: networkRequests.map(req => {
+        const entry = {
+          pageref: 'page_1',
+          startedDateTime: new Date(req.timestamp).toISOString(),
+          time: 0,
+          request: {
+            method: req.method || 'GET',
+            url: req.url || '',
+            httpVersion: 'HTTP/1.1',
+            headers: [],
+            queryString: [],
+            cookies: [],
+            headersSize: -1,
+            bodySize: -1
+          },
+          response: {
+            status: req.statusCode || 0,
+            statusText: getStatusText(req.statusCode),
+            httpVersion: 'HTTP/1.1',
+            headers: (req.responseHeaders || []).map(h => ({
+              name: h.name,
+              value: h.value
+            })),
+            cookies: [],
+            content: {
+              size: -1,
+              mimeType: getContentType(req.responseHeaders) || req.type || 'text/plain'
+            },
+            redirectURL: '',
+            headersSize: -1,
+            bodySize: -1
+          },
+          cache: {
+            beforeRequest: null,
+            afterRequest: req.fromCache ? { expires: '', lastAccess: '', eTag: '', hitCount: 1 } : null
+          },
+          timings: {
+            blocked: -1,
+            dns: -1,
+            connect: -1,
+            send: 0,
+            wait: 0,
+            receive: 0,
+            ssl: -1
+          },
+          serverIPAddress: req.ip || '',
+          connection: ''
+        };
+
+        // Add error information if request failed
+        if (req.failed || req.error) {
+          entry._error = req.error || 'Request failed';
+        }
+
+        // Add resource type
+        if (req.type) {
+          entry._resourceType = req.type;
+        }
+
+        return entry;
+      })
+    }
+  };
+
+  return JSON.stringify(harLog, null, 2);
+}
+
+// Helper function to get HTTP status text
+function getStatusText(statusCode) {
+  const statusTexts = {
+    200: 'OK',
+    201: 'Created',
+    204: 'No Content',
+    301: 'Moved Permanently',
+    302: 'Found',
+    304: 'Not Modified',
+    400: 'Bad Request',
+    401: 'Unauthorized',
+    403: 'Forbidden',
+    404: 'Not Found',
+    500: 'Internal Server Error',
+    502: 'Bad Gateway',
+    503: 'Service Unavailable'
+  };
+  return statusTexts[statusCode] || '';
+}
+
+// Helper function to get content type from response headers
+function getContentType(headers) {
+  if (!headers) return null;
+  const contentTypeHeader = headers.find(h => h.name.toLowerCase() === 'content-type');
+  return contentTypeHeader ? contentTypeHeader.value : null;
+}
+
+// Build console logs file content
+function buildConsoleLogsFile() {
+  if (!consoleLogs || consoleLogs.length === 0) {
+    return 'No console logs captured.';
+  }
+
+  let logsContent = '='.repeat(80) + '\n';
+  logsContent += 'CONSOLE LOGS\n';
+  logsContent += `Captured: ${new Date().toISOString()}\n`;
+  logsContent += `Total Logs: ${consoleLogs.length}\n`;
+  logsContent += '='.repeat(80) + '\n\n';
+
+  consoleLogs.forEach((log, index) => {
+    logsContent += `[${index + 1}] ${log.timestamp || 'Unknown time'}\n`;
+    logsContent += `Type: ${(log.type || 'log').toUpperCase()}\n`;
+    logsContent += `URL: ${log.url || 'N/A'}\n`;
+    logsContent += `Message: ${log.message || ''}\n`;
+
+    if (log.stack) {
+      logsContent += `Stack Trace:\n${log.stack}\n`;
+    }
+
+    logsContent += '-'.repeat(80) + '\n\n';
+  });
+
+  return logsContent;
 }
 
 // Show success screen
@@ -682,8 +910,94 @@ async function populateReviewModal() {
       document.getElementById('reviewScreenshot').src = annotator.getAnnotatedImage();
     }
 
-    // Page Info Tab
-    document.getElementById('reviewPageInfo').textContent = JSON.stringify(pageInfo, null, 2);
+    // Page Info Tab - Format for better readability
+    const pageInfoContainer = document.getElementById('reviewPageInfo');
+    pageInfoContainer.innerHTML = ''; // Clear to add formatted content
+
+    // Create structured display instead of raw JSON
+    const pageInfoHtml = `
+      <div class="info-section">
+        <h4>📄 Page Details</h4>
+        <div class="info-item"><strong>URL:</strong> ${pageInfo.url || 'N/A'}</div>
+        <div class="info-item"><strong>Title:</strong> ${pageInfo.title || 'N/A'}</div>
+        <div class="info-item"><strong>Timestamp:</strong> ${pageInfo.timestamp || 'N/A'}</div>
+      </div>
+
+      ${pageInfo.browser ? `
+      <div class="info-section">
+        <h4>🌐 Browser Information</h4>
+        <div class="info-item"><strong>Name:</strong> ${pageInfo.browser.name || 'Unknown'}</div>
+        <div class="info-item"><strong>Version:</strong> ${pageInfo.browser.version || 'Unknown'}</div>
+        <div class="info-item"><strong>Vendor:</strong> ${pageInfo.browser.vendor || 'Unknown'}</div>
+        <div class="info-item"><strong>Language:</strong> ${pageInfo.browser.language || 'Unknown'}</div>
+        <div class="info-item"><strong>Platform:</strong> ${pageInfo.browser.platform || 'Unknown'}</div>
+        <div class="info-item"><strong>Online Status:</strong> ${pageInfo.browser.onLine ? '✅ Online' : '❌ Offline'}</div>
+      </div>
+      ` : ''}
+
+      ${pageInfo.system ? `
+      <div class="info-section">
+        <h4>💻 System Information</h4>
+        ${pageInfo.system.os ? `
+        <div class="info-item"><strong>OS Name:</strong> ${pageInfo.system.os.name || 'Unknown'}</div>
+        <div class="info-item"><strong>OS Version:</strong> ${pageInfo.system.os.version || 'Unknown'}</div>
+        <div class="info-item"><strong>Architecture:</strong> ${pageInfo.system.os.architecture || 'Unknown'}</div>
+        ` : ''}
+        <div class="info-item"><strong>CPU Cores:</strong> ${pageInfo.system.cpuCores || 'Unknown'}</div>
+        <div class="info-item"><strong>Memory (RAM):</strong> ${pageInfo.system.deviceMemory || 'Unknown'}</div>
+        <div class="info-item"><strong>Touch Points:</strong> ${pageInfo.system.maxTouchPoints || 0}</div>
+      </div>
+      ` : ''}
+
+      ${pageInfo.screen ? `
+      <div class="info-section">
+        <h4>🖥️ Screen Information</h4>
+        <div class="info-item"><strong>Resolution:</strong> ${pageInfo.screen.width} × ${pageInfo.screen.height}</div>
+        <div class="info-item"><strong>Available:</strong> ${pageInfo.screen.availWidth} × ${pageInfo.screen.availHeight}</div>
+        <div class="info-item"><strong>Device Pixel Ratio:</strong> ${pageInfo.screen.devicePixelRatio || 1}</div>
+      </div>
+      ` : ''}
+
+      ${pageInfo.viewport ? `
+      <div class="info-section">
+        <h4>📐 Viewport Information</h4>
+        <div class="info-item"><strong>Size:</strong> ${pageInfo.viewport.width} × ${pageInfo.viewport.height}</div>
+        <div class="info-item"><strong>Scroll Position:</strong> X: ${pageInfo.viewport.scrollX}, Y: ${pageInfo.viewport.scrollY}</div>
+      </div>
+      ` : ''}
+
+      ${pageInfo.network ? `
+      <div class="info-section">
+        <h4>🌐 Network Information</h4>
+        <div class="info-item"><strong>Connection Type:</strong> ${pageInfo.network.connectionType || 'Unknown'}</div>
+        <div class="info-item"><strong>Effective Type:</strong> ${pageInfo.network.effectiveType || 'Unknown'}</div>
+        <div class="info-item"><strong>Download Speed:</strong> ${pageInfo.network.downlink || 'Unknown'}</div>
+        <div class="info-item"><strong>Latency (RTT):</strong> ${pageInfo.network.rtt || 'Unknown'}</div>
+        <div class="info-item"><strong>Data Saver:</strong> ${pageInfo.network.saveData ? '✅ Enabled' : '❌ Disabled'}</div>
+      </div>
+      ` : ''}
+
+      ${pageInfo.performance ? `
+      <div class="info-section">
+        <h4>⚡ Performance Metrics</h4>
+        ${pageInfo.performance.timing ? `
+        <div class="info-item"><strong>Page Load Time:</strong> ${pageInfo.performance.timing.loadTime || 'N/A'} ms</div>
+        <div class="info-item"><strong>DOM Ready Time:</strong> ${pageInfo.performance.timing.domReadyTime || 'N/A'} ms</div>
+        <div class="info-item"><strong>Response Time:</strong> ${pageInfo.performance.timing.responseTime || 'N/A'} ms</div>
+        ` : ''}
+      </div>
+      ` : ''}
+
+      <div class="info-section">
+        <h4>📋 Raw JSON Data</h4>
+        <details>
+          <summary style="cursor: pointer; color: #2196F3; margin-bottom: 8px;">Click to view raw JSON</summary>
+          <pre class="code-block" style="margin-top: 8px;">${JSON.stringify(pageInfo, null, 2)}</pre>
+        </details>
+      </div>
+    `;
+
+    pageInfoContainer.innerHTML = pageInfoHtml;
 
     // Network Tab
     const networkCount = networkRequests.length;
@@ -696,21 +1010,29 @@ async function populateReviewModal() {
     if (networkCount === 0) {
       networkContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No network requests captured</p>';
     } else {
-      networkRequests.slice(0, 50).forEach(req => {
+      networkRequests.slice(0, 50).forEach((req, index) => {
         const item = document.createElement('div');
-        item.className = 'data-item';
+        item.className = 'data-item network-item';
 
-        const statusClass = req.failed ? 'error' : (req.statusCode >= 200 && req.statusCode < 300) ? 'success' : '';
+        const statusClass = req.failed ? 'error' : (req.statusCode >= 200 && req.statusCode < 300) ? 'success' : 'warning';
+        const statusIcon = req.failed ? '❌' : (req.statusCode >= 200 && req.statusCode < 300) ? '✅' : '⚠️';
 
         item.innerHTML = `
           <div class="data-item-header">
-            <div>
+            <div style="flex: 1;">
+              <span class="data-item-badge">#${index + 1}</span>
               <span class="data-item-method">${req.method || 'GET'}</span>
-              <span class="data-item-url">${truncateUrl(req.url)}</span>
+              <span class="data-item-type">${req.type || 'other'}</span>
             </div>
             <span class="data-item-status ${statusClass}">
-              ${req.failed ? 'Failed' : (req.statusCode || 'Pending')}
+              ${statusIcon} ${req.failed ? 'Failed' : (req.statusCode || 'Pending')}
             </span>
+          </div>
+          <div class="data-item-url" title="${req.url}">${truncateUrl(req.url, 100)}</div>
+          <div class="data-item-details">
+            ${req.ip ? `<span>📍 IP: ${req.ip}</span>` : ''}
+            ${req.fromCache ? '<span>💾 Cached</span>' : ''}
+            ${req.error ? `<span style="color: #f44336;">❌ Error: ${req.error}</span>` : ''}
           </div>
         `;
 
@@ -736,13 +1058,43 @@ async function populateReviewModal() {
     if (consoleCount === 0) {
       consoleContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No console logs captured</p>';
     } else {
-      consoleLogs.slice(0, 50).forEach(log => {
+      consoleLogs.slice(0, 50).forEach((log, index) => {
         const item = document.createElement('div');
         item.className = `console-item ${log.type}`;
 
+        // Get icon and color for log type
+        let typeIcon = '📝';
+        let typeColor = '#666';
+        if (log.type === 'error') {
+          typeIcon = '❌';
+          typeColor = '#f44336';
+        } else if (log.type === 'warn') {
+          typeIcon = '⚠️';
+          typeColor = '#ff9800';
+        } else if (log.type === 'info') {
+          typeIcon = 'ℹ️';
+          typeColor = '#2196F3';
+        } else if (log.type === 'log') {
+          typeIcon = '📋';
+          typeColor = '#4CAF50';
+        }
+
+        const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'N/A';
+
         item.innerHTML = `
-          <div class="console-timestamp">${log.timestamp || ''}</div>
-          <div class="console-message">${log.message || ''}</div>
+          <div class="console-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+            <span class="data-item-badge">#${index + 1}</span>
+            <span style="color: ${typeColor}; font-weight: bold;">${typeIcon} ${log.type.toUpperCase()}</span>
+            <span class="console-timestamp" style="color: #999; font-size: 11px;">${timestamp}</span>
+          </div>
+          <div class="console-message" style="margin-left: 24px; word-break: break-word;">${escapeHtml(log.message || '')}</div>
+          ${log.url ? `<div class="console-url" style="margin-left: 24px; font-size: 11px; color: #666; margin-top: 4px;">📍 ${log.url}</div>` : ''}
+          ${log.stack ? `
+            <details style="margin-left: 24px; margin-top: 8px;">
+              <summary style="cursor: pointer; color: #2196F3; font-size: 11px;">View Stack Trace</summary>
+              <pre style="margin-top: 4px; padding: 8px; background: #f5f5f5; border-radius: 4px; font-size: 10px; overflow-x: auto;">${escapeHtml(log.stack)}</pre>
+            </details>
+          ` : ''}
         `;
 
         consoleContainer.appendChild(item);
@@ -788,4 +1140,12 @@ function truncateUrl(url, maxLength = 80) {
   if (!url) return '';
   if (url.length <= maxLength) return url;
   return url.substring(0, maxLength) + '...';
+}
+
+// Helper function to escape HTML to prevent XSS
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
