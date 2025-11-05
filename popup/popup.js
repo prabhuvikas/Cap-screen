@@ -468,6 +468,44 @@ async function actuallySubmitBugReport() {
       });
     }
 
+    // Add HAR file if network requests are available
+    if (settings.includeNetworkRequests && networkRequests.length > 0) {
+      const harData = buildHARFile();
+      const harBlob = new Blob([harData], { type: 'application/json' });
+      const harReader = new FileReader();
+
+      await new Promise((resolve) => {
+        harReader.onloadend = () => {
+          attachments.push({
+            data: harReader.result,
+            filename: `network-requests-${Date.now()}.har`,
+            type: 'application/json'
+          });
+          resolve();
+        };
+        harReader.readAsDataURL(harBlob);
+      });
+    }
+
+    // Add console logs file if available
+    if (settings.includeConsoleLogs && consoleLogs.length > 0) {
+      const consoleLogsData = buildConsoleLogsFile();
+      const logsBlob = new Blob([consoleLogsData], { type: 'text/plain' });
+      const logsReader = new FileReader();
+
+      await new Promise((resolve) => {
+        logsReader.onloadend = () => {
+          attachments.push({
+            data: logsReader.result,
+            filename: `console-logs-${Date.now()}.txt`,
+            type: 'text/plain'
+          });
+          resolve();
+        };
+        logsReader.readAsDataURL(logsBlob);
+      });
+    }
+
     // Create issue with attachments
     const issue = await redmineAPI.createIssueWithAttachments(formData, attachments);
 
@@ -588,6 +626,152 @@ function buildTechnicalData() {
   }
 
   return JSON.stringify(data, null, 2);
+}
+
+// Build HAR (HTTP Archive) file from network requests
+function buildHARFile() {
+  const harLog = {
+    log: {
+      version: '1.2',
+      creator: {
+        name: 'Cap-screen Bug Reporter',
+        version: '1.0'
+      },
+      browser: {
+        name: pageInfo.browser?.name || 'Unknown',
+        version: pageInfo.browser?.version || 'Unknown'
+      },
+      pages: [
+        {
+          startedDateTime: pageInfo.timestamp || new Date().toISOString(),
+          id: 'page_1',
+          title: pageInfo.title || 'Unknown',
+          pageTimings: {
+            onContentLoad: pageInfo.performance?.timing?.domReadyTime || -1,
+            onLoad: pageInfo.performance?.timing?.loadTime || -1
+          }
+        }
+      ],
+      entries: networkRequests.map(req => {
+        const entry = {
+          pageref: 'page_1',
+          startedDateTime: new Date(req.timestamp).toISOString(),
+          time: 0,
+          request: {
+            method: req.method || 'GET',
+            url: req.url || '',
+            httpVersion: 'HTTP/1.1',
+            headers: [],
+            queryString: [],
+            cookies: [],
+            headersSize: -1,
+            bodySize: -1
+          },
+          response: {
+            status: req.statusCode || 0,
+            statusText: getStatusText(req.statusCode),
+            httpVersion: 'HTTP/1.1',
+            headers: (req.responseHeaders || []).map(h => ({
+              name: h.name,
+              value: h.value
+            })),
+            cookies: [],
+            content: {
+              size: -1,
+              mimeType: getContentType(req.responseHeaders) || req.type || 'text/plain'
+            },
+            redirectURL: '',
+            headersSize: -1,
+            bodySize: -1
+          },
+          cache: {
+            beforeRequest: null,
+            afterRequest: req.fromCache ? { expires: '', lastAccess: '', eTag: '', hitCount: 1 } : null
+          },
+          timings: {
+            blocked: -1,
+            dns: -1,
+            connect: -1,
+            send: 0,
+            wait: 0,
+            receive: 0,
+            ssl: -1
+          },
+          serverIPAddress: req.ip || '',
+          connection: ''
+        };
+
+        // Add error information if request failed
+        if (req.failed || req.error) {
+          entry._error = req.error || 'Request failed';
+        }
+
+        // Add resource type
+        if (req.type) {
+          entry._resourceType = req.type;
+        }
+
+        return entry;
+      })
+    }
+  };
+
+  return JSON.stringify(harLog, null, 2);
+}
+
+// Helper function to get HTTP status text
+function getStatusText(statusCode) {
+  const statusTexts = {
+    200: 'OK',
+    201: 'Created',
+    204: 'No Content',
+    301: 'Moved Permanently',
+    302: 'Found',
+    304: 'Not Modified',
+    400: 'Bad Request',
+    401: 'Unauthorized',
+    403: 'Forbidden',
+    404: 'Not Found',
+    500: 'Internal Server Error',
+    502: 'Bad Gateway',
+    503: 'Service Unavailable'
+  };
+  return statusTexts[statusCode] || '';
+}
+
+// Helper function to get content type from response headers
+function getContentType(headers) {
+  if (!headers) return null;
+  const contentTypeHeader = headers.find(h => h.name.toLowerCase() === 'content-type');
+  return contentTypeHeader ? contentTypeHeader.value : null;
+}
+
+// Build console logs file content
+function buildConsoleLogsFile() {
+  if (!consoleLogs || consoleLogs.length === 0) {
+    return 'No console logs captured.';
+  }
+
+  let logsContent = '='.repeat(80) + '\n';
+  logsContent += 'CONSOLE LOGS\n';
+  logsContent += `Captured: ${new Date().toISOString()}\n`;
+  logsContent += `Total Logs: ${consoleLogs.length}\n`;
+  logsContent += '='.repeat(80) + '\n\n';
+
+  consoleLogs.forEach((log, index) => {
+    logsContent += `[${index + 1}] ${log.timestamp || 'Unknown time'}\n`;
+    logsContent += `Type: ${(log.type || 'log').toUpperCase()}\n`;
+    logsContent += `URL: ${log.url || 'N/A'}\n`;
+    logsContent += `Message: ${log.message || ''}\n`;
+
+    if (log.stack) {
+      logsContent += `Stack Trace:\n${log.stack}\n`;
+    }
+
+    logsContent += '-'.repeat(80) + '\n\n';
+  });
+
+  return logsContent;
 }
 
 // Show success screen
