@@ -60,8 +60,10 @@ class Annotator {
   handleMouseDown(e) {
     this.isDrawing = true;
     const rect = this.canvas.getBoundingClientRect();
-    this.startX = e.clientX - rect.left;
-    this.startY = e.clientY - rect.top;
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
+    this.startX = (e.clientX - rect.left) * scaleX;
+    this.startY = (e.clientY - rect.top) * scaleY;
 
     if (this.currentTool === 'pen') {
       this.ctx.beginPath();
@@ -73,8 +75,10 @@ class Annotator {
     if (!this.isDrawing) return;
 
     const rect = this.canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
 
     this.ctx.strokeStyle = this.currentColor;
     this.ctx.lineWidth = this.lineWidth;
@@ -95,8 +99,10 @@ class Annotator {
     if (!this.isDrawing) return;
 
     const rect = this.canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
 
     if (['rectangle', 'circle', 'arrow', 'blackout'].includes(this.currentTool)) {
       this.drawShape(this.startX, this.startY, x, y, this.currentTool, false);
