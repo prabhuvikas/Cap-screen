@@ -78,8 +78,18 @@ class Annotator {
       this.selectedAnnotation = this.findAnnotationAt(this.startX, this.startY);
       if (this.selectedAnnotation) {
         this.isDragging = true;
-        this.dragOffsetX = this.startX - this.selectedAnnotation.x;
-        this.dragOffsetY = this.startY - this.selectedAnnotation.y;
+
+        // Calculate offset based on annotation type
+        if (this.selectedAnnotation.type === 'pen' && this.selectedAnnotation.points && this.selectedAnnotation.points.length > 0) {
+          // For pen, use first point as reference
+          this.dragOffsetX = this.startX - this.selectedAnnotation.points[0].x;
+          this.dragOffsetY = this.startY - this.selectedAnnotation.points[0].y;
+        } else {
+          // For shapes, use x, y as reference
+          this.dragOffsetX = this.startX - this.selectedAnnotation.x;
+          this.dragOffsetY = this.startY - this.selectedAnnotation.y;
+        }
+
         this.canvas.classList.add('grabbing-cursor');
         this.canvas.classList.remove('grab-cursor');
         this.redrawCanvas();
@@ -106,8 +116,30 @@ class Annotator {
 
     if (this.currentTool === 'move' && this.isDragging && this.selectedAnnotation) {
       // Move the selected annotation
-      this.selectedAnnotation.x = x - this.dragOffsetX;
-      this.selectedAnnotation.y = y - this.dragOffsetY;
+      const newX = x - this.dragOffsetX;
+      const newY = y - this.dragOffsetY;
+
+      if (this.selectedAnnotation.type === 'pen' && this.selectedAnnotation.points) {
+        // For pen strokes, calculate delta and move all points
+        const deltaX = newX - this.selectedAnnotation.points[0].x;
+        const deltaY = newY - this.selectedAnnotation.points[0].y;
+
+        this.selectedAnnotation.points = this.selectedAnnotation.points.map(point => ({
+          x: point.x + deltaX,
+          y: point.y + deltaY
+        }));
+      } else {
+        // For shapes, move both start and end coordinates
+        const deltaX = newX - this.selectedAnnotation.x;
+        const deltaY = newY - this.selectedAnnotation.y;
+
+        this.selectedAnnotation.x = newX;
+        this.selectedAnnotation.y = newY;
+        this.selectedAnnotation.endX += deltaX;
+        this.selectedAnnotation.endY += deltaY;
+      }
+
+      // Redraw without awaiting for smooth dragging
       this.redrawCanvas();
       return;
     }
@@ -138,7 +170,7 @@ class Annotator {
     }
   }
 
-  handleMouseUp(e) {
+  async handleMouseUp(e) {
     if (this.currentTool === 'move' && this.isDragging) {
       this.isDragging = false;
       this.selectedAnnotation = null;
@@ -179,7 +211,7 @@ class Annotator {
 
     this.isDrawing = false;
     this.tempCanvasState = null;
-    this.redrawCanvas();
+    await this.redrawCanvas();
     this.saveState();
   }
 
@@ -294,6 +326,17 @@ class Annotator {
           this.ctx.lineTo(annotation.points[i].x, annotation.points[i].y);
         }
         this.ctx.stroke();
+
+        // Draw selection box for pen stroke
+        if (isSelected) {
+          const xs = annotation.points.map(p => p.x);
+          const ys = annotation.points.map(p => p.y);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+          this.drawSelectionBox(minX, minY, maxX, maxY);
+        }
       }
     } else if (annotation.type === 'rectangle') {
       const width = annotation.endX - annotation.x;
