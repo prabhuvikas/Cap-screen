@@ -81,7 +81,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       currentScreenshotId = result.currentScreenshotId || screenshots[0].id;
       currentTab = { id: result.tabId || screenshots[0].tabId };
-      console.log('[Annotate] Loaded', screenshots.length, 'screenshot(s) from storage');
+      console.log('[Annotate] Loaded', screenshots.length, 'media item(s) from storage');
     } else if (result.screenshotData) {
       // Convert old single screenshot format to new array format
       const newScreenshot = {
@@ -104,12 +104,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
 
       console.log('[Annotate] Converted single screenshot to multi-screenshot format');
-    } else {
-      showError('No screenshot data found. Please capture a screenshot first.');
+    } else if (!result.hasVideoRecording) {
+      // No screenshots and no video - error
+      showError('No media found. Please capture a screenshot or record a video first.');
       return;
+    } else {
+      // No screenshots, but we have a video - that's okay, we'll add it below
+      screenshots = [];
+      currentTab = { id: result.tabId };
+      console.log('[Annotate] No screenshots found, but video recording is available');
     }
 
-    console.log('[Annotate] Screenshot data loaded successfully');
+    console.log('[Annotate] Media data loaded successfully');
 
     // Load video recording if available
     if (result.hasVideoRecording && result.videoRecording) {
@@ -540,14 +546,17 @@ async function switchScreenshot(screenshotId) {
   }
 }
 
-// Delete a screenshot
+// Delete a screenshot or video
 async function deleteScreenshot(screenshotId) {
   if (screenshots.length === 1) {
-    alert('Cannot delete the last screenshot');
+    alert('Cannot delete the last media item');
     return;
   }
 
-  if (!confirm('Are you sure you want to delete this screenshot?')) {
+  const item = screenshots.find(s => s.id === screenshotId);
+  const itemType = item && item.type === 'video' ? 'video' : 'screenshot';
+
+  if (!confirm(`Are you sure you want to delete this ${itemType}?`)) {
     return;
   }
 
