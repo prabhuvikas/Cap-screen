@@ -104,7 +104,7 @@ A comprehensive Chrome extension for capturing, annotating, and reporting issues
 
 ### 2. Privacy Settings
 
-Configure what information to include in bug reports:
+Configure what information to include in issue reports:
 
 - **Include Network Requests**: Capture all HTTP/HTTPS requests made by the page
 - **Include Console Logs**: Capture console output (logs, warnings, errors)
@@ -119,7 +119,7 @@ Configure what information to include in bug reports:
 
 ## Usage
 
-### Creating a Bug Report
+### Creating an Issue Report
 
 1. **Navigate to the page** where you found the bug
 
@@ -155,7 +155,7 @@ Configure what information to include in bug reports:
    - **Attach Technical Data**: Include page info, network requests, and console logs
 
 6. **Review & Submit**
-   - Click "Submit Bug Report"
+   - Click "Submit Issue Report"
    - Review modal will appear with all data in tabs:
      - **Issue Details**: Your issue report details
      - **Media**: Preview of annotated media

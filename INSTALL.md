@@ -31,7 +31,7 @@
        3. Click **Show** under **API access key** section
        4. Copy the API key
    - Click **Test Connection** to verify your credentials
-   - (Optional) Select a **Default Project** for quick bug reporting
+   - (Optional) Select a **Default Project** for quick issue reporting
    - Configure **Privacy Settings** as needed
    - Click **Save Settings**
 
@@ -42,8 +42,8 @@
 3. Click **Capture Viewport** to take a screenshot
 4. Try the annotation tools
 5. Click **Continue to Report**
-6. Fill in the bug report form
-7. Click **Submit Bug Report**
+6. Fill in the issue report form
+7. Click **Submit Issue Report**
 
 ## Keyboard Shortcuts
 
@@ -167,7 +167,7 @@ After installation:
 
 1. Configure your privacy settings
 2. Set up default project and preferences
-3. Test creating a bug report
+3. Test creating an issue report
 4. Share the extension with your team
 5. Customize settings based on your workflow
 
