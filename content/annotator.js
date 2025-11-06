@@ -518,13 +518,18 @@ class Annotator {
       existingInput.remove();
     }
 
+    // Get canvas container position for proper positioning
+    const containerRect = this.canvas.parentElement.getBoundingClientRect();
+    const inputX = clientX - containerRect.left;
+    const inputY = clientY - containerRect.top;
+
     // Create input element
     const input = document.createElement('input');
     input.id = 'annotationTextInput';
     input.type = 'text';
     input.style.position = 'absolute';
-    input.style.left = clientX + 'px';
-    input.style.top = clientY + 'px';
+    input.style.left = inputX + 'px';
+    input.style.top = inputY + 'px';
     input.style.fontSize = (this.lineWidth * 5) + 'px';
     input.style.color = this.currentColor;
     input.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
@@ -534,29 +539,50 @@ class Annotator {
     input.style.fontFamily = 'Arial';
     input.style.zIndex = '10000';
     input.style.minWidth = '200px';
+    input.style.borderRadius = '4px';
 
     // Add to canvas parent
     this.canvas.parentElement.appendChild(input);
-    input.focus();
+
+    // Small delay before focusing to prevent immediate blur
+    setTimeout(() => {
+      input.focus();
+    }, 10);
 
     // Handle Enter key to save text
-    input.addEventListener('keydown', async (e) => {
+    const handleKeydown = async (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         const text = input.value.trim();
         if (text) {
           await this.addText(canvasX, canvasY, text);
         }
-        input.remove();
+        cleanup();
       } else if (e.key === 'Escape') {
-        input.remove();
+        cleanup();
       }
-    });
+    };
 
     // Handle click outside to cancel
-    input.addEventListener('blur', () => {
-      setTimeout(() => input.remove(), 100);
-    });
+    const handleClickOutside = (e) => {
+      if (e.target !== input) {
+        cleanup();
+      }
+    };
+
+    const cleanup = () => {
+      input.removeEventListener('keydown', handleKeydown);
+      document.removeEventListener('mousedown', handleClickOutside);
+      input.remove();
+    };
+
+    input.addEventListener('keydown', handleKeydown);
+
+    // Use mousedown on document instead of blur
+    // Delay adding this listener to avoid immediate trigger
+    setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 100);
   }
 
   async addText(x, y, text) {
