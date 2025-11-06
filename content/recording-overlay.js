@@ -9,10 +9,12 @@ class RecordingOverlay {
   }
 
   showRecordingOverlay() {
+    console.log('[Overlay] Showing recording overlay');
     this.startTime = Date.now();
     this.isRecording = true;
     this.showOverlay();
     this.startTimer();
+    console.log('[Overlay] Recording overlay shown successfully');
     return { success: true };
   }
 

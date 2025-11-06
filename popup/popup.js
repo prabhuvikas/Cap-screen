@@ -232,37 +232,55 @@ async function startVideoRecording() {
   try {
     startBtn.disabled = true;
     showStatus('recordingStatus', 'Starting video recording...', 'info');
+    console.log('[Popup] Starting video recording for tab:', currentTab.id);
 
     // Inject the recording overlay script
     try {
+      console.log('[Popup] Injecting recording overlay script...');
       await chrome.scripting.executeScript({
         target: { tabId: currentTab.id },
         files: ['content/recording-overlay.js']
       });
+      console.log('[Popup] Recording overlay script injected');
     } catch (e) {
-      console.log('Recording overlay script already injected or error:', e.message);
+      console.log('[Popup] Recording overlay script already injected or error:', e.message);
     }
 
     // Start tab capture in background
+    console.log('[Popup] Sending startTabCapture message to background...');
     const response = await chrome.runtime.sendMessage({
       action: 'startTabCapture',
       tabId: currentTab.id
     });
 
-    if (response && response.success) {
-      // Tell content script to show the overlay UI
-      await chrome.tabs.sendMessage(currentTab.id, {
-        action: 'showRecordingOverlay'
-      });
+    console.log('[Popup] Response from background:', response);
 
-      // Close the popup - recording will continue in the background
-      window.close();
-    } else {
+    if (!response) {
+      throw new Error('No response from background script');
+    }
+
+    if (!response.success) {
       throw new Error(response.error || 'Failed to start recording');
     }
 
+    // Tell content script to show the overlay UI
+    try {
+      console.log('[Popup] Showing recording overlay...');
+      await chrome.tabs.sendMessage(currentTab.id, {
+        action: 'showRecordingOverlay'
+      });
+      console.log('[Popup] Recording overlay shown');
+    } catch (e) {
+      console.error('[Popup] Failed to show overlay:', e);
+      throw new Error('Failed to show recording overlay. The page may not support this feature.');
+    }
+
+    // Close the popup - recording will continue in the background
+    console.log('[Popup] Closing popup...');
+    window.close();
+
   } catch (error) {
-    console.error('Error starting video recording:', error);
+    console.error('[Popup] Error starting video recording:', error);
     showStatus('recordingStatus', `Error: ${error.message}`, 'error');
     startBtn.disabled = false;
   }

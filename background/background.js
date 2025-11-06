@@ -151,88 +151,104 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const tabId = request.tabId;
     recordingTabId = tabId;
 
-    chrome.tabCapture.capture({
-      audio: false,
-      video: true,
-      videoConstraints: {
-        mandatory: {
-          minWidth: 1280,
-          minHeight: 720,
-          maxWidth: 1920,
-          maxHeight: 1080,
-          maxFrameRate: 30
-        }
-      }
-    }, (stream) => {
-      if (chrome.runtime.lastError) {
-        console.error('Tab capture error:', chrome.runtime.lastError);
-        sendResponse({ success: false, error: chrome.runtime.lastError.message });
-        return;
-      }
+    console.log('[Background] Starting tab capture for tab:', tabId);
 
-      if (!stream) {
-        sendResponse({ success: false, error: 'No stream returned' });
-        return;
-      }
-
-      recordingStream = stream;
-      recordedChunks = [];
-
-      // Create MediaRecorder
-      try {
-        mediaRecorder = new MediaRecorder(stream, {
-          mimeType: 'video/webm;codecs=vp9',
-          videoBitsPerSecond: 2500000
-        });
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data && event.data.size > 0) {
-            recordedChunks.push(event.data);
+    try {
+      chrome.tabCapture.capture({
+        audio: false,
+        video: true,
+        videoConstraints: {
+          mandatory: {
+            minWidth: 1280,
+            minHeight: 720,
+            maxWidth: 1920,
+            maxHeight: 1080,
+            maxFrameRate: 30
           }
-        };
+        }
+      }, (stream) => {
+        if (chrome.runtime.lastError) {
+          console.error('[Background] Tab capture error:', chrome.runtime.lastError);
+          sendResponse({ success: false, error: chrome.runtime.lastError.message });
+          return;
+        }
 
-        mediaRecorder.onstop = async () => {
-          // Create blob from recorded chunks
-          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        if (!stream) {
+          console.error('[Background] No stream returned');
+          sendResponse({ success: false, error: 'No stream returned from tab capture' });
+          return;
+        }
 
-          // Convert blob to data URL
-          const reader = new FileReader();
-          reader.onloadend = async () => {
-            const videoDataUrl = reader.result;
+        console.log('[Background] Got stream, creating MediaRecorder');
+        recordingStream = stream;
+        recordedChunks = [];
 
-            // Save to session storage
-            await chrome.storage.session.set({
-              videoRecording: videoDataUrl,
-              hasVideoRecording: true
-            });
+        // Create MediaRecorder
+        try {
+          mediaRecorder = new MediaRecorder(stream, {
+            mimeType: 'video/webm;codecs=vp9',
+            videoBitsPerSecond: 2500000
+          });
 
-            // Stop all tracks
-            if (recordingStream) {
-              recordingStream.getTracks().forEach(track => track.stop());
-              recordingStream = null;
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+              recordedChunks.push(event.data);
             }
-
-            // Notify content script that recording stopped
-            try {
-              await chrome.tabs.sendMessage(recordingTabId, {
-                action: 'recordingStopped'
-              });
-            } catch (e) {
-              console.log('Could not notify content script:', e);
-            }
-
-            recordingTabId = null;
           };
-          reader.readAsDataURL(blob);
-        };
 
-        mediaRecorder.start();
-        sendResponse({ success: true });
-      } catch (error) {
-        console.error('MediaRecorder error:', error);
-        sendResponse({ success: false, error: error.message });
-      }
-    });
+          mediaRecorder.onstop = async () => {
+            console.log('[Background] Recording stopped, processing video...');
+            // Create blob from recorded chunks
+            const blob = new Blob(recordedChunks, { type: 'video/webm' });
+
+            // Convert blob to data URL
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+              const videoDataUrl = reader.result;
+
+              console.log('[Background] Video converted to data URL, size:', videoDataUrl.length);
+
+              // Save to session storage
+              await chrome.storage.session.set({
+                videoRecording: videoDataUrl,
+                hasVideoRecording: true
+              });
+
+              console.log('[Background] Video saved to session storage');
+
+              // Stop all tracks
+              if (recordingStream) {
+                recordingStream.getTracks().forEach(track => track.stop());
+                recordingStream = null;
+              }
+
+              // Notify content script that recording stopped
+              try {
+                await chrome.tabs.sendMessage(recordingTabId, {
+                  action: 'recordingStopped'
+                });
+                console.log('[Background] Notified content script');
+              } catch (e) {
+                console.error('[Background] Could not notify content script:', e);
+              }
+
+              recordingTabId = null;
+            };
+            reader.readAsDataURL(blob);
+          };
+
+          mediaRecorder.start();
+          console.log('[Background] MediaRecorder started successfully');
+          sendResponse({ success: true });
+        } catch (error) {
+          console.error('[Background] MediaRecorder error:', error);
+          sendResponse({ success: false, error: error.message });
+        }
+      });
+    } catch (error) {
+      console.error('[Background] Exception in startTabCapture:', error);
+      sendResponse({ success: false, error: error.message });
+    }
 
     return true; // Keep channel open for async response
   }
