@@ -95,7 +95,6 @@ function setupEventListeners() {
 
   // Video recording
   document.getElementById('startRecording').addEventListener('click', startVideoRecording);
-  document.getElementById('stopRecording').addEventListener('click', stopVideoRecording);
 
   // Annotation tools
   document.querySelectorAll('.tool-btn').forEach(btn => {

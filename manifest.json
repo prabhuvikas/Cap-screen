@@ -10,7 +10,8 @@
     "webRequest",
     "debugger",
     "scripting",
-    "tabCapture"
+    "tabCapture",
+    "offscreen"
   ],
   "host_permissions": [
     "<all_urls>"

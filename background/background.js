@@ -7,6 +7,136 @@ let recordedChunks = [];
 let recordingStream = null;
 let recordingTabId = null;
 
+// Offscreen document management for recording
+async function setupOffscreenDocument() {
+  const offscreenUrl = chrome.runtime.getURL('offscreen/offscreen.html');
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT'],
+    documentUrls: [offscreenUrl]
+  });
+
+  if (existingContexts.length > 0) {
+    console.log('[Background] Offscreen document already exists');
+    return;
+  }
+
+  console.log('[Background] Creating offscreen document');
+  await chrome.offscreen.createDocument({
+    url: offscreenUrl,
+    reasons: ['USER_MEDIA'],
+    justification: 'Recording video from tab capture'
+  });
+  console.log('[Background] Offscreen document created');
+}
+
+async function closeOffscreenDocument() {
+  const offscreenUrl = chrome.runtime.getURL('offscreen/offscreen.html');
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT'],
+    documentUrls: [offscreenUrl]
+  });
+
+  if (existingContexts.length === 0) {
+    console.log('[Background] No offscreen document to close');
+    return;
+  }
+
+  console.log('[Background] Closing offscreen document');
+  await chrome.offscreen.closeDocument();
+  console.log('[Background] Offscreen document closed');
+}
+
+async function handleStartTabCapture(tabId) {
+  try {
+    console.log('[Background] Getting media stream ID for tab:', tabId);
+
+    // Get the stream ID from tabCapture API
+    const streamId = await chrome.tabCapture.getMediaStreamId({
+      targetTabId: tabId
+    });
+
+    console.log('[Background] Got stream ID:', streamId);
+
+    // Setup offscreen document
+    await setupOffscreenDocument();
+
+    // Send the stream ID to the offscreen document to start recording
+    console.log('[Background] Sending startRecording message to offscreen document');
+    const response = await chrome.runtime.sendMessage({
+      action: 'startRecording',
+      streamId: streamId
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Failed to start recording in offscreen document');
+    }
+
+    console.log('[Background] Recording started in offscreen document');
+  } catch (error) {
+    console.error('[Background] Error in handleStartTabCapture:', error);
+    // Clean up offscreen document if there was an error
+    try {
+      await closeOffscreenDocument();
+    } catch (e) {
+      console.error('[Background] Error closing offscreen document:', e);
+    }
+    throw error;
+  }
+}
+
+async function handleStopTabCapture() {
+  try {
+    console.log('[Background] Stopping recording in offscreen document');
+
+    // Send stop message to offscreen document
+    const response = await chrome.runtime.sendMessage({
+      action: 'stopRecording'
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Failed to stop recording in offscreen document');
+    }
+
+    const videoDataUrl = response.videoDataUrl;
+    console.log('[Background] Got video data URL, length:', videoDataUrl.length);
+
+    // Save to session storage
+    await chrome.storage.session.set({
+      videoRecording: videoDataUrl,
+      hasVideoRecording: true
+    });
+
+    console.log('[Background] Video saved to session storage');
+
+    // Close offscreen document
+    await closeOffscreenDocument();
+
+    // Notify content script that recording stopped
+    if (recordingTabId) {
+      try {
+        await chrome.tabs.sendMessage(recordingTabId, {
+          action: 'recordingStopped'
+        });
+        console.log('[Background] Notified content script');
+      } catch (e) {
+        console.error('[Background] Could not notify content script:', e);
+      }
+      recordingTabId = null;
+    }
+
+    console.log('[Background] Recording stopped successfully');
+  } catch (error) {
+    console.error('[Background] Error in handleStopTabCapture:', error);
+    // Try to clean up offscreen document
+    try {
+      await closeOffscreenDocument();
+    } catch (e) {
+      console.error('[Background] Error closing offscreen document:', e);
+    }
+    throw error;
+  }
+}
+
 // Clean up old data periodically
 setInterval(() => {
   const now = Date.now();
@@ -153,113 +283,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     console.log('[Background] Starting tab capture for tab:', tabId);
 
-    try {
-      chrome.tabCapture.capture({
-        audio: false,
-        video: true,
-        videoConstraints: {
-          mandatory: {
-            minWidth: 1280,
-            minHeight: 720,
-            maxWidth: 1920,
-            maxHeight: 1080,
-            maxFrameRate: 30
-          }
-        }
-      }, (stream) => {
-        if (chrome.runtime.lastError) {
-          console.error('[Background] Tab capture error:', chrome.runtime.lastError);
-          sendResponse({ success: false, error: chrome.runtime.lastError.message });
-          return;
-        }
-
-        if (!stream) {
-          console.error('[Background] No stream returned');
-          sendResponse({ success: false, error: 'No stream returned from tab capture' });
-          return;
-        }
-
-        console.log('[Background] Got stream, creating MediaRecorder');
-        recordingStream = stream;
-        recordedChunks = [];
-
-        // Create MediaRecorder
-        try {
-          mediaRecorder = new MediaRecorder(stream, {
-            mimeType: 'video/webm;codecs=vp9',
-            videoBitsPerSecond: 2500000
-          });
-
-          mediaRecorder.ondataavailable = (event) => {
-            if (event.data && event.data.size > 0) {
-              recordedChunks.push(event.data);
-            }
-          };
-
-          mediaRecorder.onstop = async () => {
-            console.log('[Background] Recording stopped, processing video...');
-            // Create blob from recorded chunks
-            const blob = new Blob(recordedChunks, { type: 'video/webm' });
-
-            // Convert blob to data URL
-            const reader = new FileReader();
-            reader.onloadend = async () => {
-              const videoDataUrl = reader.result;
-
-              console.log('[Background] Video converted to data URL, size:', videoDataUrl.length);
-
-              // Save to session storage
-              await chrome.storage.session.set({
-                videoRecording: videoDataUrl,
-                hasVideoRecording: true
-              });
-
-              console.log('[Background] Video saved to session storage');
-
-              // Stop all tracks
-              if (recordingStream) {
-                recordingStream.getTracks().forEach(track => track.stop());
-                recordingStream = null;
-              }
-
-              // Notify content script that recording stopped
-              try {
-                await chrome.tabs.sendMessage(recordingTabId, {
-                  action: 'recordingStopped'
-                });
-                console.log('[Background] Notified content script');
-              } catch (e) {
-                console.error('[Background] Could not notify content script:', e);
-              }
-
-              recordingTabId = null;
-            };
-            reader.readAsDataURL(blob);
-          };
-
-          mediaRecorder.start();
-          console.log('[Background] MediaRecorder started successfully');
-          sendResponse({ success: true });
-        } catch (error) {
-          console.error('[Background] MediaRecorder error:', error);
-          sendResponse({ success: false, error: error.message });
-        }
+    handleStartTabCapture(tabId)
+      .then(() => {
+        console.log('[Background] Tab capture started successfully');
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        console.error('[Background] Error starting tab capture:', error);
+        sendResponse({ success: false, error: error.message });
       });
-    } catch (error) {
-      console.error('[Background] Exception in startTabCapture:', error);
-      sendResponse({ success: false, error: error.message });
-    }
 
     return true; // Keep channel open for async response
   }
 
   if (request.action === 'stopTabCapture') {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      mediaRecorder.stop();
-      sendResponse({ success: true });
-    } else {
-      sendResponse({ success: false, error: 'No active recording' });
-    }
+    handleStopTabCapture()
+      .then(() => {
+        console.log('[Background] Tab capture stopped successfully');
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        console.error('[Background] Error stopping tab capture:', error);
+        sendResponse({ success: false, error: error.message });
+      });
     return true;
   }
 
