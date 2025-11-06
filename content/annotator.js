@@ -20,6 +20,12 @@ class Annotator {
     this.dragOffsetY = 0;
     this.ready = false;
 
+    // Zoom properties
+    this.zoomLevel = 1.0;
+    this.minZoom = 0.25;
+    this.maxZoom = 4.0;
+    this.zoomStep = 0.25;
+
     // Store the initialization promise
     this.initPromise = this.init();
   }
@@ -68,8 +74,8 @@ class Annotator {
 
   handleMouseDown(e) {
     const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.canvas.width / rect.width;
-    const scaleY = this.canvas.height / rect.height;
+    const scaleX = this.canvas.width / (rect.width * this.zoomLevel);
+    const scaleY = this.canvas.height / (rect.height * this.zoomLevel);
     this.startX = (e.clientX - rect.left) * scaleX;
     this.startY = (e.clientY - rect.top) * scaleY;
 
@@ -118,8 +124,8 @@ class Annotator {
 
   handleMouseMove(e) {
     const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.canvas.width / rect.width;
-    const scaleY = this.canvas.height / rect.height;
+    const scaleX = this.canvas.width / (rect.width * this.zoomLevel);
+    const scaleY = this.canvas.height / (rect.height * this.zoomLevel);
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
 
@@ -196,8 +202,8 @@ class Annotator {
     if (!this.isDrawing) return;
 
     const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.canvas.width / rect.width;
-    const scaleY = this.canvas.height / rect.height;
+    const scaleX = this.canvas.width / (rect.width * this.zoomLevel);
+    const scaleY = this.canvas.height / (rect.height * this.zoomLevel);
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
 
@@ -672,7 +678,8 @@ class Annotator {
       currentTool: this.currentTool,
       currentColor: this.currentColor,
       lineWidth: this.lineWidth,
-      annotations: JSON.parse(JSON.stringify(this.annotations)) // Deep copy
+      annotations: JSON.parse(JSON.stringify(this.annotations)), // Deep copy
+      zoomLevel: this.zoomLevel
     };
   }
 
@@ -689,6 +696,12 @@ class Annotator {
     this.lineWidth = state.lineWidth || 3;
     this.annotations = state.annotations ? JSON.parse(JSON.stringify(state.annotations)) : [];
 
+    // Restore zoom level if saved
+    if (state.zoomLevel) {
+      this.zoomLevel = state.zoomLevel;
+      this.applyZoom();
+    }
+
     // Restore the canvas to the last history state
     if (this.historyStep >= 0 && this.historyStep < this.history.length) {
       const img = await this.loadImage(this.history[this.historyStep]);
@@ -699,6 +712,44 @@ class Annotator {
       // If no history, just redraw from annotations
       await this.redrawCanvas();
     }
+  }
+
+  // Zoom methods
+  setZoom(level) {
+    this.zoomLevel = Math.max(this.minZoom, Math.min(this.maxZoom, level));
+    this.applyZoom();
+    console.log('[Annotator] Zoom level set to:', this.zoomLevel);
+    return this.zoomLevel;
+  }
+
+  zoomIn() {
+    const newZoom = this.zoomLevel + this.zoomStep;
+    return this.setZoom(newZoom);
+  }
+
+  zoomOut() {
+    const newZoom = this.zoomLevel - this.zoomStep;
+    return this.setZoom(newZoom);
+  }
+
+  zoomReset() {
+    return this.setZoom(1.0);
+  }
+
+  applyZoom() {
+    // Apply CSS transform to scale the canvas
+    this.canvas.style.transform = `scale(${this.zoomLevel})`;
+    this.canvas.style.transformOrigin = 'top left';
+
+    // Update canvas container to handle overflow
+    const container = this.canvas.parentElement;
+    if (container) {
+      container.style.overflow = 'auto';
+    }
+  }
+
+  getZoomLevel() {
+    return this.zoomLevel;
   }
 }
 

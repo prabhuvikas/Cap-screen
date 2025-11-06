@@ -226,6 +226,7 @@ main {
   cursor: crosshair;
   max-width: 100%;
   max-height: calc(100vh - 350px);
+  transition: transform 0.2s ease;
 }
 
 #annotationCanvas.move-cursor {
@@ -275,6 +276,20 @@ main {
 .tool-actions-horizontal {
   display: flex;
   gap: 8px;
+}
+
+.zoom-controls-horizontal {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.zoom-level-display {
+  min-width: 50px;
+  text-align: center;
+  font-weight: 600;
+  color: #1a1a1a;
+  font-size: 14px;
 }
 
 .toolbar-divider {

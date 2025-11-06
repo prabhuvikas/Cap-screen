@@ -216,6 +216,52 @@ function setupEventListeners() {
     }
   });
 
+  // Zoom controls
+  document.getElementById('zoomInBtn').addEventListener('click', () => {
+    if (annotator) {
+      const newZoom = annotator.zoomIn();
+      updateZoomDisplay(newZoom);
+    }
+  });
+
+  document.getElementById('zoomOutBtn').addEventListener('click', () => {
+    if (annotator) {
+      const newZoom = annotator.zoomOut();
+      updateZoomDisplay(newZoom);
+    }
+  });
+
+  document.getElementById('zoomResetBtn').addEventListener('click', () => {
+    if (annotator) {
+      const newZoom = annotator.zoomReset();
+      updateZoomDisplay(newZoom);
+    }
+  });
+
+  // Keyboard shortcuts for zoom
+  document.addEventListener('keydown', (e) => {
+    if (!annotator) return;
+
+    // Ctrl/Cmd + Plus/Equals for zoom in
+    if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '=')) {
+      e.preventDefault();
+      const newZoom = annotator.zoomIn();
+      updateZoomDisplay(newZoom);
+    }
+    // Ctrl/Cmd + Minus for zoom out
+    else if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+      e.preventDefault();
+      const newZoom = annotator.zoomOut();
+      updateZoomDisplay(newZoom);
+    }
+    // Ctrl/Cmd + 0 for reset zoom
+    else if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+      e.preventDefault();
+      const newZoom = annotator.zoomReset();
+      updateZoomDisplay(newZoom);
+    }
+  });
+
   // Navigation
   document.getElementById('continueToReport').addEventListener('click', continueToReport);
   document.getElementById('backToAnnotate').addEventListener('click', () => showSection('annotateSection'));
@@ -320,6 +366,9 @@ async function showAnnotationCanvas(screenshot) {
     console.log('[Annotate] Restoring annotations for screenshot:', currentScreenshotId);
     await annotator.restoreState(screenshot.annotations);
   }
+
+  // Update zoom display
+  updateZoomDisplay(annotator.getZoomLevel());
 }
 
 // Initialize annotation silently (without showing the section)
@@ -363,6 +412,14 @@ function selectTool(tool, buttonElement) {
     canvas.classList.add('grab-cursor');
   } else if (tool === 'text') {
     canvas.classList.add('text-cursor');
+  }
+}
+
+// Update zoom display
+function updateZoomDisplay(zoomLevel) {
+  const display = document.getElementById('zoomLevel');
+  if (display) {
+    display.textContent = Math.round(zoomLevel * 100) + '%';
   }
 }
 
