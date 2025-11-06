@@ -100,18 +100,56 @@ async function handleStopTabCapture() {
     const videoDataUrl = response.videoDataUrl;
     console.log('[Background] Got video data URL, length:', videoDataUrl.length);
 
-    // Save to session storage
-    await chrome.storage.session.set({
-      videoRecording: videoDataUrl,
-      hasVideoRecording: true
-    });
-
-    console.log('[Background] Video saved to session storage');
-
     // Close offscreen document
     await closeOffscreenDocument();
 
-    // Notify content script that recording stopped
+    // Capture screenshot of the recording tab
+    console.log('[Background] Capturing screenshot of recording tab:', recordingTabId);
+    let screenshotDataUrl = null;
+    try {
+      // Make sure the recording tab is active first
+      await chrome.tabs.update(recordingTabId, { active: true });
+
+      // Wait a bit for tab to become active
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      screenshotDataUrl = await chrome.tabs.captureVisibleTab(null, {
+        format: 'png',
+        quality: 100
+      });
+      console.log('[Background] Screenshot captured successfully');
+    } catch (error) {
+      console.error('[Background] Error capturing screenshot:', error);
+      // Continue anyway, we at least have the video
+    }
+
+    // Prepare screenshot data for session storage
+    const newScreenshot = screenshotDataUrl ? {
+      id: Date.now().toString(36) + Math.random().toString(36).substring(2),
+      data: screenshotDataUrl,
+      annotations: null,
+      timestamp: Date.now(),
+      tabId: recordingTabId,
+      name: 'Screenshot 1'
+    } : null;
+
+    // Save video and screenshot to session storage
+    const sessionData = {
+      videoRecording: videoDataUrl,
+      hasVideoRecording: true
+    };
+
+    if (newScreenshot) {
+      sessionData.screenshots = [newScreenshot];
+      sessionData.currentScreenshotId = newScreenshot.id;
+      sessionData.tabId = recordingTabId;
+      sessionData.screenshotData = screenshotDataUrl;
+    }
+
+    await chrome.storage.session.set(sessionData);
+    console.log('[Background] Video and screenshot saved to session storage');
+
+    // Notify content script that recording stopped (so it can remove overlay)
     if (recordingTabId) {
       try {
         await chrome.tabs.sendMessage(recordingTabId, {
@@ -121,9 +159,17 @@ async function handleStopTabCapture() {
       } catch (e) {
         console.error('[Background] Could not notify content script:', e);
       }
-      recordingTabId = null;
     }
 
+    // Open annotation page
+    console.log('[Background] Opening annotation page');
+    await chrome.tabs.create({
+      url: chrome.runtime.getURL('annotate/annotate.html'),
+      active: true
+    });
+    console.log('[Background] Annotation page opened');
+
+    recordingTabId = null;
     console.log('[Background] Recording stopped successfully');
   } catch (error) {
     console.error('[Background] Error in handleStopTabCapture:', error);

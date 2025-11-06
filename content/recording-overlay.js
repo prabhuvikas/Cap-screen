@@ -147,38 +147,10 @@ class RecordingOverlay {
   }
 
   async handleRecordingStopped() {
-    // Remove overlay
+    // Remove overlay - background script handles everything else
+    // (screenshot capture, saving to session storage, opening annotation page)
+    console.log('[Overlay] Recording stopped, removing overlay');
     this.removeOverlay();
-
-    // Take a screenshot automatically
-    const response = await chrome.runtime.sendMessage({
-      action: 'captureScreenshot'
-    });
-
-    if (response && response.success) {
-      // Save screenshot and open annotation page
-      const screenshotData = response.screenshot;
-      const newScreenshot = {
-        id: Date.now().toString(36) + Math.random().toString(36).substring(2),
-        data: screenshotData,
-        annotations: null,
-        timestamp: Date.now(),
-        tabId: response.tabId,
-        name: 'Screenshot 1'
-      };
-
-      await chrome.storage.session.set({
-        screenshots: [newScreenshot],
-        currentScreenshotId: newScreenshot.id,
-        tabId: response.tabId,
-        screenshotData: screenshotData
-      });
-
-      // Open annotation page
-      await chrome.runtime.sendMessage({
-        action: 'openAnnotationPage'
-      });
-    }
   }
 
   removeOverlay() {
