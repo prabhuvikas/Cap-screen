@@ -199,7 +199,7 @@ function setupEventListeners() {
 }
 
 // Initialize annotation
-function initializeAnnotation() {
+async function initializeAnnotation() {
   console.log('[Annotate] Initializing annotation canvas...');
 
   const currentScreenshot = screenshots.find(s => s.id === currentScreenshotId);
@@ -213,9 +213,14 @@ function initializeAnnotation() {
   const canvas = document.getElementById('annotationCanvas');
   annotator = new Annotator(canvas, screenshotDataUrl);
 
+  // Wait for annotator to be initialized
+  await annotator.initPromise;
+  console.log('[Annotate] Annotator initialized');
+
   // Restore annotations if they exist
   if (currentScreenshot.annotations) {
-    annotator.restoreState(currentScreenshot.annotations);
+    console.log('[Annotate] Restoring annotations for screenshot:', currentScreenshotId);
+    await annotator.restoreState(currentScreenshot.annotations);
   }
 
   // Show annotation section
@@ -464,6 +469,52 @@ function updateScreenshotsList() {
   });
 }
 
+// Update screenshot previews in report section
+async function updateScreenshotPreviews() {
+  const previewContainer = document.getElementById('screenshotPreviewContainer');
+  if (!previewContainer) return;
+
+  previewContainer.innerHTML = '';
+
+  console.log('[Annotate] Updating screenshot previews, total:', screenshots.length);
+
+  for (let i = 0; i < screenshots.length; i++) {
+    const screenshot = screenshots[i];
+
+    // Create preview item container
+    const previewItem = document.createElement('div');
+    previewItem.className = 'screenshot-preview-item';
+
+    // Add label
+    const label = document.createElement('div');
+    label.className = 'screenshot-preview-label';
+    label.textContent = `Screenshot ${i + 1}`;
+    previewItem.appendChild(label);
+
+    // Create temporary annotator to get annotated image
+    const tempCanvas = document.createElement('canvas');
+    const tempAnnotator = new Annotator(tempCanvas, screenshot.data);
+
+    // Wait for initialization
+    await tempAnnotator.initPromise;
+
+    // Restore annotations if they exist
+    if (screenshot.annotations && tempAnnotator.restoreState) {
+      await tempAnnotator.restoreState(screenshot.annotations);
+    }
+
+    // Create and add image
+    const img = document.createElement('img');
+    img.src = tempAnnotator.getAnnotatedImage();
+    img.alt = `Screenshot ${i + 1}`;
+    previewItem.appendChild(img);
+
+    previewContainer.appendChild(previewItem);
+  }
+
+  console.log('[Annotate] Screenshot previews updated');
+}
+
 // Continue to report form
 async function continueToReport() {
   console.log('[Annotate] Continuing to report section...');
@@ -471,14 +522,8 @@ async function continueToReport() {
   // Save current annotations before continuing
   await saveCurrentAnnotations();
 
-  // Update preview with first screenshot (we'll show all in review modal)
-  if (screenshots.length > 0) {
-    const firstScreenshot = screenshots.find(s => s.id === currentScreenshotId);
-    if (firstScreenshot && annotator) {
-      const previewImg = document.getElementById('previewImage');
-      previewImg.src = annotator.getAnnotatedImage();
-    }
-  }
+  // Update preview with all screenshots
+  await updateScreenshotPreviews();
 
   showSection('reportSection');
 
@@ -752,9 +797,12 @@ async function actuallySubmitBugReport() {
       const tempCanvas = document.createElement('canvas');
       const tempAnnotator = new Annotator(tempCanvas, screenshot.data);
 
+      // Wait for initialization
+      await tempAnnotator.initPromise;
+
       // Restore annotations if they exist
       if (screenshot.annotations && tempAnnotator.restoreState) {
-        tempAnnotator.restoreState(screenshot.annotations);
+        await tempAnnotator.restoreState(screenshot.annotations);
       }
 
       const annotatedImage = tempAnnotator.getAnnotatedImage();
@@ -1182,27 +1230,32 @@ async function populateReviewModal() {
       screenshotInfo.textContent = `${screenshots.length} screenshot(s) will be attached:`;
       screenshotTabContent.appendChild(screenshotInfo);
 
-      screenshots.forEach((screenshot, index) => {
+      for (let index = 0; index < screenshots.length; index++) {
+        const screenshot = screenshots[index];
+
         // Create temporary annotator to get annotated image
         const tempCanvas = document.createElement('canvas');
         const tempAnnotator = new Annotator(tempCanvas, screenshot.data);
 
+        // Wait for initialization
+        await tempAnnotator.initPromise;
+
         if (screenshot.annotations && tempAnnotator.restoreState) {
-          tempAnnotator.restoreState(screenshot.annotations);
+          await tempAnnotator.restoreState(screenshot.annotations);
         }
+
+        const label = document.createElement('p');
+        label.style.cssText = 'font-weight: 600; margin-bottom: 8px; color: #333;';
+        label.textContent = `Screenshot ${index + 1}`;
 
         const img = document.createElement('img');
         img.className = 'review-image';
         img.src = tempAnnotator.getAnnotatedImage();
         img.style.marginBottom = '16px';
 
-        const label = document.createElement('p');
-        label.style.cssText = 'font-weight: 600; margin-bottom: 8px; color: #333;';
-        label.textContent = `Screenshot ${index + 1}`;
-
         screenshotTabContent.appendChild(label);
         screenshotTabContent.appendChild(img);
-      });
+      }
     } else if (annotator) {
       // Fallback to single screenshot
       const img = document.createElement('img');

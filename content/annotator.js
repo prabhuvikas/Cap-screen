@@ -14,8 +14,10 @@ class Annotator {
     this.startX = 0;
     this.startY = 0;
     this.shapes = [];
+    this.ready = false;
 
-    this.init();
+    // Store the initialization promise
+    this.initPromise = this.init();
   }
 
   async init() {
@@ -34,6 +36,9 @@ class Annotator {
 
     // Setup event listeners
     this.setupEventListeners();
+
+    // Mark as ready
+    this.ready = true;
   }
 
   loadImage(dataUrl) {
@@ -275,8 +280,10 @@ class Annotator {
   }
 
   // Restore a saved state (when switching back to a screenshot)
-  restoreState(state) {
+  async restoreState(state) {
     if (!state) return;
+
+    console.log('[Annotator] Restoring state:', state);
 
     this.history = state.history ? state.history.slice() : [];
     this.historyStep = state.historyStep !== undefined ? state.historyStep : -1;
@@ -286,12 +293,10 @@ class Annotator {
 
     // Restore the canvas to the last history state
     if (this.historyStep >= 0 && this.historyStep < this.history.length) {
-      const img = new Image();
-      img.src = this.history[this.historyStep];
-      img.onload = () => {
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.drawImage(img, 0, 0);
-      };
+      const img = await this.loadImage(this.history[this.historyStep]);
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.drawImage(img, 0, 0);
+      console.log('[Annotator] State restored successfully');
     }
   }
 }
