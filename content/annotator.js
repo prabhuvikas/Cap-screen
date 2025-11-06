@@ -134,6 +134,10 @@ class Annotator {
           x: point.x + deltaX,
           y: point.y + deltaY
         }));
+      } else if (this.selectedAnnotation.type === 'text') {
+        // For text, just move x and y
+        this.selectedAnnotation.x = newX;
+        this.selectedAnnotation.y = newY;
       } else {
         // For shapes, move both start and end coordinates
         const deltaX = newX - this.selectedAnnotation.x;
@@ -394,6 +398,18 @@ class Annotator {
       if (isSelected) {
         this.drawSelectionBox(annotation.x, annotation.y, annotation.endX, annotation.endY);
       }
+    } else if (annotation.type === 'text') {
+      this.ctx.fillStyle = annotation.color;
+      this.ctx.font = `${annotation.fontSize}px Arial`;
+      this.ctx.fillText(annotation.text, annotation.x, annotation.y);
+
+      // Draw selection box for text
+      if (isSelected) {
+        const metrics = this.ctx.measureText(annotation.text);
+        const textWidth = metrics.width;
+        const textHeight = annotation.fontSize;
+        this.drawSelectionBox(annotation.x, annotation.y - textHeight, annotation.x + textWidth, annotation.y);
+      }
     }
   }
 
@@ -442,6 +458,17 @@ class Annotator {
         if (distance < annotation.lineWidth + 5) {
           return annotation;
         }
+      } else if (annotation.type === 'text') {
+        // Check if point is inside text bounding box
+        this.ctx.font = `${annotation.fontSize}px Arial`;
+        const metrics = this.ctx.measureText(annotation.text);
+        const textWidth = metrics.width;
+        const textHeight = annotation.fontSize;
+
+        if (x >= annotation.x && x <= annotation.x + textWidth &&
+            y >= annotation.y - textHeight && y <= annotation.y) {
+          return annotation;
+        }
       }
     }
 
@@ -481,10 +508,21 @@ class Annotator {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
-  addText(x, y, text) {
-    this.ctx.fillStyle = this.currentColor;
-    this.ctx.font = `${this.lineWidth * 5}px Arial`;
-    this.ctx.fillText(text, x, y);
+  async addText(x, y, text) {
+    if (!text) return;
+
+    const annotation = {
+      type: 'text',
+      x: x,
+      y: y,
+      text: text,
+      color: this.currentColor,
+      fontSize: this.lineWidth * 5
+    };
+    this.annotations.push(annotation);
+    console.log('[Annotator] Added text annotation, total:', this.annotations.length);
+
+    await this.redrawCanvas();
     this.saveState();
   }
 
