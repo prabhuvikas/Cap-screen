@@ -140,7 +140,7 @@ Configure what information to include in bug reports:
    - Use undo/redo to refine annotations
    - Click "Continue to Report" when ready
 
-5. **Fill Bug Report Details**
+5. **Fill Issue Report Details**
    - **Project**: Select target Redmine project
    - **Tracker**: Choose Bug, Feature, or Support
    - **Subject**: Brief description of the issue
@@ -157,7 +157,7 @@ Configure what information to include in bug reports:
 6. **Review & Submit**
    - Click "Submit Bug Report"
    - Review modal will appear with all data in tabs:
-     - **Form Data**: Your bug report details
+     - **Form Data**: Your issue report details
      - **Screenshot**: Preview of annotated screenshot
      - **Page Info**: Browser and page information
      - **Network**: All captured network requests
