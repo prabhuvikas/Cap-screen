@@ -397,11 +397,39 @@ async function recordVideo() {
 
     console.log('[Annotate] Starting recording on tab:', tabId);
 
+    // Inject the recording overlay script
+    try {
+      console.log('[Annotate] Injecting recording overlay script...');
+      await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['content/recording-overlay.js']
+      });
+      console.log('[Annotate] Recording overlay script injected');
+    } catch (e) {
+      console.log('[Annotate] Recording overlay script already injected or error:', e.message);
+    }
+
     // Start recording by sending message to background BEFORE closing window
-    await chrome.runtime.sendMessage({
+    const response = await chrome.runtime.sendMessage({
       action: 'startTabCapture',
       tabId: tabId
     });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Failed to start recording');
+    }
+
+    // Tell content script to show the overlay UI
+    try {
+      console.log('[Annotate] Showing recording overlay...');
+      await chrome.tabs.sendMessage(tabId, {
+        action: 'showRecordingOverlay'
+      });
+      console.log('[Annotate] Recording overlay shown');
+    } catch (e) {
+      console.error('[Annotate] Failed to show overlay:', e);
+      throw new Error('Failed to show recording overlay. The page may not support this feature.');
+    }
 
     console.log('[Annotate] Switching to original tab for recording:', tabId);
 
