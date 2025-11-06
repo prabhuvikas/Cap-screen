@@ -1,5 +1,7 @@
 // Annotate Page JavaScript - Full-screen annotation and bug report submission
 
+let screenshots = []; // Array of {id, data, annotations, timestamp}
+let currentScreenshotId = null;
 let screenshotDataUrl = null;
 let annotator = null;
 let settings = {};
@@ -8,6 +10,8 @@ let networkRequests = [];
 let consoleLogs = [];
 let redmineAPI = null;
 let currentTab = null;
+let annotationTabId = null; // Store the annotation tab ID
+let accumulatedFiles = []; // Store accumulated files for additional documents
 
 // Sanitize text to remove unicode/emoji characters that cause 500 errors
 function sanitizeText(text) {
@@ -40,6 +44,11 @@ function sanitizeText(text) {
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('[Annotate] Page loaded, initializing...');
 
+  // Store the current annotation tab ID
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  annotationTabId = tabs[0].id;
+  console.log('[Annotate] Annotation tab ID:', annotationTabId);
+
   // Show loading section initially
   showSection('loadingSection');
 
@@ -57,23 +66,58 @@ document.addEventListener('DOMContentLoaded', async () => {
     redmineAPI = new RedmineAPI(settings.redmineUrl, settings.apiKey);
 
     // Load screenshot data from session storage
-    const result = await chrome.storage.session.get(['screenshotData', 'tabId']);
+    const result = await chrome.storage.session.get(['screenshots', 'screenshotData', 'tabId', 'currentScreenshotId']);
 
-    if (!result.screenshotData) {
+    // Check if we have the new multi-screenshot format or old single screenshot
+    if (result.screenshots && result.screenshots.length > 0) {
+      // Load existing screenshots array
+      screenshots = result.screenshots;
+      // Ensure all screenshots have a name field
+      screenshots.forEach((screenshot, index) => {
+        if (!screenshot.name) {
+          screenshot.name = `Screenshot ${index + 1}`;
+        }
+      });
+      currentScreenshotId = result.currentScreenshotId || screenshots[0].id;
+      currentTab = { id: result.tabId || screenshots[0].tabId };
+      console.log('[Annotate] Loaded', screenshots.length, 'screenshot(s) from storage');
+    } else if (result.screenshotData) {
+      // Convert old single screenshot format to new array format
+      const newScreenshot = {
+        id: generateId(),
+        data: result.screenshotData,
+        annotations: null,
+        timestamp: Date.now(),
+        tabId: result.tabId,
+        name: 'Screenshot 1'
+      };
+      screenshots = [newScreenshot];
+      currentScreenshotId = newScreenshot.id;
+      currentTab = { id: result.tabId };
+
+      // Save in new format
+      await chrome.storage.session.set({
+        screenshots: screenshots,
+        currentScreenshotId: currentScreenshotId,
+        tabId: result.tabId
+      });
+
+      console.log('[Annotate] Converted single screenshot to multi-screenshot format');
+    } else {
       showError('No screenshot data found. Please capture a screenshot first.');
       return;
     }
-
-    screenshotDataUrl = result.screenshotData;
-    currentTab = { id: result.tabId };
 
     console.log('[Annotate] Screenshot data loaded successfully');
 
     // Setup event listeners
     setupEventListeners();
 
-    // Initialize annotation
+    // Initialize annotation with current screenshot
     initializeAnnotation();
+
+    // Update screenshots list UI
+    updateScreenshotsList();
 
   } catch (error) {
     console.error('[Annotate] Initialization error:', error);
@@ -102,6 +146,9 @@ function setupEventListeners() {
   // Header actions
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('closeTab').addEventListener('click', () => window.close());
+
+  // Screenshot management
+  document.getElementById('captureAnotherBtn').addEventListener('click', captureAnotherScreenshot);
 
   // Annotation tools
   document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -143,6 +190,9 @@ function setupEventListeners() {
   document.getElementById('project').addEventListener('change', onProjectChange);
   document.getElementById('bugReportForm').addEventListener('submit', submitBugReport);
 
+  // Additional Documents
+  document.getElementById('additionalDocuments').addEventListener('change', updateSelectedFilesList);
+
   // Success/Error
   document.getElementById('closeAfterSuccess').addEventListener('click', () => window.close());
   document.getElementById('closeAfterError').addEventListener('click', () => window.close());
@@ -160,11 +210,29 @@ function setupEventListeners() {
 }
 
 // Initialize annotation
-function initializeAnnotation() {
+async function initializeAnnotation() {
   console.log('[Annotate] Initializing annotation canvas...');
+
+  const currentScreenshot = screenshots.find(s => s.id === currentScreenshotId);
+  if (!currentScreenshot) {
+    console.error('[Annotate] Current screenshot not found');
+    return;
+  }
+
+  screenshotDataUrl = currentScreenshot.data;
 
   const canvas = document.getElementById('annotationCanvas');
   annotator = new Annotator(canvas, screenshotDataUrl);
+
+  // Wait for annotator to be initialized
+  await annotator.initPromise;
+  console.log('[Annotate] Annotator initialized');
+
+  // Restore annotations if they exist
+  if (currentScreenshot.annotations) {
+    console.log('[Annotate] Restoring annotations for screenshot:', currentScreenshotId);
+    await annotator.restoreState(currentScreenshot.annotations);
+  }
 
   // Show annotation section
   showSection('annotateSection');
@@ -183,24 +251,321 @@ function selectTool(tool, buttonElement) {
     annotator.setTool(tool);
   }
 
-  // If text tool, prompt for text
-  if (tool === 'text') {
-    const text = prompt('Enter text:');
-    if (text && annotator) {
-      annotator.addText(50, 50, text);
-    }
+  // Update canvas cursor based on tool
+  const canvas = document.getElementById('annotationCanvas');
+  canvas.classList.remove('move-cursor', 'grab-cursor', 'grabbing-cursor', 'text-cursor');
+  if (tool === 'move') {
+    canvas.classList.add('grab-cursor');
+  } else if (tool === 'text') {
+    canvas.classList.add('text-cursor');
   }
+}
+
+// Generate unique ID
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2);
+}
+
+// Capture another screenshot
+async function captureAnotherScreenshot() {
+  try {
+    console.log('[Annotate] Capturing another screenshot...');
+
+    // Save current annotations before switching
+    await saveCurrentAnnotations();
+
+    // Get the tab ID to capture
+    const tabId = currentTab.id;
+
+    if (!tabId) {
+      alert('Original tab not found. Please capture from the popup.');
+      return;
+    }
+
+    // Check if the original tab still exists
+    let targetTab;
+    try {
+      targetTab = await chrome.tabs.get(tabId);
+    } catch (e) {
+      alert('Original tab has been closed. Please open the page again and capture a new screenshot.');
+      return;
+    }
+
+    console.log('[Annotate] Switching to original tab:', tabId);
+
+    // Switch to the original tab to capture it
+    await chrome.tabs.update(tabId, { active: true });
+
+    // Wait a bit for the tab to become visible
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // Capture the screenshot from the original tab
+    const newScreenshotData = await chrome.tabs.captureVisibleTab(targetTab.windowId, {
+      format: 'png',
+      quality: 100
+    });
+
+    // Switch back to the annotation tab
+    await chrome.tabs.update(annotationTabId, { active: true });
+
+    if (!newScreenshotData) {
+      alert('Failed to capture screenshot');
+      return;
+    }
+
+    // Create new screenshot object
+    const newScreenshot = {
+      id: generateId(),
+      data: newScreenshotData,
+      annotations: null,
+      timestamp: Date.now(),
+      tabId: tabId,
+      name: `Screenshot ${screenshots.length + 1}`
+    };
+
+    // Add to screenshots array
+    screenshots.push(newScreenshot);
+    currentScreenshotId = newScreenshot.id;
+
+    // Save to storage
+    await chrome.storage.session.set({
+      screenshots: screenshots,
+      currentScreenshotId: currentScreenshotId,
+      tabId: tabId
+    });
+
+    console.log('[Annotate] New screenshot captured, total:', screenshots.length);
+
+    // Reinitialize annotation with new screenshot
+    initializeAnnotation();
+
+    // Update screenshots list
+    updateScreenshotsList();
+
+  } catch (error) {
+    console.error('[Annotate] Error capturing another screenshot:', error);
+    alert('Error capturing screenshot: ' + error.message);
+  }
+}
+
+// Save current annotations
+async function saveCurrentAnnotations() {
+  if (!annotator || !currentScreenshotId) return;
+
+  const currentScreenshot = screenshots.find(s => s.id === currentScreenshotId);
+  if (currentScreenshot) {
+    // Get annotator state (we'll need to add a method to Annotator class)
+    currentScreenshot.annotations = annotator.getState ? annotator.getState() : null;
+
+    // Save to storage
+    await chrome.storage.session.set({
+      screenshots: screenshots
+    });
+
+    console.log('[Annotate] Saved annotations for screenshot', currentScreenshotId);
+  }
+}
+
+// Switch to a different screenshot
+async function switchScreenshot(screenshotId) {
+  if (screenshotId === currentScreenshotId) return;
+
+  try {
+    console.log('[Annotate] Switching to screenshot', screenshotId);
+
+    // Save current annotations
+    await saveCurrentAnnotations();
+
+    // Update current screenshot
+    currentScreenshotId = screenshotId;
+
+    // Save to storage
+    await chrome.storage.session.set({
+      currentScreenshotId: currentScreenshotId
+    });
+
+    // Reinitialize annotation with selected screenshot
+    initializeAnnotation();
+
+    // Update UI
+    updateScreenshotsList();
+
+  } catch (error) {
+    console.error('[Annotate] Error switching screenshot:', error);
+  }
+}
+
+// Delete a screenshot
+async function deleteScreenshot(screenshotId) {
+  if (screenshots.length === 1) {
+    alert('Cannot delete the last screenshot');
+    return;
+  }
+
+  if (!confirm('Are you sure you want to delete this screenshot?')) {
+    return;
+  }
+
+  try {
+    console.log('[Annotate] Deleting screenshot', screenshotId);
+
+    // Remove from array
+    screenshots = screenshots.filter(s => s.id !== screenshotId);
+
+    // If deleting current screenshot, switch to first one
+    if (screenshotId === currentScreenshotId) {
+      currentScreenshotId = screenshots[0].id;
+      initializeAnnotation();
+    }
+
+    // Save to storage
+    await chrome.storage.session.set({
+      screenshots: screenshots,
+      currentScreenshotId: currentScreenshotId
+    });
+
+    // Update UI
+    updateScreenshotsList();
+
+    console.log('[Annotate] Screenshot deleted, remaining:', screenshots.length);
+
+  } catch (error) {
+    console.error('[Annotate] Error deleting screenshot:', error);
+  }
+}
+
+// Rename screenshot
+async function renameScreenshot(screenshotId, newName) {
+  const screenshot = screenshots.find(s => s.id === screenshotId);
+  if (screenshot) {
+    screenshot.name = newName || `Screenshot ${screenshots.indexOf(screenshot) + 1}`;
+
+    // Save to storage
+    await chrome.storage.session.set({
+      screenshots: screenshots
+    });
+
+    console.log('[Annotate] Renamed screenshot to:', screenshot.name);
+  }
+}
+
+// Update screenshots list UI
+function updateScreenshotsList() {
+  const listContainer = document.getElementById('screenshotsList');
+  listContainer.innerHTML = '';
+
+  screenshots.forEach((screenshot, index) => {
+    const item = document.createElement('div');
+    item.className = 'screenshot-item' + (screenshot.id === currentScreenshotId ? ' active' : '');
+
+    const content = document.createElement('div');
+    content.className = 'screenshot-item-content';
+
+    const thumbnail = document.createElement('img');
+    thumbnail.className = 'screenshot-thumbnail';
+    thumbnail.src = screenshot.data;
+    thumbnail.alt = screenshot.name || `Screenshot ${index + 1}`;
+
+    const info = document.createElement('div');
+    info.className = 'screenshot-info';
+
+    // Editable name input
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'screenshot-name-input';
+    nameInput.value = screenshot.name || `Screenshot ${index + 1}`;
+    nameInput.onclick = (e) => {
+      e.stopPropagation();
+    };
+    nameInput.onblur = (e) => {
+      renameScreenshot(screenshot.id, e.target.value);
+    };
+    nameInput.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.target.blur();
+      }
+      e.stopPropagation();
+    };
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'screenshot-delete';
+    deleteBtn.textContent = '✕';
+    deleteBtn.onclick = (e) => {
+      e.stopPropagation();
+      deleteScreenshot(screenshot.id);
+    };
+
+    info.appendChild(nameInput);
+    if (screenshots.length > 1) {
+      info.appendChild(deleteBtn);
+    }
+
+    content.appendChild(thumbnail);
+    content.appendChild(info);
+
+    item.appendChild(content);
+
+    item.onclick = () => switchScreenshot(screenshot.id);
+
+    listContainer.appendChild(item);
+  });
+}
+
+// Update screenshot previews in report section
+async function updateScreenshotPreviews() {
+  const previewContainer = document.getElementById('screenshotPreviewContainer');
+  if (!previewContainer) return;
+
+  previewContainer.innerHTML = '';
+
+  console.log('[Annotate] Updating screenshot previews, total:', screenshots.length);
+
+  for (let i = 0; i < screenshots.length; i++) {
+    const screenshot = screenshots[i];
+
+    // Create preview item container
+    const previewItem = document.createElement('div');
+    previewItem.className = 'screenshot-preview-item';
+
+    // Add label with custom name
+    const label = document.createElement('div');
+    label.className = 'screenshot-preview-label';
+    label.textContent = screenshot.name || `Screenshot ${i + 1}`;
+    previewItem.appendChild(label);
+
+    // Create temporary annotator to get annotated image
+    const tempCanvas = document.createElement('canvas');
+    const tempAnnotator = new Annotator(tempCanvas, screenshot.data);
+
+    // Wait for initialization
+    await tempAnnotator.initPromise;
+
+    // Restore annotations if they exist
+    if (screenshot.annotations && tempAnnotator.restoreState) {
+      await tempAnnotator.restoreState(screenshot.annotations);
+    }
+
+    // Create and add image
+    const img = document.createElement('img');
+    img.src = tempAnnotator.getAnnotatedImage();
+    img.alt = `Screenshot ${i + 1}`;
+    previewItem.appendChild(img);
+
+    previewContainer.appendChild(previewItem);
+  }
+
+  console.log('[Annotate] Screenshot previews updated');
 }
 
 // Continue to report form
 async function continueToReport() {
   console.log('[Annotate] Continuing to report section...');
 
-  // Update preview
-  if (annotator) {
-    const previewImg = document.getElementById('previewImage');
-    previewImg.src = annotator.getAnnotatedImage();
-  }
+  // Save current annotations before continuing
+  await saveCurrentAnnotations();
+
+  // Update preview with all screenshots
+  await updateScreenshotPreviews();
 
   showSection('reportSection');
 
@@ -465,14 +830,37 @@ async function actuallySubmitBugReport() {
     // Prepare attachments
     const attachments = [];
 
-    // Add annotated screenshot
-    if (annotator) {
-      const annotatedImage = annotator.getAnnotatedImage();
+    // Add all annotated screenshots
+    console.log('[Annotate] Adding', screenshots.length, 'screenshot(s) to attachments...');
+    for (let i = 0; i < screenshots.length; i++) {
+      const screenshot = screenshots[i];
+
+      // Create a temporary annotator to get the annotated image
+      const tempCanvas = document.createElement('canvas');
+      const tempAnnotator = new Annotator(tempCanvas, screenshot.data);
+
+      // Wait for initialization
+      await tempAnnotator.initPromise;
+
+      // Restore annotations if they exist
+      if (screenshot.annotations && tempAnnotator.restoreState) {
+        await tempAnnotator.restoreState(screenshot.annotations);
+      }
+
+      const annotatedImage = tempAnnotator.getAnnotatedImage();
+
+      // Use custom name for filename (sanitize for filesystem)
+      const sanitizedName = (screenshot.name || `Screenshot ${i + 1}`)
+        .replace(/[^a-z0-9]/gi, '-')
+        .toLowerCase();
+
       attachments.push({
         data: annotatedImage,
-        filename: `screenshot-${Date.now()}.png`,
+        filename: `${sanitizedName}-${Date.now()}.png`,
         type: 'image/png'
       });
+
+      console.log('[Annotate] Added screenshot', screenshot.name || (i + 1), 'to attachments');
     }
 
     // Add technical data if requested
@@ -627,6 +1015,12 @@ function buildDescription() {
 
   if (settings.includeConsoleLogs && consoleLogs.length > 0) {
     description += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
+  }
+
+  // Mention multiple screenshots if applicable
+  if (screenshots && screenshots.length > 1) {
+    description += `\n### Screenshots\n`;
+    description += `${screenshots.length} screenshot(s) attached to this report.\n`;
   }
 
   // Mention additional user-uploaded documents
@@ -874,9 +1268,49 @@ async function populateReviewModal() {
     const reviewDescriptionText = document.getElementById('reviewDescriptionText');
     reviewDescriptionText.value = buildDescription();
 
-    // Screenshot Tab
-    if (annotator) {
-      document.getElementById('reviewScreenshot').src = annotator.getAnnotatedImage();
+    // Screenshot Tab - Show all screenshots
+    const screenshotTabContent = document.getElementById('screenshotTab').querySelector('.review-section');
+    screenshotTabContent.innerHTML = '';
+
+    if (screenshots && screenshots.length > 0) {
+      const screenshotInfo = document.createElement('p');
+      screenshotInfo.className = 'tab-info';
+      screenshotInfo.textContent = `${screenshots.length} screenshot(s) will be attached:`;
+      screenshotTabContent.appendChild(screenshotInfo);
+
+      for (let index = 0; index < screenshots.length; index++) {
+        const screenshot = screenshots[index];
+
+        // Create temporary annotator to get annotated image
+        const tempCanvas = document.createElement('canvas');
+        const tempAnnotator = new Annotator(tempCanvas, screenshot.data);
+
+        // Wait for initialization
+        await tempAnnotator.initPromise;
+
+        if (screenshot.annotations && tempAnnotator.restoreState) {
+          await tempAnnotator.restoreState(screenshot.annotations);
+        }
+
+        const label = document.createElement('p');
+        label.style.cssText = 'font-weight: 600; margin-bottom: 8px; color: #333;';
+        label.textContent = screenshot.name || `Screenshot ${index + 1}`;
+
+        const img = document.createElement('img');
+        img.className = 'review-image';
+        img.src = tempAnnotator.getAnnotatedImage();
+        img.style.marginBottom = '16px';
+
+        screenshotTabContent.appendChild(label);
+        screenshotTabContent.appendChild(img);
+      }
+    } else if (annotator) {
+      // Fallback to single screenshot
+      const img = document.createElement('img');
+      img.id = 'reviewScreenshot';
+      img.className = 'review-image';
+      img.src = annotator.getAnnotatedImage();
+      screenshotTabContent.appendChild(img);
     }
 
     // Page Info Tab
@@ -1075,6 +1509,58 @@ async function populateReviewModal() {
       }
     }
 
+    // Additional Documents Tab
+    const fileInput = document.getElementById('additionalDocuments');
+    const documentsCount = fileInput && fileInput.files ? fileInput.files.length : 0;
+    document.getElementById('documentsCount').textContent = documentsCount;
+    document.getElementById('documentsCountText').textContent = documentsCount;
+
+    const documentsContainer = document.getElementById('reviewDocuments');
+    documentsContainer.innerHTML = '';
+
+    if (documentsCount === 0) {
+      documentsContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No additional documents attached</p>';
+    } else {
+      for (let i = 0; i < fileInput.files.length; i++) {
+        const file = fileInput.files[i];
+        const item = document.createElement('div');
+        item.className = 'document-item';
+
+        const header = document.createElement('div');
+        header.className = 'document-item-header';
+
+        const icon = document.createElement('span');
+        icon.className = 'document-icon';
+        icon.textContent = getFileIcon(file.type, file.name);
+
+        const name = document.createElement('span');
+        name.className = 'document-name';
+        name.textContent = file.name;
+
+        header.appendChild(icon);
+        header.appendChild(name);
+
+        const details = document.createElement('div');
+        details.className = 'document-details';
+
+        const type = document.createElement('div');
+        type.className = 'document-type';
+        type.innerHTML = `<span>📋</span><span>${file.type || 'Unknown type'}</span>`;
+
+        const size = document.createElement('div');
+        size.className = 'document-size';
+        size.innerHTML = `<span>💾</span><span>${formatFileSize(file.size)}</span>`;
+
+        details.appendChild(type);
+        details.appendChild(size);
+
+        item.appendChild(header);
+        item.appendChild(details);
+
+        documentsContainer.appendChild(item);
+      }
+    }
+
     console.log('[Annotate] Review modal populated successfully');
   } catch (error) {
     console.error('[Annotate] Error populating review modal:', error);
@@ -1093,6 +1579,179 @@ function switchTab(tabName) {
     pane.classList.remove('active');
   });
   document.getElementById(`${tabName}Tab`).classList.add('active');
+}
+
+// Update selected files list display
+function updateSelectedFilesList() {
+  const fileInput = document.getElementById('additionalDocuments');
+  const filesList = document.getElementById('selectedFilesList');
+
+  if (!fileInput || !filesList) return;
+
+  // Accumulate new files with existing ones
+  if (fileInput.files.length > 0) {
+    const newFiles = Array.from(fileInput.files);
+
+    // Check for duplicates and add only new files
+    for (const newFile of newFiles) {
+      const isDuplicate = accumulatedFiles.some(
+        existingFile => existingFile.name === newFile.name && existingFile.size === newFile.size
+      );
+
+      if (!isDuplicate) {
+        accumulatedFiles.push(newFile);
+      }
+    }
+
+    // Update the file input with all accumulated files
+    const dt = new DataTransfer();
+    for (const file of accumulatedFiles) {
+      dt.items.add(file);
+    }
+    fileInput.files = dt.files;
+  }
+
+  // Render the file list
+  filesList.innerHTML = '';
+
+  if (accumulatedFiles.length === 0) return;
+
+  for (let i = 0; i < accumulatedFiles.length; i++) {
+    const file = accumulatedFiles[i];
+
+    const item = document.createElement('div');
+    item.className = 'selected-file-item';
+
+    const fileInfo = document.createElement('div');
+    fileInfo.className = 'file-info';
+
+    const icon = document.createElement('span');
+    icon.className = 'file-icon';
+    icon.textContent = getFileIcon(file.type, file.name);
+
+    const details = document.createElement('div');
+    details.className = 'file-details';
+
+    const name = document.createElement('div');
+    name.className = 'file-name';
+    name.textContent = file.name;
+    name.title = file.name;
+
+    const size = document.createElement('div');
+    size.className = 'file-size';
+    size.textContent = formatFileSize(file.size);
+
+    details.appendChild(name);
+    details.appendChild(size);
+
+    fileInfo.appendChild(icon);
+    fileInfo.appendChild(details);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'file-remove-btn';
+    removeBtn.textContent = 'Remove';
+    removeBtn.type = 'button';
+    removeBtn.onclick = () => removeFile(i);
+
+    item.appendChild(fileInfo);
+    item.appendChild(removeBtn);
+
+    filesList.appendChild(item);
+  }
+}
+
+// Remove file from the list
+function removeFile(index) {
+  const fileInput = document.getElementById('additionalDocuments');
+  if (!fileInput) return;
+
+  // Remove from accumulated files array
+  accumulatedFiles.splice(index, 1);
+
+  // Update file input with remaining files
+  const dt = new DataTransfer();
+  for (const file of accumulatedFiles) {
+    dt.items.add(file);
+  }
+
+  fileInput.files = dt.files;
+
+  // Re-render the list
+  const filesList = document.getElementById('selectedFilesList');
+  if (!filesList) return;
+
+  filesList.innerHTML = '';
+
+  if (accumulatedFiles.length === 0) return;
+
+  for (let i = 0; i < accumulatedFiles.length; i++) {
+    const file = accumulatedFiles[i];
+
+    const item = document.createElement('div');
+    item.className = 'selected-file-item';
+
+    const fileInfo = document.createElement('div');
+    fileInfo.className = 'file-info';
+
+    const icon = document.createElement('span');
+    icon.className = 'file-icon';
+    icon.textContent = getFileIcon(file.type, file.name);
+
+    const details = document.createElement('div');
+    details.className = 'file-details';
+
+    const name = document.createElement('div');
+    name.className = 'file-name';
+    name.textContent = file.name;
+    name.title = file.name;
+
+    const size = document.createElement('div');
+    size.className = 'file-size';
+    size.textContent = formatFileSize(file.size);
+
+    details.appendChild(name);
+    details.appendChild(size);
+
+    fileInfo.appendChild(icon);
+    fileInfo.appendChild(details);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'file-remove-btn';
+    removeBtn.textContent = 'Remove';
+    removeBtn.type = 'button';
+    removeBtn.onclick = () => removeFile(i);
+
+    item.appendChild(fileInfo);
+    item.appendChild(removeBtn);
+
+    filesList.appendChild(item);
+  }
+}
+
+// Get file icon based on file type
+function getFileIcon(type, filename) {
+  if (type.startsWith('image/')) return '🖼️';
+  if (type.startsWith('video/')) return '🎥';
+  if (type.startsWith('audio/')) return '🎵';
+  if (type.includes('pdf')) return '📄';
+  if (type.includes('zip') || type.includes('rar') || type.includes('7z')) return '📦';
+  if (type.includes('word') || filename.endsWith('.doc') || filename.endsWith('.docx')) return '📝';
+  if (type.includes('excel') || filename.endsWith('.xls') || filename.endsWith('.xlsx')) return '📊';
+  if (type.includes('powerpoint') || filename.endsWith('.ppt') || filename.endsWith('.pptx')) return '📽️';
+  if (type.includes('text') || filename.endsWith('.txt')) return '📃';
+  if (type.includes('json') || filename.endsWith('.json')) return '📋';
+  if (type.includes('xml') || filename.endsWith('.xml')) return '📋';
+  if (filename.endsWith('.log')) return '📜';
+  return '📎';
+}
+
+// Format file size
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 
 // Close review modal

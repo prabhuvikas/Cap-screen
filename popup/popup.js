@@ -177,10 +177,22 @@ async function captureScreenshot(type) {
 
     showStatus('captureStatus', 'Screenshot captured successfully!', 'success');
 
-    // Save screenshot to session storage
+    // Save screenshot to session storage (use new multi-screenshot format)
+    const newScreenshot = {
+      id: Date.now().toString(36) + Math.random().toString(36).substring(2),
+      data: screenshotDataUrl,
+      annotations: null,
+      timestamp: Date.now(),
+      tabId: currentTab.id,
+      name: 'Screenshot 1'
+    };
+
     await chrome.storage.session.set({
-      screenshotData: screenshotDataUrl,
-      tabId: currentTab.id
+      screenshots: [newScreenshot],
+      currentScreenshotId: newScreenshot.id,
+      tabId: currentTab.id,
+      // Keep old format for backward compatibility
+      screenshotData: screenshotDataUrl
     });
 
     // Open annotation page in new tab
