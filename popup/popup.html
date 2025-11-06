@@ -20,24 +20,43 @@
     <main id="mainContent">
       <!-- Step 1: Capture Screenshot -->
       <section id="captureSection" class="section active">
-        <h2>1. Capture Screenshot or Video</h2>
-        <div class="button-group">
-          <button id="captureViewport" class="btn btn-primary">
-            📸 Capture Viewport
-          </button>
-          <button id="captureFullPage" class="btn btn-secondary">
-            📄 Capture Full Page
-          </button>
+        <div class="welcome-header">
+          <h2>Create Issue Report</h2>
+          <p class="welcome-text">Choose how you want to capture the issue</p>
         </div>
-        <div class="button-group">
-          <button id="startRecording" class="btn btn-primary">
-            🎥 Start Video Recording
-          </button>
+
+        <div class="capture-options">
+          <!-- Screenshot Options -->
+          <div class="capture-card">
+            <div class="card-icon">📸</div>
+            <h3>Take Screenshot</h3>
+            <p class="card-description">Capture the current page state with annotation tools</p>
+            <div class="card-buttons">
+              <button id="captureViewport" class="btn btn-primary btn-block">
+                Capture Visible Area
+              </button>
+              <button id="captureFullPage" class="btn btn-secondary btn-block">
+                Capture Full Page
+              </button>
+            </div>
+          </div>
+
+          <!-- Video Recording Option -->
+          <div class="capture-card">
+            <div class="card-icon">🎥</div>
+            <h3>Record Video</h3>
+            <p class="card-description">Record screen activity to demonstrate the issue</p>
+            <button id="startRecording" class="btn btn-primary btn-block">
+              Start Recording
+            </button>
+            <div class="info-note">
+              <span class="info-icon">💡</span>
+              <span>Recording toolbar will appear in the top-right corner</span>
+            </div>
+          </div>
         </div>
+
         <div id="recordingStatus" class="status-message"></div>
-        <div class="info-box" style="font-size: 12px; color: #666; margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px;">
-          💡 Recording will start and this window will close. A recording toolbar will appear in the top-right corner of the page. Click "Stop" to finish recording.
-        </div>
         <div id="captureStatus" class="status-message"></div>
       </section>
 
