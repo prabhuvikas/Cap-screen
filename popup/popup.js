@@ -243,26 +243,18 @@ async function startVideoRecording() {
       console.log('Recording overlay script already injected or error:', e.message);
     }
 
-    // Get the tab's stream ID using chrome.tabCapture
-    const streamId = await new Promise((resolve, reject) => {
-      chrome.tabCapture.getMediaStreamId({
-        targetTabId: currentTab.id
-      }, (streamId) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else {
-          resolve(streamId);
-        }
-      });
-    });
-
-    // Send message to content script to start recording
-    const response = await chrome.tabs.sendMessage(currentTab.id, {
-      action: 'startRecording',
-      streamId: streamId
+    // Start tab capture in background
+    const response = await chrome.runtime.sendMessage({
+      action: 'startTabCapture',
+      tabId: currentTab.id
     });
 
     if (response && response.success) {
+      // Tell content script to show the overlay UI
+      await chrome.tabs.sendMessage(currentTab.id, {
+        action: 'showRecordingOverlay'
+      });
+
       // Close the popup - recording will continue in the background
       window.close();
     } else {

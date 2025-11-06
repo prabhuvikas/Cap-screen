@@ -2,6 +2,10 @@
 
 let networkRequests = {};
 let consoleLogs = {};
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordingStream = null;
+let recordingTabId = null;
 
 // Clean up old data periodically
 setInterval(() => {
@@ -141,6 +145,106 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ success: true, tabId: tab.id });
     });
     return true; // Keep channel open for async response
+  }
+
+  if (request.action === 'startTabCapture') {
+    const tabId = request.tabId;
+    recordingTabId = tabId;
+
+    chrome.tabCapture.capture({
+      audio: false,
+      video: true,
+      videoConstraints: {
+        mandatory: {
+          minWidth: 1280,
+          minHeight: 720,
+          maxWidth: 1920,
+          maxHeight: 1080,
+          maxFrameRate: 30
+        }
+      }
+    }, (stream) => {
+      if (chrome.runtime.lastError) {
+        console.error('Tab capture error:', chrome.runtime.lastError);
+        sendResponse({ success: false, error: chrome.runtime.lastError.message });
+        return;
+      }
+
+      if (!stream) {
+        sendResponse({ success: false, error: 'No stream returned' });
+        return;
+      }
+
+      recordingStream = stream;
+      recordedChunks = [];
+
+      // Create MediaRecorder
+      try {
+        mediaRecorder = new MediaRecorder(stream, {
+          mimeType: 'video/webm;codecs=vp9',
+          videoBitsPerSecond: 2500000
+        });
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          // Create blob from recorded chunks
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+
+          // Convert blob to data URL
+          const reader = new FileReader();
+          reader.onloadend = async () => {
+            const videoDataUrl = reader.result;
+
+            // Save to session storage
+            await chrome.storage.session.set({
+              videoRecording: videoDataUrl,
+              hasVideoRecording: true
+            });
+
+            // Stop all tracks
+            if (recordingStream) {
+              recordingStream.getTracks().forEach(track => track.stop());
+              recordingStream = null;
+            }
+
+            // Notify content script that recording stopped
+            try {
+              await chrome.tabs.sendMessage(recordingTabId, {
+                action: 'recordingStopped'
+              });
+            } catch (e) {
+              console.log('Could not notify content script:', e);
+            }
+
+            recordingTabId = null;
+          };
+          reader.readAsDataURL(blob);
+        };
+
+        mediaRecorder.start();
+        sendResponse({ success: true });
+      } catch (error) {
+        console.error('MediaRecorder error:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    });
+
+    return true; // Keep channel open for async response
+  }
+
+  if (request.action === 'stopTabCapture') {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+      sendResponse({ success: true });
+    } else {
+      sendResponse({ success: false, error: 'No active recording' });
+    }
+    return true;
   }
 
   return true; // Keep channel open for async response

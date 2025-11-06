@@ -3,59 +3,17 @@
 class RecordingOverlay {
   constructor() {
     this.overlay = null;
-    this.mediaRecorder = null;
-    this.recordedChunks = [];
-    this.stream = null;
     this.startTime = null;
     this.timerInterval = null;
+    this.isRecording = false;
   }
 
-  async startRecording(streamId) {
-    try {
-      // Get the media stream
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          mandatory: {
-            chromeMediaSource: 'tab',
-            chromeMediaSourceId: streamId
-          }
-        }
-      });
-
-      // Reset recorded chunks
-      this.recordedChunks = [];
-
-      // Create MediaRecorder
-      this.mediaRecorder = new MediaRecorder(this.stream, {
-        mimeType: 'video/webm;codecs=vp9'
-      });
-
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          this.recordedChunks.push(event.data);
-        }
-      };
-
-      this.mediaRecorder.onstop = async () => {
-        await this.handleRecordingStop();
-      };
-
-      // Start recording
-      this.mediaRecorder.start();
-      this.startTime = Date.now();
-
-      // Show overlay
-      this.showOverlay();
-
-      // Start timer
-      this.startTimer();
-
-      return { success: true };
-    } catch (error) {
-      console.error('Error starting recording:', error);
-      return { success: false, error: error.message };
-    }
+  showRecordingOverlay() {
+    this.startTime = Date.now();
+    this.isRecording = true;
+    this.showOverlay();
+    this.startTimer();
+    return { success: true };
   }
 
   showOverlay() {
@@ -161,72 +119,64 @@ class RecordingOverlay {
     }, 1000);
   }
 
-  stopRecording() {
-    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      this.mediaRecorder.stop();
+  async stopRecording() {
+    if (!this.isRecording) return;
 
-      // Stop timer
-      if (this.timerInterval) {
-        clearInterval(this.timerInterval);
-        this.timerInterval = null;
-      }
+    // Stop timer
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+      this.timerInterval = null;
+    }
+
+    // Show stopping message
+    const timerEl = document.getElementById('recording-timer');
+    if (timerEl) {
+      timerEl.textContent = 'Stopping...';
+    }
+
+    // Tell background to stop recording
+    const response = await chrome.runtime.sendMessage({
+      action: 'stopTabCapture'
+    });
+
+    if (response && response.success) {
+      this.isRecording = false;
     }
   }
 
-  async handleRecordingStop() {
-    // Create blob from recorded chunks
-    const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+  async handleRecordingStopped() {
+    // Remove overlay
+    this.removeOverlay();
 
-    // Convert blob to data URL
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const videoDataUrl = reader.result;
+    // Take a screenshot automatically
+    const response = await chrome.runtime.sendMessage({
+      action: 'captureScreenshot'
+    });
 
-      // Save to session storage
+    if (response && response.success) {
+      // Save screenshot and open annotation page
+      const screenshotData = response.screenshot;
+      const newScreenshot = {
+        id: Date.now().toString(36) + Math.random().toString(36).substring(2),
+        data: screenshotData,
+        annotations: null,
+        timestamp: Date.now(),
+        tabId: response.tabId,
+        name: 'Screenshot 1'
+      };
+
       await chrome.storage.session.set({
-        videoRecording: videoDataUrl,
-        hasVideoRecording: true
+        screenshots: [newScreenshot],
+        currentScreenshotId: newScreenshot.id,
+        tabId: response.tabId,
+        screenshotData: screenshotData
       });
 
-      // Stop all tracks
-      if (this.stream) {
-        this.stream.getTracks().forEach(track => track.stop());
-      }
-
-      // Remove overlay
-      this.removeOverlay();
-
-      // Take a screenshot automatically
-      const response = await chrome.runtime.sendMessage({
-        action: 'captureScreenshot'
+      // Open annotation page
+      await chrome.runtime.sendMessage({
+        action: 'openAnnotationPage'
       });
-
-      if (response && response.success) {
-        // Save screenshot and open annotation page
-        const screenshotData = response.screenshot;
-        const newScreenshot = {
-          id: Date.now().toString(36) + Math.random().toString(36).substring(2),
-          data: screenshotData,
-          annotations: null,
-          timestamp: Date.now(),
-          tabId: response.tabId,
-          name: 'Screenshot 1'
-        };
-
-        await chrome.storage.session.set({
-          screenshots: [newScreenshot],
-          currentScreenshotId: newScreenshot.id,
-          tabId: response.tabId,
-          screenshotData: screenshotData
-        });
-
-        // Open annotation page
-        await chrome.runtime.sendMessage({
-          action: 'openAnnotationPage'
-        });
-      }
-    };
-    reader.readAsDataURL(blob);
+    }
   }
 
   removeOverlay() {
@@ -240,13 +190,15 @@ class RecordingOverlay {
 // Global instance
 let recordingOverlay = new RecordingOverlay();
 
-// Listen for messages from popup
+// Listen for messages from popup and background
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'startRecording') {
-    recordingOverlay.startRecording(request.streamId).then(sendResponse);
-    return true; // Keep channel open for async response
-  } else if (request.action === 'stopRecording') {
-    recordingOverlay.stopRecording();
+  if (request.action === 'showRecordingOverlay') {
+    const result = recordingOverlay.showRecordingOverlay();
+    sendResponse(result);
+    return true;
+  } else if (request.action === 'recordingStopped') {
+    // Called by background when recording actually stops
+    recordingOverlay.handleRecordingStopped();
     sendResponse({ success: true });
     return true;
   }
