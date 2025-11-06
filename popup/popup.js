@@ -8,6 +8,10 @@ let pageInfo = {};
 let networkRequests = [];
 let consoleLogs = [];
 let redmineAPI = null;
+let mediaRecorder = null;
+let recordedChunks = [];
+let videoDataUrl = null;
+let isRecording = false;
 
 // Sanitize text to remove unicode/emoji characters that cause 500 errors
 // Redmine with standard UTF-8 (not utf8mb4) cannot handle 4-byte UTF-8 characters
@@ -88,6 +92,10 @@ function setupEventListeners() {
   // Screenshot capture
   document.getElementById('captureViewport').addEventListener('click', () => captureScreenshot('viewport'));
   document.getElementById('captureFullPage').addEventListener('click', () => captureScreenshot('fullpage'));
+
+  // Video recording
+  document.getElementById('startRecording').addEventListener('click', startVideoRecording);
+  document.getElementById('stopRecording').addEventListener('click', stopVideoRecording);
 
   // Annotation tools
   document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -213,6 +221,108 @@ async function captureScreenshot(type) {
     showStatus('captureStatus', `Error: ${error.message}`, 'error');
   } finally {
     button.disabled = false;
+  }
+}
+
+// Start video recording
+async function startVideoRecording() {
+  const startBtn = document.getElementById('startRecording');
+  const stopBtn = document.getElementById('stopRecording');
+  const statusEl = document.getElementById('recordingStatus');
+
+  try {
+    startBtn.disabled = true;
+    showStatus('recordingStatus', 'Starting video recording...', 'info');
+
+    // Get the tab's stream using chrome.tabCapture
+    const streamId = await new Promise((resolve, reject) => {
+      chrome.tabCapture.getMediaStreamId({
+        targetTabId: currentTab.id
+      }, (streamId) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(streamId);
+        }
+      });
+    });
+
+    // Get the media stream
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        mandatory: {
+          chromeMediaSource: 'tab',
+          chromeMediaSourceId: streamId
+        }
+      }
+    });
+
+    // Reset recorded chunks
+    recordedChunks = [];
+
+    // Create MediaRecorder
+    mediaRecorder = new MediaRecorder(stream, {
+      mimeType: 'video/webm;codecs=vp9'
+    });
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        recordedChunks.push(event.data);
+      }
+    };
+
+    mediaRecorder.onstop = async () => {
+      // Create blob from recorded chunks
+      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+
+      // Convert blob to data URL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        videoDataUrl = reader.result;
+        showStatus('recordingStatus', 'Video recorded successfully! Continue to report.', 'success');
+      };
+      reader.readAsDataURL(blob);
+
+      // Stop all tracks
+      stream.getTracks().forEach(track => track.stop());
+    };
+
+    // Start recording
+    mediaRecorder.start();
+    isRecording = true;
+
+    // Update UI
+    startBtn.style.display = 'none';
+    stopBtn.style.display = 'inline-block';
+    showStatus('recordingStatus', '🔴 Recording... Click "Stop Recording" when done.', 'info');
+
+  } catch (error) {
+    console.error('Error starting video recording:', error);
+    showStatus('recordingStatus', `Error: ${error.message}`, 'error');
+    startBtn.disabled = false;
+  }
+}
+
+// Stop video recording
+async function stopVideoRecording() {
+  const startBtn = document.getElementById('startRecording');
+  const stopBtn = document.getElementById('stopRecording');
+
+  try {
+    if (mediaRecorder && isRecording) {
+      showStatus('recordingStatus', 'Stopping recording...', 'info');
+      mediaRecorder.stop();
+      isRecording = false;
+
+      // Update UI
+      stopBtn.style.display = 'none';
+      startBtn.style.display = 'inline-block';
+      startBtn.disabled = false;
+    }
+  } catch (error) {
+    console.error('Error stopping video recording:', error);
+    showStatus('recordingStatus', `Error: ${error.message}`, 'error');
   }
 }
 
@@ -503,6 +613,15 @@ async function actuallySubmitBugReport() {
       });
     }
 
+    // Add recorded video if available
+    if (videoDataUrl) {
+      attachments.push({
+        data: videoDataUrl,
+        filename: `recording-${Date.now()}.webm`,
+        type: 'video/webm'
+      });
+    }
+
     // Add technical data if requested
     if (document.getElementById('attachTechnicalData').checked) {
       const technicalData = buildTechnicalData();
@@ -631,6 +750,10 @@ function buildDescription() {
   description += '\n\n## Additional Information\n';
   description += 'Detailed technical information (browser, system, network, performance data) ';
   description += 'is available in the attached technical-data.json file.\n';
+
+  if (videoDataUrl) {
+    description += '- Video recording of the issue is attached.\n';
+  }
 
   if (settings.includeNetworkRequests && networkRequests.length > 0) {
     description += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
@@ -840,6 +963,14 @@ function resetForm() {
   pageInfo = {};
   networkRequests = [];
   consoleLogs = [];
+  videoDataUrl = null;
+  recordedChunks = [];
+  isRecording = false;
+
+  // Reset recording UI
+  document.getElementById('startRecording').style.display = 'inline-block';
+  document.getElementById('stopRecording').style.display = 'none';
+  document.getElementById('recordingStatus').textContent = '';
 
   document.getElementById('bugReportForm').reset();
   showSection('captureSection');
@@ -954,6 +1085,17 @@ async function populateReviewModal() {
     // Screenshot Tab
     if (annotator) {
       document.getElementById('reviewScreenshot').src = annotator.getAnnotatedImage();
+    }
+
+    // Video Tab
+    const videoTabBtn = document.getElementById('videoTabBtn');
+    const reviewVideo = document.getElementById('reviewVideo');
+    if (videoDataUrl) {
+      videoTabBtn.style.display = 'inline-block';
+      reviewVideo.src = videoDataUrl;
+    } else {
+      videoTabBtn.style.display = 'none';
+      reviewVideo.src = '';
     }
 
     // Page Info Tab - Format for better readability

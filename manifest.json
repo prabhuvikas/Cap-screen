@@ -9,7 +9,8 @@
     "tabs",
     "webRequest",
     "debugger",
-    "scripting"
+    "scripting",
+    "tabCapture"
   ],
   "host_permissions": [
     "<all_urls>"
