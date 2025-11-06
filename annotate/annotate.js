@@ -189,6 +189,9 @@ function setupEventListeners() {
   document.getElementById('project').addEventListener('change', onProjectChange);
   document.getElementById('bugReportForm').addEventListener('submit', submitBugReport);
 
+  // Additional Documents
+  document.getElementById('additionalDocuments').addEventListener('change', updateSelectedFilesList);
+
   // Success/Error
   document.getElementById('closeAfterSuccess').addEventListener('click', () => window.close());
   document.getElementById('closeAfterError').addEventListener('click', () => window.close());
@@ -1504,6 +1507,58 @@ async function populateReviewModal() {
       }
     }
 
+    // Additional Documents Tab
+    const fileInput = document.getElementById('additionalDocuments');
+    const documentsCount = fileInput && fileInput.files ? fileInput.files.length : 0;
+    document.getElementById('documentsCount').textContent = documentsCount;
+    document.getElementById('documentsCountText').textContent = documentsCount;
+
+    const documentsContainer = document.getElementById('reviewDocuments');
+    documentsContainer.innerHTML = '';
+
+    if (documentsCount === 0) {
+      documentsContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No additional documents attached</p>';
+    } else {
+      for (let i = 0; i < fileInput.files.length; i++) {
+        const file = fileInput.files[i];
+        const item = document.createElement('div');
+        item.className = 'document-item';
+
+        const header = document.createElement('div');
+        header.className = 'document-item-header';
+
+        const icon = document.createElement('span');
+        icon.className = 'document-icon';
+        icon.textContent = getFileIcon(file.type, file.name);
+
+        const name = document.createElement('span');
+        name.className = 'document-name';
+        name.textContent = file.name;
+
+        header.appendChild(icon);
+        header.appendChild(name);
+
+        const details = document.createElement('div');
+        details.className = 'document-details';
+
+        const type = document.createElement('div');
+        type.className = 'document-type';
+        type.innerHTML = `<span>📋</span><span>${file.type || 'Unknown type'}</span>`;
+
+        const size = document.createElement('div');
+        size.className = 'document-size';
+        size.innerHTML = `<span>💾</span><span>${formatFileSize(file.size)}</span>`;
+
+        details.appendChild(type);
+        details.appendChild(size);
+
+        item.appendChild(header);
+        item.appendChild(details);
+
+        documentsContainer.appendChild(item);
+      }
+    }
+
     console.log('[Annotate] Review modal populated successfully');
   } catch (error) {
     console.error('[Annotate] Error populating review modal:', error);
@@ -1522,6 +1577,105 @@ function switchTab(tabName) {
     pane.classList.remove('active');
   });
   document.getElementById(`${tabName}Tab`).classList.add('active');
+}
+
+// Update selected files list display
+function updateSelectedFilesList() {
+  const fileInput = document.getElementById('additionalDocuments');
+  const filesList = document.getElementById('selectedFilesList');
+
+  if (!fileInput || !filesList) return;
+
+  filesList.innerHTML = '';
+
+  if (fileInput.files.length === 0) return;
+
+  for (let i = 0; i < fileInput.files.length; i++) {
+    const file = fileInput.files[i];
+
+    const item = document.createElement('div');
+    item.className = 'selected-file-item';
+
+    const fileInfo = document.createElement('div');
+    fileInfo.className = 'file-info';
+
+    const icon = document.createElement('span');
+    icon.className = 'file-icon';
+    icon.textContent = getFileIcon(file.type, file.name);
+
+    const details = document.createElement('div');
+    details.className = 'file-details';
+
+    const name = document.createElement('div');
+    name.className = 'file-name';
+    name.textContent = file.name;
+    name.title = file.name;
+
+    const size = document.createElement('div');
+    size.className = 'file-size';
+    size.textContent = formatFileSize(file.size);
+
+    details.appendChild(name);
+    details.appendChild(size);
+
+    fileInfo.appendChild(icon);
+    fileInfo.appendChild(details);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'file-remove-btn';
+    removeBtn.textContent = 'Remove';
+    removeBtn.type = 'button';
+    removeBtn.onclick = () => removeFile(i);
+
+    item.appendChild(fileInfo);
+    item.appendChild(removeBtn);
+
+    filesList.appendChild(item);
+  }
+}
+
+// Remove file from the list
+function removeFile(index) {
+  const fileInput = document.getElementById('additionalDocuments');
+  if (!fileInput) return;
+
+  const dt = new DataTransfer();
+  const files = fileInput.files;
+
+  for (let i = 0; i < files.length; i++) {
+    if (i !== index) {
+      dt.items.add(files[i]);
+    }
+  }
+
+  fileInput.files = dt.files;
+  updateSelectedFilesList();
+}
+
+// Get file icon based on file type
+function getFileIcon(type, filename) {
+  if (type.startsWith('image/')) return '🖼️';
+  if (type.startsWith('video/')) return '🎥';
+  if (type.startsWith('audio/')) return '🎵';
+  if (type.includes('pdf')) return '📄';
+  if (type.includes('zip') || type.includes('rar') || type.includes('7z')) return '📦';
+  if (type.includes('word') || filename.endsWith('.doc') || filename.endsWith('.docx')) return '📝';
+  if (type.includes('excel') || filename.endsWith('.xls') || filename.endsWith('.xlsx')) return '📊';
+  if (type.includes('powerpoint') || filename.endsWith('.ppt') || filename.endsWith('.pptx')) return '📽️';
+  if (type.includes('text') || filename.endsWith('.txt')) return '📃';
+  if (type.includes('json') || filename.endsWith('.json')) return '📋';
+  if (type.includes('xml') || filename.endsWith('.xml')) return '📋';
+  if (filename.endsWith('.log')) return '📜';
+  return '📎';
+}
+
+// Format file size
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 
 // Close review modal

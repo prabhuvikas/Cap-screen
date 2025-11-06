@@ -202,6 +202,7 @@
                   <small style="display: block; margin-top: 4px; color: #666;">
                     Upload additional files (PDFs, documents, images, logs, etc.)
                   </small>
+                  <div id="selectedFilesList" class="selected-files-list"></div>
                 </div>
               </div>
 
@@ -284,6 +285,7 @@
             <button class="tab-btn" data-tab="pageInfo">Page Info</button>
             <button class="tab-btn" data-tab="network">Network (<span id="networkCount">0</span>)</button>
             <button class="tab-btn" data-tab="console">Console (<span id="consoleCount">0</span>)</button>
+            <button class="tab-btn" data-tab="documents">Documents (<span id="documentsCount">0</span>)</button>
           </div>
 
           <!-- Tab Content -->
@@ -351,6 +353,15 @@
                 <p class="tab-info"><span id="consoleCountText">0</span> console logs captured</p>
                 <p class="tab-info" style="color: #4CAF50; font-size: 12px;">📎 Will be attached as text file (console-logs-*.txt)</p>
                 <div id="reviewConsole" class="data-list"></div>
+              </div>
+            </div>
+
+            <!-- Additional Documents Tab -->
+            <div id="documentsTab" class="tab-pane">
+              <div class="review-section">
+                <p class="tab-info"><span id="documentsCountText">0</span> additional document(s) selected</p>
+                <p class="tab-info" style="color: #4CAF50; font-size: 12px;">📎 Will be attached with original filenames</p>
+                <div id="reviewDocuments" class="data-list"></div>
               </div>
             </div>
           </div>
