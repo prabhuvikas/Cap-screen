@@ -122,11 +122,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Setup event listeners
     setupEventListeners();
 
-    // Initialize annotation with current screenshot
-    initializeAnnotation();
-
-    // Update screenshots list UI
-    updateScreenshotsList();
+    // If we have a video recording, skip annotation and go directly to report
+    if (videoDataUrl) {
+      console.log('[Annotate] Video recording detected, skipping annotation and going directly to report');
+      // Show loading for a moment
+      showSection('loadingSection');
+      // Initialize annotation in background (needed for rendering screenshots)
+      await initializeAnnotationSilent();
+      // Go directly to report section
+      await continueToReport();
+    } else {
+      // Initialize annotation with current screenshot
+      initializeAnnotation();
+      // Update screenshots list UI
+      updateScreenshotsList();
+    }
 
   } catch (error) {
     console.error('[Annotate] Initialization error:', error);
@@ -247,6 +257,29 @@ async function initializeAnnotation() {
   showSection('annotateSection');
 
   console.log('[Annotate] Annotation initialized successfully');
+}
+
+// Initialize annotation silently (without showing the section)
+// Used when we want to skip annotation but still need annotator for rendering
+async function initializeAnnotationSilent() {
+  console.log('[Annotate] Initializing annotation canvas silently...');
+
+  const currentScreenshot = screenshots.find(s => s.id === currentScreenshotId);
+  if (!currentScreenshot) {
+    console.error('[Annotate] Current screenshot not found');
+    return;
+  }
+
+  screenshotDataUrl = currentScreenshot.data;
+
+  const canvas = document.getElementById('annotationCanvas');
+  annotator = new Annotator(canvas, screenshotDataUrl);
+
+  // Wait for annotator to be initialized
+  await annotator.initPromise;
+  console.log('[Annotate] Annotator initialized silently');
+
+  // No need to restore annotations or show section
 }
 
 // Select annotation tool
@@ -1290,6 +1323,32 @@ async function populateReviewModal() {
 
     const reviewDescriptionText = document.getElementById('reviewDescriptionText');
     reviewDescriptionText.value = buildDescription();
+
+    // Video Tab - Show if video recording exists
+    if (videoDataUrl) {
+      // Show video tab button
+      const videoTabBtn = document.querySelector('[data-tab="video"]');
+      if (videoTabBtn) {
+        videoTabBtn.style.display = 'inline-block';
+      }
+
+      // Populate video tab
+      const videoTabContent = document.getElementById('videoTab');
+      if (videoTabContent) {
+        const videoSection = videoTabContent.querySelector('.review-section');
+        if (!videoSection) {
+          const section = document.createElement('div');
+          section.className = 'review-section';
+          videoTabContent.appendChild(section);
+        }
+
+        const section = videoTabContent.querySelector('.review-section');
+        section.innerHTML = `
+          <p class="tab-info">Recorded video that will be attached:</p>
+          <video class="review-image" controls src="${videoDataUrl}"></video>
+        `;
+      }
+    }
 
     // Screenshot Tab - Show all screenshots
     const screenshotTabContent = document.getElementById('screenshotTab').querySelector('.review-section');
