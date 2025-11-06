@@ -2011,7 +2011,10 @@ function closeReviewModal() {
 
 // Open settings
 function openSettings() {
-  chrome.runtime.openOptionsPage();
+  // Always open settings in a new tab
+  chrome.tabs.create({
+    url: chrome.runtime.getURL('options/options.html')
+  });
 }
 
 // Show section
