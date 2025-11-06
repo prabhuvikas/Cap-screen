@@ -408,6 +408,10 @@ function selectTool(tool, buttonElement) {
   // Update canvas cursor based on tool
   const canvas = document.getElementById('annotationCanvas');
   canvas.classList.remove('move-cursor', 'grab-cursor', 'grabbing-cursor', 'text-cursor', 'pan-cursor');
+
+  // Clear any inline cursor styles that might override CSS
+  canvas.style.cursor = '';
+
   if (tool === 'move') {
     canvas.classList.add('grab-cursor');
   } else if (tool === 'text') {
@@ -415,6 +419,7 @@ function selectTool(tool, buttonElement) {
   } else if (tool === 'pan') {
     canvas.classList.add('pan-cursor');
   }
+  // All other tools (pen, rectangle, circle, arrow, blackout) will use the default crosshair cursor
 }
 
 // Update zoom display

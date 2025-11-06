@@ -96,7 +96,8 @@ class Annotator {
       this.panStartScrollX = container.scrollLeft;
       this.panStartScrollY = container.scrollTop;
 
-      this.canvas.style.cursor = 'grabbing';
+      this.canvas.classList.remove('pan-cursor');
+      this.canvas.classList.add('grabbing-cursor');
       e.preventDefault();
       return;
     } else if (this.currentTool === 'move') {
@@ -223,7 +224,8 @@ class Annotator {
   async handleMouseUp(e) {
     if (this.currentTool === 'pan' && this.isPanning) {
       this.isPanning = false;
-      this.canvas.style.cursor = 'grab';
+      this.canvas.classList.remove('grabbing-cursor');
+      this.canvas.classList.add('pan-cursor');
       return;
     }
 

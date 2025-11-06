@@ -223,30 +223,30 @@ main {
 
 #annotationCanvas {
   display: block;
-  cursor: crosshair;
+  cursor: crosshair; /* Default cursor for drawing tools (pen, rectangle, circle, arrow, blackout) */
   max-width: 100%;
   max-height: calc(100vh - 350px);
   transition: transform 0.2s ease;
 }
 
 #annotationCanvas.move-cursor {
-  cursor: move;
+  cursor: move !important;
 }
 
 #annotationCanvas.grab-cursor {
-  cursor: grab;
+  cursor: grab !important;
 }
 
 #annotationCanvas.grabbing-cursor {
-  cursor: grabbing;
+  cursor: grabbing !important;
 }
 
 #annotationCanvas.text-cursor {
-  cursor: text;
+  cursor: text !important;
 }
 
 #annotationCanvas.pan-cursor {
-  cursor: grab;
+  cursor: grab !important;
 }
 
 /* Annotation toolbar at bottom */
