@@ -91,9 +91,24 @@
                     <span class="tool-icon">👆</span>
                     <span class="tool-label">Pan</span>
                   </button>
+                  <button class="tool-btn" data-tool="crop" title="Crop Screenshot">
+                    <span class="tool-icon">✂️</span>
+                    <span class="tool-label">Crop</span>
+                  </button>
                 </div>
 
                 <div class="toolbar-divider"></div>
+
+                <div id="cropControls" class="crop-controls-horizontal" style="display: none;">
+                  <button id="applyCrop" class="btn btn-primary btn-small">
+                    ✓ Apply Crop
+                  </button>
+                  <button id="cancelCrop" class="btn btn-secondary btn-small">
+                    ✕ Cancel
+                  </button>
+                </div>
+
+                <div class="toolbar-divider" id="cropDivider" style="display: none;"></div>
 
                 <div class="tool-controls-horizontal">
                   <div class="control-group">

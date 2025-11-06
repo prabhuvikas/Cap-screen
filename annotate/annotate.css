@@ -249,6 +249,10 @@ main {
   cursor: grab !important;
 }
 
+#annotationCanvas.crop-cursor {
+  cursor: crosshair !important;
+}
+
 /* Annotation toolbar at bottom */
 .annotation-toolbar-bottom {
   background: #ffffff;
@@ -294,6 +298,12 @@ main {
   font-weight: 600;
   color: #1a1a1a;
   font-size: 14px;
+}
+
+.crop-controls-horizontal {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .toolbar-divider {
