@@ -217,7 +217,6 @@ function setupEventListeners() {
   // Navigation
   document.getElementById('continueToReport').addEventListener('click', continueToReport);
   document.getElementById('backToAnnotate').addEventListener('click', () => showSection('annotateSection'));
-  document.getElementById('backToAnnotateBtn').addEventListener('click', () => showSection('annotateSection'));
 
   // Form
   document.getElementById('project').addEventListener('change', onProjectChange);

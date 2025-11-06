@@ -125,10 +125,16 @@
       <!-- Step 2: Fill Bug Report -->
       <section id="reportSection" class="section hidden">
         <div class="section-header">
-          <h2>2. Issue Report Details</h2>
-          <button id="backToAnnotate" class="btn btn-secondary">
-            ← Back to Annotations
-          </button>
+          <h2>2. Issue Details</h2>
+          <div class="header-actions">
+            <button id="backToAnnotate" class="btn btn-secondary">
+              ← Back to Annotations
+            </button>
+            <button type="submit" form="bugReportForm" id="submitBtn" class="btn btn-primary">
+              <span class="btn-text">Submit Bug Report</span>
+              <span class="spinner hidden"></span>
+            </button>
+          </div>
         </div>
 
         <div class="report-wrapper">
@@ -220,22 +226,12 @@
                 </div>
               </div>
 
-              <div class="form-actions">
-                <button type="button" id="backToAnnotateBtn" class="btn btn-secondary">
-                  ← Back to Annotations
-                </button>
-                <button type="submit" id="submitBtn" class="btn btn-primary">
-                  <span class="btn-text">Submit Bug Report</span>
-                  <span class="spinner hidden"></span>
-                </button>
-              </div>
-
               <div id="submitStatus" class="status-message"></div>
             </form>
           </div>
 
           <div class="preview-container">
-            <h3>Screenshot Preview</h3>
+            <h3>Media Preview</h3>
             <div id="screenshotPreviewContainer" class="screenshot-preview-container">
               <!-- Screenshots will be dynamically added here -->
             </div>
@@ -294,7 +290,7 @@
 
           <!-- Tab Navigation -->
           <div class="tab-nav">
-            <button class="tab-btn active" data-tab="formData">Form Data</button>
+            <button class="tab-btn active" data-tab="formData">Issue Details</button>
             <button class="tab-btn" data-tab="media">Media</button>
             <button class="tab-btn" data-tab="pageInfo">Page Info</button>
             <button class="tab-btn" data-tab="network">Network (<span id="networkCount">0</span>)</button>
@@ -304,7 +300,7 @@
 
           <!-- Tab Content -->
           <div class="tab-content">
-            <!-- Form Data Tab -->
+            <!-- Issue Details Tab -->
             <div id="formDataTab" class="tab-pane active">
               <div class="review-section">
                 <p class="review-description" style="margin-bottom: 16px; color: #4CAF50;">✏️ You can edit any field below before submitting</p>
