@@ -1,4 +1,4 @@
-# Installation Guide - Chrome Bug Reporter Extension
+# Installation Guide - Cred Issue Reporter Extension
 
 ## Quick Start
 
@@ -9,17 +9,17 @@
 3. Enable **Developer mode** using the toggle in the top-right corner
 4. Click **Load unpacked** button
 5. Navigate to and select the `Cap-screen` directory (the folder containing `manifest.json`)
-6. The Bug Reporter extension should now appear in your extensions list
+6. The Issue Reporter extension should now appear in your extensions list
 
 ### Step 2: Pin the Extension (Recommended)
 
 1. Click the **Extensions** icon (puzzle piece) in Chrome toolbar
-2. Find **Chrome Bug Reporter** in the list
+2. Find **Cred Issue Reporter** in the list
 3. Click the **pin** icon to pin it to your toolbar for easy access
 
 ### Step 3: Configure Redmine Integration
 
-1. Click the **Bug Reporter** icon in your Chrome toolbar
+1. Click the **Issue Reporter** icon in your Chrome toolbar
 2. Click the **Settings** icon (⚙️) in the popup, or
 3. Right-click the extension icon and select **Options**
 4. In the settings page:
@@ -38,7 +38,7 @@
 ### Step 4: Test the Extension
 
 1. Navigate to any webpage (e.g., `https://example.com`)
-2. Click the **Bug Reporter** icon in the toolbar
+2. Click the **Issue Reporter** icon in the toolbar
 3. Click **Capture Viewport** to take a screenshot
 4. Try the annotation tools
 5. Click **Continue to Report**
@@ -47,7 +47,7 @@
 
 ## Keyboard Shortcuts
 
-- **Open Bug Reporter**: `Ctrl+Shift+B` (Windows/Linux) or `Cmd+Shift+B` (Mac)
+- **Open Issue Reporter**: `Ctrl+Shift+B` (Windows/Linux) or `Cmd+Shift+B` (Mac)
 
 ## Getting Your Redmine API Key
 
@@ -90,7 +90,7 @@ Your Redmine instance must meet these requirements:
 
 After installation, you should see:
 
-1. Bug Reporter icon in Chrome toolbar (if pinned)
+1. Issue Reporter icon in Chrome toolbar (if pinned)
 2. Extension listed in `chrome://extensions/`
 3. Ability to open the popup by clicking the icon
 4. Settings page accessible via the settings icon
@@ -130,7 +130,7 @@ When updates are available:
 
 1. Pull latest changes from repository
 2. Go to `chrome://extensions/`
-3. Click the **Reload** icon on the Bug Reporter extension
+3. Click the **Reload** icon on the Issue Reporter extension
 4. Your settings will be preserved
 
 ## Uninstalling
@@ -138,7 +138,7 @@ When updates are available:
 To remove the extension:
 
 1. Go to `chrome://extensions/`
-2. Find **Chrome Bug Reporter**
+2. Find **Cred Issue Reporter**
 3. Click **Remove**
 4. Confirm removal
 

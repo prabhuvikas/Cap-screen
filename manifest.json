@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Chrome Bug Reporter",
+  "name": "Cred Issue Reporter",
   "version": "1.0.0",
-  "description": "Comprehensive bug reporting tool with screenshot annotation and Redmine integration",
+  "description": "Comprehensive issue reporting tool with media annotation and Redmine integration",
   "permissions": [
     "activeTab",
     "storage",
@@ -41,7 +41,7 @@
         "default": "Ctrl+Shift+B",
         "mac": "Command+Shift+B"
       },
-      "description": "Open bug reporter"
+      "description": "Open issue reporter"
     }
   },
   "content_security_policy": {
