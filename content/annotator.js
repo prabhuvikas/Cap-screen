@@ -75,7 +75,11 @@ class Annotator {
 
     if (this.currentTool === 'move') {
       // Check if clicking on an annotation
+      console.log('[Annotator] Move tool clicked at', this.startX, this.startY);
+      console.log('[Annotator] Total annotations:', this.annotations.length);
       this.selectedAnnotation = this.findAnnotationAt(this.startX, this.startY);
+      console.log('[Annotator] Selected annotation:', this.selectedAnnotation);
+
       if (this.selectedAnnotation) {
         this.isDragging = true;
 
@@ -93,6 +97,8 @@ class Annotator {
         this.canvas.classList.add('grabbing-cursor');
         this.canvas.classList.remove('grab-cursor');
         this.redrawCanvas();
+      } else {
+        console.log('[Annotator] No annotation found at click position');
       }
     } else {
       this.isDrawing = true;
@@ -190,15 +196,17 @@ class Annotator {
 
     // Save annotation as object
     if (this.currentTool === 'pen' && this.currentPenStrokes && this.currentPenStrokes.length > 0) {
-      this.annotations.push({
+      const annotation = {
         type: 'pen',
         points: this.currentPenStrokes,
         color: this.currentColor,
         lineWidth: this.lineWidth
-      });
+      };
+      this.annotations.push(annotation);
+      console.log('[Annotator] Added pen annotation, total:', this.annotations.length);
       this.currentPenStrokes = null;
     } else if (['rectangle', 'circle', 'arrow', 'blackout'].includes(this.currentTool)) {
-      this.annotations.push({
+      const annotation = {
         type: this.currentTool,
         x: this.startX,
         y: this.startY,
@@ -206,7 +214,9 @@ class Annotator {
         endY: y,
         color: this.currentColor,
         lineWidth: this.lineWidth
-      });
+      };
+      this.annotations.push(annotation);
+      console.log('[Annotator] Added', this.currentTool, 'annotation, total:', this.annotations.length);
     }
 
     this.isDrawing = false;
@@ -479,6 +489,7 @@ class Annotator {
   }
 
   setTool(tool) {
+    console.log('[Annotator] Tool changed to:', tool);
     this.currentTool = tool;
   }
 
