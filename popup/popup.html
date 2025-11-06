@@ -20,7 +20,7 @@
     <main id="mainContent">
       <!-- Step 1: Capture Screenshot -->
       <section id="captureSection" class="section active">
-        <h2>1. Capture Screenshot</h2>
+        <h2>1. Capture Screenshot or Video</h2>
         <div class="button-group">
           <button id="captureViewport" class="btn btn-primary">
             📸 Capture Viewport
@@ -28,6 +28,15 @@
           <button id="captureFullPage" class="btn btn-secondary">
             📄 Capture Full Page
           </button>
+        </div>
+        <div class="button-group">
+          <button id="startRecording" class="btn btn-primary">
+            🎥 Start Video Recording
+          </button>
+        </div>
+        <div id="recordingStatus" class="status-message"></div>
+        <div class="info-box" style="font-size: 12px; color: #666; margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px;">
+          💡 Recording will start and this window will close. A recording toolbar will appear in the top-right corner of the page. Click "Stop" to finish recording.
         </div>
         <div id="captureStatus" class="status-message"></div>
       </section>
@@ -235,7 +244,7 @@
           <!-- Tab Navigation -->
           <div class="tab-nav">
             <button class="tab-btn active" data-tab="formData">Form Data</button>
-            <button class="tab-btn" data-tab="screenshot">Screenshot</button>
+            <button class="tab-btn" data-tab="media">Media</button>
             <button class="tab-btn" data-tab="pageInfo">Page Info</button>
             <button class="tab-btn" data-tab="network">Network (<span id="networkCount">0</span>)</button>
             <button class="tab-btn" data-tab="console">Console (<span id="consoleCount">0</span>)</button>
@@ -276,11 +285,10 @@
               </div>
             </div>
 
-            <!-- Screenshot Tab -->
-            <div id="screenshotTab" class="tab-pane">
+            <!-- Media Tab (Screenshots and Videos) -->
+            <div id="mediaTab" class="tab-pane">
               <div class="review-section">
-                <p class="tab-info">Annotated screenshot that will be attached:</p>
-                <img id="reviewScreenshot" class="review-image" />
+                <!-- Content will be dynamically populated with screenshots and videos -->
               </div>
             </div>
 

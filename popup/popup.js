@@ -8,6 +8,10 @@ let pageInfo = {};
 let networkRequests = [];
 let consoleLogs = [];
 let redmineAPI = null;
+let mediaRecorder = null;
+let recordedChunks = [];
+let videoDataUrl = null;
+let isRecording = false;
 
 // Sanitize text to remove unicode/emoji characters that cause 500 errors
 // Redmine with standard UTF-8 (not utf8mb4) cannot handle 4-byte UTF-8 characters
@@ -88,6 +92,9 @@ function setupEventListeners() {
   // Screenshot capture
   document.getElementById('captureViewport').addEventListener('click', () => captureScreenshot('viewport'));
   document.getElementById('captureFullPage').addEventListener('click', () => captureScreenshot('fullpage'));
+
+  // Video recording
+  document.getElementById('startRecording').addEventListener('click', startVideoRecording);
 
   // Annotation tools
   document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -214,6 +221,74 @@ async function captureScreenshot(type) {
   } finally {
     button.disabled = false;
   }
+}
+
+// Start video recording
+async function startVideoRecording() {
+  const startBtn = document.getElementById('startRecording');
+  const statusEl = document.getElementById('recordingStatus');
+
+  try {
+    startBtn.disabled = true;
+    showStatus('recordingStatus', 'Starting video recording...', 'info');
+    console.log('[Popup] Starting video recording for tab:', currentTab.id);
+
+    // Inject the recording overlay script
+    try {
+      console.log('[Popup] Injecting recording overlay script...');
+      await chrome.scripting.executeScript({
+        target: { tabId: currentTab.id },
+        files: ['content/recording-overlay.js']
+      });
+      console.log('[Popup] Recording overlay script injected');
+    } catch (e) {
+      console.log('[Popup] Recording overlay script already injected or error:', e.message);
+    }
+
+    // Start tab capture in background
+    console.log('[Popup] Sending startTabCapture message to background...');
+    const response = await chrome.runtime.sendMessage({
+      action: 'startTabCapture',
+      tabId: currentTab.id
+    });
+
+    console.log('[Popup] Response from background:', response);
+
+    if (!response) {
+      throw new Error('No response from background script');
+    }
+
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to start recording');
+    }
+
+    // Tell content script to show the overlay UI
+    try {
+      console.log('[Popup] Showing recording overlay...');
+      await chrome.tabs.sendMessage(currentTab.id, {
+        action: 'showRecordingOverlay'
+      });
+      console.log('[Popup] Recording overlay shown');
+    } catch (e) {
+      console.error('[Popup] Failed to show overlay:', e);
+      throw new Error('Failed to show recording overlay. The page may not support this feature.');
+    }
+
+    // Close the popup - recording will continue in the background
+    console.log('[Popup] Closing popup...');
+    window.close();
+
+  } catch (error) {
+    console.error('[Popup] Error starting video recording:', error);
+    showStatus('recordingStatus', `Error: ${error.message}`, 'error');
+    startBtn.disabled = false;
+  }
+}
+
+// Stop video recording (not used anymore - handled by overlay)
+async function stopVideoRecording() {
+  // This function is kept for compatibility but recording is now stopped via overlay
+  console.log('Stop recording called from popup (should use overlay instead)');
 }
 
 // Initialize annotation
@@ -503,6 +578,15 @@ async function actuallySubmitBugReport() {
       });
     }
 
+    // Add recorded video if available
+    if (videoDataUrl) {
+      attachments.push({
+        data: videoDataUrl,
+        filename: `recording-${Date.now()}.webm`,
+        type: 'video/webm'
+      });
+    }
+
     // Add technical data if requested
     if (document.getElementById('attachTechnicalData').checked) {
       const technicalData = buildTechnicalData();
@@ -631,6 +715,10 @@ function buildDescription() {
   description += '\n\n## Additional Information\n';
   description += 'Detailed technical information (browser, system, network, performance data) ';
   description += 'is available in the attached technical-data.json file.\n';
+
+  if (videoDataUrl) {
+    description += '- Video recording of the issue is attached.\n';
+  }
 
   if (settings.includeNetworkRequests && networkRequests.length > 0) {
     description += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
@@ -840,6 +928,14 @@ function resetForm() {
   pageInfo = {};
   networkRequests = [];
   consoleLogs = [];
+  videoDataUrl = null;
+  recordedChunks = [];
+  isRecording = false;
+
+  // Reset recording UI
+  document.getElementById('startRecording').style.display = 'inline-block';
+  document.getElementById('stopRecording').style.display = 'none';
+  document.getElementById('recordingStatus').textContent = '';
 
   document.getElementById('bugReportForm').reset();
   showSection('captureSection');
@@ -951,9 +1047,56 @@ async function populateReviewModal() {
 
     console.log('All editable fields populated successfully');
 
-    // Screenshot Tab
+    // Media Tab - Show screenshot and/or video
+    const mediaTabContent = document.getElementById('mediaTab').querySelector('.review-section');
+    mediaTabContent.innerHTML = '';
+
+    let hasMedia = false;
+    const mediaInfo = document.createElement('p');
+    mediaInfo.className = 'tab-info';
+    let infoText = [];
+
+    // Add screenshot if available
     if (annotator) {
-      document.getElementById('reviewScreenshot').src = annotator.getAnnotatedImage();
+      hasMedia = true;
+      infoText.push('1 screenshot');
+
+      const label = document.createElement('p');
+      label.style.cssText = 'font-weight: 600; margin-bottom: 8px; margin-top: 16px; color: #333;';
+      label.textContent = 'Screenshot';
+
+      const img = document.createElement('img');
+      img.className = 'review-image';
+      img.src = annotator.getAnnotatedImage();
+      img.style.marginBottom = '16px';
+
+      mediaTabContent.appendChild(label);
+      mediaTabContent.appendChild(img);
+    }
+
+    // Add video if available
+    if (videoDataUrl) {
+      hasMedia = true;
+      infoText.push('1 video');
+
+      const label = document.createElement('p');
+      label.style.cssText = 'font-weight: 600; margin-bottom: 8px; margin-top: 16px; color: #333;';
+      label.textContent = 'Video Recording';
+
+      const video = document.createElement('video');
+      video.className = 'review-image';
+      video.src = videoDataUrl;
+      video.controls = true;
+      video.style.marginBottom = '16px';
+
+      mediaTabContent.appendChild(label);
+      mediaTabContent.appendChild(video);
+    }
+
+    // Add info text at the beginning
+    if (hasMedia) {
+      mediaInfo.textContent = `${infoText.join(' and ')} will be attached:`;
+      mediaTabContent.insertBefore(mediaInfo, mediaTabContent.firstChild);
     }
 
     // Page Info Tab - Format for better readability
