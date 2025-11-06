@@ -73,6 +73,9 @@ class Annotator {
     if (this.currentTool === 'pen') {
       this.ctx.beginPath();
       this.ctx.moveTo(this.startX, this.startY);
+    } else if (['rectangle', 'circle', 'arrow', 'blackout'].includes(this.currentTool)) {
+      // Store current canvas state for shape preview
+      this.tempCanvasState = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
     }
   }
 
@@ -94,8 +97,10 @@ class Annotator {
       this.ctx.lineTo(x, y);
       this.ctx.stroke();
     } else if (['rectangle', 'circle', 'arrow', 'blackout'].includes(this.currentTool)) {
-      // For shapes, we need to redraw from history and show preview
-      this.restoreState();
+      // For shapes, restore canvas state synchronously and show preview
+      if (this.tempCanvasState) {
+        this.ctx.putImageData(this.tempCanvasState, 0, 0);
+      }
       this.drawShape(this.startX, this.startY, x, y, this.currentTool, true);
     }
   }
@@ -114,6 +119,7 @@ class Annotator {
     }
 
     this.isDrawing = false;
+    this.tempCanvasState = null;
     this.saveState();
   }
 
