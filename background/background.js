@@ -112,6 +112,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true, data: data.logs });
   }
 
+  if (request.action === 'captureScreenshot') {
+    // Capture screenshot of the current tab
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+      if (tabs.length > 0) {
+        const tab = tabs[0];
+        try {
+          const screenshot = await chrome.tabs.captureVisibleTab(null, {
+            format: 'png',
+            quality: 100
+          });
+          sendResponse({ success: true, screenshot: screenshot, tabId: tab.id });
+        } catch (error) {
+          sendResponse({ success: false, error: error.message });
+        }
+      } else {
+        sendResponse({ success: false, error: 'No active tab found' });
+      }
+    });
+    return true; // Keep channel open for async response
+  }
+
+  if (request.action === 'openAnnotationPage') {
+    chrome.tabs.create({
+      url: chrome.runtime.getURL('annotate/annotate.html'),
+      active: true
+    }, (tab) => {
+      sendResponse({ success: true, tabId: tab.id });
+    });
+    return true; // Keep channel open for async response
+  }
+
   return true; // Keep channel open for async response
 });
 

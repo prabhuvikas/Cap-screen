@@ -227,14 +227,23 @@ async function captureScreenshot(type) {
 // Start video recording
 async function startVideoRecording() {
   const startBtn = document.getElementById('startRecording');
-  const stopBtn = document.getElementById('stopRecording');
   const statusEl = document.getElementById('recordingStatus');
 
   try {
     startBtn.disabled = true;
     showStatus('recordingStatus', 'Starting video recording...', 'info');
 
-    // Get the tab's stream using chrome.tabCapture
+    // Inject the recording overlay script
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: currentTab.id },
+        files: ['content/recording-overlay.js']
+      });
+    } catch (e) {
+      console.log('Recording overlay script already injected or error:', e.message);
+    }
+
+    // Get the tab's stream ID using chrome.tabCapture
     const streamId = await new Promise((resolve, reject) => {
       chrome.tabCapture.getMediaStreamId({
         targetTabId: currentTab.id
@@ -247,55 +256,18 @@ async function startVideoRecording() {
       });
     });
 
-    // Get the media stream
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        mandatory: {
-          chromeMediaSource: 'tab',
-          chromeMediaSourceId: streamId
-        }
-      }
+    // Send message to content script to start recording
+    const response = await chrome.tabs.sendMessage(currentTab.id, {
+      action: 'startRecording',
+      streamId: streamId
     });
 
-    // Reset recorded chunks
-    recordedChunks = [];
-
-    // Create MediaRecorder
-    mediaRecorder = new MediaRecorder(stream, {
-      mimeType: 'video/webm;codecs=vp9'
-    });
-
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data && event.data.size > 0) {
-        recordedChunks.push(event.data);
-      }
-    };
-
-    mediaRecorder.onstop = async () => {
-      // Create blob from recorded chunks
-      const blob = new Blob(recordedChunks, { type: 'video/webm' });
-
-      // Convert blob to data URL
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        videoDataUrl = reader.result;
-        showStatus('recordingStatus', 'Video recorded successfully! Continue to report.', 'success');
-      };
-      reader.readAsDataURL(blob);
-
-      // Stop all tracks
-      stream.getTracks().forEach(track => track.stop());
-    };
-
-    // Start recording
-    mediaRecorder.start();
-    isRecording = true;
-
-    // Update UI
-    startBtn.style.display = 'none';
-    stopBtn.style.display = 'inline-block';
-    showStatus('recordingStatus', '🔴 Recording... Click "Stop Recording" when done.', 'info');
+    if (response && response.success) {
+      // Close the popup - recording will continue in the background
+      window.close();
+    } else {
+      throw new Error(response.error || 'Failed to start recording');
+    }
 
   } catch (error) {
     console.error('Error starting video recording:', error);
@@ -304,26 +276,10 @@ async function startVideoRecording() {
   }
 }
 
-// Stop video recording
+// Stop video recording (not used anymore - handled by overlay)
 async function stopVideoRecording() {
-  const startBtn = document.getElementById('startRecording');
-  const stopBtn = document.getElementById('stopRecording');
-
-  try {
-    if (mediaRecorder && isRecording) {
-      showStatus('recordingStatus', 'Stopping recording...', 'info');
-      mediaRecorder.stop();
-      isRecording = false;
-
-      // Update UI
-      stopBtn.style.display = 'none';
-      startBtn.style.display = 'inline-block';
-      startBtn.disabled = false;
-    }
-  } catch (error) {
-    console.error('Error stopping video recording:', error);
-    showStatus('recordingStatus', `Error: ${error.message}`, 'error');
-  }
+  // This function is kept for compatibility but recording is now stopped via overlay
+  console.log('Stop recording called from popup (should use overlay instead)');
 }
 
 // Initialize annotation

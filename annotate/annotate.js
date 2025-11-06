@@ -12,6 +12,7 @@ let redmineAPI = null;
 let currentTab = null;
 let annotationTabId = null; // Store the annotation tab ID
 let accumulatedFiles = []; // Store accumulated files for additional documents
+let videoDataUrl = null; // Store video recording if available
 
 // Sanitize text to remove unicode/emoji characters that cause 500 errors
 function sanitizeText(text) {
@@ -65,8 +66,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize Redmine API
     redmineAPI = new RedmineAPI(settings.redmineUrl, settings.apiKey);
 
-    // Load screenshot data from session storage
-    const result = await chrome.storage.session.get(['screenshots', 'screenshotData', 'tabId', 'currentScreenshotId']);
+    // Load screenshot data and video recording from session storage
+    const result = await chrome.storage.session.get(['screenshots', 'screenshotData', 'tabId', 'currentScreenshotId', 'videoRecording', 'hasVideoRecording']);
 
     // Check if we have the new multi-screenshot format or old single screenshot
     if (result.screenshots && result.screenshots.length > 0) {
@@ -109,6 +110,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     console.log('[Annotate] Screenshot data loaded successfully');
+
+    // Load video recording if available
+    if (result.hasVideoRecording && result.videoRecording) {
+      videoDataUrl = result.videoRecording;
+      console.log('[Annotate] Video recording loaded successfully');
+      // Clear from session storage after loading
+      await chrome.storage.session.remove(['videoRecording', 'hasVideoRecording']);
+    }
 
     // Setup event listeners
     setupEventListeners();
@@ -863,6 +872,16 @@ async function actuallySubmitBugReport() {
       console.log('[Annotate] Added screenshot', screenshot.name || (i + 1), 'to attachments');
     }
 
+    // Add recorded video if available
+    if (videoDataUrl) {
+      attachments.push({
+        data: videoDataUrl,
+        filename: `recording-${Date.now()}.webm`,
+        type: 'video/webm'
+      });
+      console.log('[Annotate] Added video recording to attachments');
+    }
+
     // Add technical data if requested
     if (document.getElementById('attachTechnicalData').checked) {
       const technicalData = buildTechnicalData();
@@ -1008,6 +1027,10 @@ function buildDescription() {
   description += '\n\n## Additional Information\n';
   description += 'Detailed technical information (browser, system, network, performance data) ';
   description += 'is available in the attached technical-data.json file.\n';
+
+  if (videoDataUrl) {
+    description += '- Video recording of the issue is attached.\n';
+  }
 
   if (settings.includeNetworkRequests && networkRequests.length > 0) {
     description += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
