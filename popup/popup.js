@@ -1047,20 +1047,56 @@ async function populateReviewModal() {
 
     console.log('All editable fields populated successfully');
 
-    // Screenshot Tab
+    // Media Tab - Show screenshot and/or video
+    const mediaTabContent = document.getElementById('mediaTab').querySelector('.review-section');
+    mediaTabContent.innerHTML = '';
+
+    let hasMedia = false;
+    const mediaInfo = document.createElement('p');
+    mediaInfo.className = 'tab-info';
+    let infoText = [];
+
+    // Add screenshot if available
     if (annotator) {
-      document.getElementById('reviewScreenshot').src = annotator.getAnnotatedImage();
+      hasMedia = true;
+      infoText.push('1 screenshot');
+
+      const label = document.createElement('p');
+      label.style.cssText = 'font-weight: 600; margin-bottom: 8px; margin-top: 16px; color: #333;';
+      label.textContent = 'Screenshot';
+
+      const img = document.createElement('img');
+      img.className = 'review-image';
+      img.src = annotator.getAnnotatedImage();
+      img.style.marginBottom = '16px';
+
+      mediaTabContent.appendChild(label);
+      mediaTabContent.appendChild(img);
     }
 
-    // Video Tab
-    const videoTabBtn = document.getElementById('videoTabBtn');
-    const reviewVideo = document.getElementById('reviewVideo');
+    // Add video if available
     if (videoDataUrl) {
-      videoTabBtn.style.display = 'inline-block';
-      reviewVideo.src = videoDataUrl;
-    } else {
-      videoTabBtn.style.display = 'none';
-      reviewVideo.src = '';
+      hasMedia = true;
+      infoText.push('1 video');
+
+      const label = document.createElement('p');
+      label.style.cssText = 'font-weight: 600; margin-bottom: 8px; margin-top: 16px; color: #333;';
+      label.textContent = 'Video Recording';
+
+      const video = document.createElement('video');
+      video.className = 'review-image';
+      video.src = videoDataUrl;
+      video.controls = true;
+      video.style.marginBottom = '16px';
+
+      mediaTabContent.appendChild(label);
+      mediaTabContent.appendChild(video);
+    }
+
+    // Add info text at the beginning
+    if (hasMedia) {
+      mediaInfo.textContent = `${infoText.join(' and ')} will be attached:`;
+      mediaTabContent.insertBefore(mediaInfo, mediaTabContent.firstChild);
     }
 
     // Page Info Tab - Format for better readability

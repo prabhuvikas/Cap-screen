@@ -1472,51 +1472,29 @@ async function populateReviewModal() {
     const reviewDescriptionText = document.getElementById('reviewDescriptionText');
     reviewDescriptionText.value = buildDescription();
 
-    // Video Tab - Show if video recording exists
-    if (videoDataUrl) {
-      // Show video tab button
-      const videoTabBtn = document.querySelector('[data-tab="video"]');
-      if (videoTabBtn) {
-        videoTabBtn.style.display = 'inline-block';
-      }
-
-      // Populate video tab
-      const videoTabContent = document.getElementById('videoTab');
-      if (videoTabContent) {
-        const videoSection = videoTabContent.querySelector('.review-section');
-        if (!videoSection) {
-          const section = document.createElement('div');
-          section.className = 'review-section';
-          videoTabContent.appendChild(section);
-        }
-
-        const section = videoTabContent.querySelector('.review-section');
-        section.innerHTML = `
-          <p class="tab-info">Recorded video that will be attached:</p>
-          <video class="review-image" controls src="${videoDataUrl}"></video>
-        `;
-      }
-    }
-
-    // Screenshot Tab - Show all media items (screenshots and videos)
-    const screenshotTabContent = document.getElementById('screenshotTab').querySelector('.review-section');
-    screenshotTabContent.innerHTML = '';
+    // Media Tab - Show all media items (screenshots and videos)
+    const mediaTabContent = document.getElementById('mediaTab').querySelector('.review-section');
+    mediaTabContent.innerHTML = '';
 
     if (screenshots && screenshots.length > 0) {
-      const screenshotInfo = document.createElement('p');
-      screenshotInfo.className = 'tab-info';
+      const mediaInfo = document.createElement('p');
+      mediaInfo.className = 'tab-info';
       const screenshotCount = screenshots.filter(s => s.type !== 'video').length;
       const videoCount = screenshots.filter(s => s.type === 'video').length;
-      screenshotInfo.textContent = `${screenshotCount} screenshot(s) and ${videoCount} video(s) will be attached:`;
-      screenshotTabContent.appendChild(screenshotInfo);
+
+      let infoText = [];
+      if (screenshotCount > 0) infoText.push(`${screenshotCount} screenshot(s)`);
+      if (videoCount > 0) infoText.push(`${videoCount} video(s)`);
+      mediaInfo.textContent = `${infoText.join(' and ')} will be attached:`;
+      mediaTabContent.appendChild(mediaInfo);
 
       for (let index = 0; index < screenshots.length; index++) {
         const item = screenshots[index];
 
         const label = document.createElement('p');
-        label.style.cssText = 'font-weight: 600; margin-bottom: 8px; color: #333;';
+        label.style.cssText = 'font-weight: 600; margin-bottom: 8px; margin-top: 16px; color: #333;';
         label.textContent = item.name || (item.type === 'video' ? `Video ${index + 1}` : `Screenshot ${index + 1}`);
-        screenshotTabContent.appendChild(label);
+        mediaTabContent.appendChild(label);
 
         if (item.type === 'video') {
           // Show video
@@ -1525,7 +1503,7 @@ async function populateReviewModal() {
           video.src = item.data;
           video.controls = true;
           video.style.marginBottom = '16px';
-          screenshotTabContent.appendChild(video);
+          mediaTabContent.appendChild(video);
         } else {
           // Show screenshot
           // Create temporary annotator to get annotated image
@@ -1543,7 +1521,7 @@ async function populateReviewModal() {
           img.className = 'review-image';
           img.src = tempAnnotator.getAnnotatedImage();
           img.style.marginBottom = '16px';
-          screenshotTabContent.appendChild(img);
+          mediaTabContent.appendChild(img);
         }
       }
     } else if (annotator) {
@@ -1552,7 +1530,7 @@ async function populateReviewModal() {
       img.id = 'reviewScreenshot';
       img.className = 'review-image';
       img.src = annotator.getAnnotatedImage();
-      screenshotTabContent.appendChild(img);
+      mediaTabContent.appendChild(img);
     }
 
     // Page Info Tab

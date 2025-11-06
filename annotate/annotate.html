@@ -295,8 +295,7 @@
           <!-- Tab Navigation -->
           <div class="tab-nav">
             <button class="tab-btn active" data-tab="formData">Form Data</button>
-            <button class="tab-btn" data-tab="screenshot">Screenshot</button>
-            <button class="tab-btn" data-tab="video" style="display: none;">Video</button>
+            <button class="tab-btn" data-tab="media">Media</button>
             <button class="tab-btn" data-tab="pageInfo">Page Info</button>
             <button class="tab-btn" data-tab="network">Network (<span id="networkCount">0</span>)</button>
             <button class="tab-btn" data-tab="console">Console (<span id="consoleCount">0</span>)</button>
@@ -338,19 +337,10 @@
               </div>
             </div>
 
-            <!-- Screenshot Tab -->
-            <div id="screenshotTab" class="tab-pane">
+            <!-- Media Tab (Screenshots and Videos) -->
+            <div id="mediaTab" class="tab-pane">
               <div class="review-section">
-                <p class="tab-info">Annotated screenshot that will be attached:</p>
-                <img id="reviewScreenshot" class="review-image" />
-              </div>
-            </div>
-
-            <!-- Video Tab -->
-            <div id="videoTab" class="tab-pane">
-              <div class="review-section">
-                <p class="tab-info">Recorded video that will be attached:</p>
-                <video id="reviewVideo" class="review-image" controls></video>
+                <!-- Content will be dynamically populated with screenshots and videos -->
               </div>
             </div>
 
