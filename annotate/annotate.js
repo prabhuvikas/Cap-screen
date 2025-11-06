@@ -177,7 +177,7 @@ async function loadSettings() {
 function setupEventListeners() {
   // Header actions
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
-  document.getElementById('closeTab').addEventListener('click', () => window.close());
+  document.getElementById('closeTab').addEventListener('click', closeTabWithConfirmation);
 
   // Screenshot and video management
   document.getElementById('captureAnotherBtn').addEventListener('click', captureAnotherScreenshot);
@@ -2015,6 +2015,14 @@ function openSettings() {
   chrome.tabs.create({
     url: chrome.runtime.getURL('options/options.html')
   });
+}
+
+// Close tab with confirmation
+function closeTabWithConfirmation() {
+  const confirmClose = confirm('Are you sure you want to close? Any unsaved changes will be lost.');
+  if (confirmClose) {
+    window.close();
+  }
 }
 
 // Show section
