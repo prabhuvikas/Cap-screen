@@ -395,6 +395,14 @@ async function recordVideo() {
       return;
     }
 
+    console.log('[Annotate] Starting recording on tab:', tabId);
+
+    // Start recording by sending message to background BEFORE closing window
+    await chrome.runtime.sendMessage({
+      action: 'startTabCapture',
+      tabId: tabId
+    });
+
     console.log('[Annotate] Switching to original tab for recording:', tabId);
 
     // Switch to the original tab
@@ -402,12 +410,6 @@ async function recordVideo() {
 
     // Close this annotation tab temporarily
     window.close();
-
-    // Start recording by sending message to background
-    await chrome.runtime.sendMessage({
-      action: 'startTabCapture',
-      tabId: tabId
-    });
 
     // Note: The annotation page will reopen automatically when recording stops
 
