@@ -13,7 +13,11 @@ class Annotator {
     this.historyStep = -1;
     this.startX = 0;
     this.startY = 0;
-    this.shapes = [];
+    this.annotations = []; // Store all annotations as objects
+    this.selectedAnnotation = null;
+    this.isDragging = false;
+    this.dragOffsetX = 0;
+    this.dragOffsetY = 0;
     this.ready = false;
 
     // Store the initialization promise
@@ -63,30 +67,52 @@ class Annotator {
   }
 
   handleMouseDown(e) {
-    this.isDrawing = true;
     const rect = this.canvas.getBoundingClientRect();
     const scaleX = this.canvas.width / rect.width;
     const scaleY = this.canvas.height / rect.height;
     this.startX = (e.clientX - rect.left) * scaleX;
     this.startY = (e.clientY - rect.top) * scaleY;
 
-    if (this.currentTool === 'pen') {
-      this.ctx.beginPath();
-      this.ctx.moveTo(this.startX, this.startY);
-    } else if (['rectangle', 'circle', 'arrow', 'blackout'].includes(this.currentTool)) {
-      // Store current canvas state for shape preview
-      this.tempCanvasState = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+    if (this.currentTool === 'move') {
+      // Check if clicking on an annotation
+      this.selectedAnnotation = this.findAnnotationAt(this.startX, this.startY);
+      if (this.selectedAnnotation) {
+        this.isDragging = true;
+        this.dragOffsetX = this.startX - this.selectedAnnotation.x;
+        this.dragOffsetY = this.startY - this.selectedAnnotation.y;
+        this.canvas.classList.add('grabbing-cursor');
+        this.canvas.classList.remove('grab-cursor');
+        this.redrawCanvas();
+      }
+    } else {
+      this.isDrawing = true;
+
+      if (this.currentTool === 'pen') {
+        // Start new pen stroke
+        this.currentPenStrokes = [{x: this.startX, y: this.startY}];
+      } else if (['rectangle', 'circle', 'arrow', 'blackout'].includes(this.currentTool)) {
+        // Store current canvas state for shape preview
+        this.tempCanvasState = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+      }
     }
   }
 
   handleMouseMove(e) {
-    if (!this.isDrawing) return;
-
     const rect = this.canvas.getBoundingClientRect();
     const scaleX = this.canvas.width / rect.width;
     const scaleY = this.canvas.height / rect.height;
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
+
+    if (this.currentTool === 'move' && this.isDragging && this.selectedAnnotation) {
+      // Move the selected annotation
+      this.selectedAnnotation.x = x - this.dragOffsetX;
+      this.selectedAnnotation.y = y - this.dragOffsetY;
+      this.redrawCanvas();
+      return;
+    }
+
+    if (!this.isDrawing) return;
 
     this.ctx.strokeStyle = this.currentColor;
     this.ctx.lineWidth = this.lineWidth;
@@ -94,8 +120,15 @@ class Annotator {
     this.ctx.lineJoin = 'round';
 
     if (this.currentTool === 'pen') {
-      this.ctx.lineTo(x, y);
-      this.ctx.stroke();
+      this.currentPenStrokes.push({x, y});
+      // Draw the stroke preview
+      if (this.currentPenStrokes.length > 1) {
+        const prev = this.currentPenStrokes[this.currentPenStrokes.length - 2];
+        this.ctx.beginPath();
+        this.ctx.moveTo(prev.x, prev.y);
+        this.ctx.lineTo(x, y);
+        this.ctx.stroke();
+      }
     } else if (['rectangle', 'circle', 'arrow', 'blackout'].includes(this.currentTool)) {
       // For shapes, restore canvas state synchronously and show preview
       if (this.tempCanvasState) {
@@ -106,6 +139,15 @@ class Annotator {
   }
 
   handleMouseUp(e) {
+    if (this.currentTool === 'move' && this.isDragging) {
+      this.isDragging = false;
+      this.selectedAnnotation = null;
+      this.canvas.classList.remove('grabbing-cursor');
+      this.canvas.classList.add('grab-cursor');
+      this.saveState();
+      return;
+    }
+
     if (!this.isDrawing) return;
 
     const rect = this.canvas.getBoundingClientRect();
@@ -114,12 +156,30 @@ class Annotator {
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
 
-    if (['rectangle', 'circle', 'arrow', 'blackout'].includes(this.currentTool)) {
-      this.drawShape(this.startX, this.startY, x, y, this.currentTool, false);
+    // Save annotation as object
+    if (this.currentTool === 'pen' && this.currentPenStrokes && this.currentPenStrokes.length > 0) {
+      this.annotations.push({
+        type: 'pen',
+        points: this.currentPenStrokes,
+        color: this.currentColor,
+        lineWidth: this.lineWidth
+      });
+      this.currentPenStrokes = null;
+    } else if (['rectangle', 'circle', 'arrow', 'blackout'].includes(this.currentTool)) {
+      this.annotations.push({
+        type: this.currentTool,
+        x: this.startX,
+        y: this.startY,
+        endX: x,
+        endY: y,
+        color: this.currentColor,
+        lineWidth: this.lineWidth
+      });
     }
 
     this.isDrawing = false;
     this.tempCanvasState = null;
+    this.redrawCanvas();
     this.saveState();
   }
 
@@ -205,6 +265,169 @@ class Annotator {
     this.ctx.fillRect(startX, startY, width, height);
   }
 
+  // Redraw entire canvas with base image and all annotations
+  async redrawCanvas() {
+    // Load and draw base image
+    const img = await this.loadImage(this.imageDataUrl);
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.ctx.drawImage(img, 0, 0);
+
+    // Render all annotations
+    this.annotations.forEach((annotation, index) => {
+      this.renderAnnotation(annotation, index === this.annotations.indexOf(this.selectedAnnotation));
+    });
+  }
+
+  // Render a single annotation
+  renderAnnotation(annotation, isSelected = false) {
+    this.ctx.strokeStyle = annotation.color;
+    this.ctx.lineWidth = annotation.lineWidth;
+    this.ctx.lineCap = 'round';
+    this.ctx.lineJoin = 'round';
+
+    if (annotation.type === 'pen') {
+      // Draw pen stroke
+      if (annotation.points && annotation.points.length > 1) {
+        this.ctx.beginPath();
+        this.ctx.moveTo(annotation.points[0].x, annotation.points[0].y);
+        for (let i = 1; i < annotation.points.length; i++) {
+          this.ctx.lineTo(annotation.points[i].x, annotation.points[i].y);
+        }
+        this.ctx.stroke();
+      }
+    } else if (annotation.type === 'rectangle') {
+      const width = annotation.endX - annotation.x;
+      const height = annotation.endY - annotation.y;
+      this.ctx.strokeRect(annotation.x, annotation.y, width, height);
+
+      // Draw selection handles
+      if (isSelected) {
+        this.drawSelectionBox(annotation.x, annotation.y, annotation.endX, annotation.endY);
+      }
+    } else if (annotation.type === 'circle') {
+      const radius = Math.sqrt(Math.pow(annotation.endX - annotation.x, 2) + Math.pow(annotation.endY - annotation.y, 2));
+      this.ctx.beginPath();
+      this.ctx.arc(annotation.x, annotation.y, radius, 0, 2 * Math.PI);
+      this.ctx.stroke();
+
+      // Draw selection handles
+      if (isSelected) {
+        this.drawSelectionBox(
+          annotation.x - radius,
+          annotation.y - radius,
+          annotation.x + radius,
+          annotation.y + radius
+        );
+      }
+    } else if (annotation.type === 'arrow') {
+      this.drawArrow(annotation.x, annotation.y, annotation.endX, annotation.endY);
+
+      // Draw selection handles
+      if (isSelected) {
+        this.drawSelectionBox(
+          Math.min(annotation.x, annotation.endX),
+          Math.min(annotation.y, annotation.endY),
+          Math.max(annotation.x, annotation.endX),
+          Math.max(annotation.y, annotation.endY)
+        );
+      }
+    } else if (annotation.type === 'blackout') {
+      const width = annotation.endX - annotation.x;
+      const height = annotation.endY - annotation.y;
+      this.ctx.fillStyle = '#000000';
+      this.ctx.fillRect(annotation.x, annotation.y, width, height);
+
+      // Draw selection handles
+      if (isSelected) {
+        this.drawSelectionBox(annotation.x, annotation.y, annotation.endX, annotation.endY);
+      }
+    }
+  }
+
+  // Draw selection box around annotation
+  drawSelectionBox(x1, y1, x2, y2) {
+    this.ctx.strokeStyle = '#2196F3';
+    this.ctx.lineWidth = 2;
+    this.ctx.setLineDash([5, 5]);
+    this.ctx.strokeRect(x1 - 5, y1 - 5, x2 - x1 + 10, y2 - y1 + 10);
+    this.ctx.setLineDash([]);
+  }
+
+  // Find annotation at given coordinates
+  findAnnotationAt(x, y) {
+    // Check in reverse order (top annotation first)
+    for (let i = this.annotations.length - 1; i >= 0; i--) {
+      const annotation = this.annotations[i];
+
+      if (annotation.type === 'pen') {
+        // Check if point is near any stroke point
+        for (const point of annotation.points) {
+          const distance = Math.sqrt(Math.pow(x - point.x, 2) + Math.pow(y - point.y, 2));
+          if (distance < annotation.lineWidth + 5) {
+            return annotation;
+          }
+        }
+      } else if (annotation.type === 'rectangle' || annotation.type === 'blackout') {
+        const minX = Math.min(annotation.x, annotation.endX);
+        const maxX = Math.max(annotation.x, annotation.endX);
+        const minY = Math.min(annotation.y, annotation.endY);
+        const maxY = Math.max(annotation.y, annotation.endY);
+
+        if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+          return annotation;
+        }
+      } else if (annotation.type === 'circle') {
+        const radius = Math.sqrt(Math.pow(annotation.endX - annotation.x, 2) + Math.pow(annotation.endY - annotation.y, 2));
+        const distance = Math.sqrt(Math.pow(x - annotation.x, 2) + Math.pow(y - annotation.y, 2));
+
+        if (Math.abs(distance - radius) < annotation.lineWidth + 5) {
+          return annotation;
+        }
+      } else if (annotation.type === 'arrow') {
+        // Check if point is near the arrow line
+        const distance = this.distanceToLine(x, y, annotation.x, annotation.y, annotation.endX, annotation.endY);
+        if (distance < annotation.lineWidth + 5) {
+          return annotation;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // Calculate distance from point to line segment
+  distanceToLine(px, py, x1, y1, x2, y2) {
+    const A = px - x1;
+    const B = py - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = -1;
+
+    if (lenSq != 0) {
+      param = dot / lenSq;
+    }
+
+    let xx, yy;
+
+    if (param < 0) {
+      xx = x1;
+      yy = y1;
+    } else if (param > 1) {
+      xx = x2;
+      yy = y2;
+    } else {
+      xx = x1 + param * C;
+      yy = y1 + param * D;
+    }
+
+    const dx = px - xx;
+    const dy = py - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
   addText(x, y, text) {
     this.ctx.fillStyle = this.currentColor;
     this.ctx.font = `${this.lineWidth * 5}px Arial`;
@@ -258,16 +481,14 @@ class Annotator {
   }
 
   clear() {
-    // Reload original image
-    const img = new Image();
-    img.src = this.imageDataUrl;
-    img.onload = () => {
-      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      this.ctx.drawImage(img, 0, 0);
+    // Clear all annotations
+    this.annotations = [];
+    this.selectedAnnotation = null;
+    this.redrawCanvas().then(() => {
       this.history = [];
       this.historyStep = -1;
       this.saveState();
-    };
+    });
   }
 
   getAnnotatedImage() {
@@ -281,7 +502,8 @@ class Annotator {
       historyStep: this.historyStep,
       currentTool: this.currentTool,
       currentColor: this.currentColor,
-      lineWidth: this.lineWidth
+      lineWidth: this.lineWidth,
+      annotations: JSON.parse(JSON.stringify(this.annotations)) // Deep copy
     };
   }
 
@@ -296,6 +518,7 @@ class Annotator {
     this.currentTool = state.currentTool || 'pen';
     this.currentColor = state.currentColor || '#ff0000';
     this.lineWidth = state.lineWidth || 3;
+    this.annotations = state.annotations ? JSON.parse(JSON.stringify(state.annotations)) : [];
 
     // Restore the canvas to the last history state
     if (this.historyStep >= 0 && this.historyStep < this.history.length) {
@@ -303,6 +526,9 @@ class Annotator {
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       this.ctx.drawImage(img, 0, 0);
       console.log('[Annotator] State restored successfully');
+    } else {
+      // If no history, just redraw from annotations
+      await this.redrawCanvas();
     }
   }
 }

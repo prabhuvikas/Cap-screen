@@ -227,6 +227,18 @@ main {
   max-height: calc(100vh - 350px);
 }
 
+#annotationCanvas.move-cursor {
+  cursor: move;
+}
+
+#annotationCanvas.grab-cursor {
+  cursor: grab;
+}
+
+#annotationCanvas.grabbing-cursor {
+  cursor: grabbing;
+}
+
 /* Annotation toolbar at bottom */
 .annotation-toolbar-bottom {
   background: #ffffff;

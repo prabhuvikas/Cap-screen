@@ -251,6 +251,13 @@ function selectTool(tool, buttonElement) {
     annotator.setTool(tool);
   }
 
+  // Update canvas cursor based on tool
+  const canvas = document.getElementById('annotationCanvas');
+  canvas.classList.remove('move-cursor', 'grab-cursor', 'grabbing-cursor');
+  if (tool === 'move') {
+    canvas.classList.add('grab-cursor');
+  }
+
   // If text tool, prompt for text
   if (tool === 'text') {
     const text = prompt('Enter text:');
