@@ -167,6 +167,24 @@ main {
   overflow: hidden;
 }
 
+/* Screenshots sidebar on the left */
+.screenshots-sidebar {
+  width: 280px;
+  background: #ffffff;
+  border-right: 1px solid #e5e5e5;
+  padding: 20px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+/* Main canvas area with toolbar at bottom */
+.canvas-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .canvas-wrapper {
   flex: 1;
   display: flex;
@@ -178,9 +196,15 @@ main {
 }
 
 .canvas-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #fafafa;
+  overflow: auto;
   border: 2px solid #ddd;
   border-radius: 8px;
-  overflow: auto;
   max-height: 100%;
   max-width: 100%;
   background-color: #fff;
@@ -198,7 +222,46 @@ main {
   display: block;
   cursor: crosshair;
   max-width: 100%;
-  max-height: calc(100vh - 250px);
+  max-height: calc(100vh - 350px);
+}
+
+/* Annotation toolbar at bottom */
+.annotation-toolbar-bottom {
+  background: #ffffff;
+  border-top: 2px solid #e5e5e5;
+  padding: 16px 24px;
+  flex-shrink: 0;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.toolbar-section-horizontal {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.tool-grid-horizontal {
+  display: flex;
+  gap: 8px;
+}
+
+.tool-controls-horizontal {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.tool-actions-horizontal {
+  display: flex;
+  gap: 8px;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 40px;
+  background: #e5e5e5;
 }
 
 /* Sidebar */
@@ -238,6 +301,21 @@ main {
   transition: all 0.2s;
 }
 
+/* Horizontal toolbar specific styles */
+.tool-grid-horizontal .tool-btn {
+  padding: 10px 14px;
+  gap: 6px;
+  min-width: 70px;
+}
+
+.tool-grid-horizontal .tool-icon {
+  font-size: 22px;
+}
+
+.tool-grid-horizontal .tool-label {
+  font-size: 11px;
+}
+
 .tool-btn:hover {
   border-color: #3498db;
   background-color: #f0f8ff;
@@ -274,6 +352,18 @@ main {
   gap: 8px;
 }
 
+/* Horizontal toolbar control group */
+.tool-controls-horizontal .control-group {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.tool-controls-horizontal .control-group label {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .control-group label {
   font-size: 13px;
   font-weight: 500;
@@ -288,8 +378,19 @@ main {
   cursor: pointer;
 }
 
+/* Horizontal toolbar color picker */
+.tool-controls-horizontal #colorPicker {
+  width: 50px;
+  height: 36px;
+}
+
 #lineWidth {
   width: 100%;
+}
+
+/* Horizontal toolbar line width */
+.tool-controls-horizontal #lineWidth {
+  width: 120px;
 }
 
 .tool-actions {

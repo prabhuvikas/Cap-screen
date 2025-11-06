@@ -33,13 +33,8 @@
         </div>
 
         <div class="content-wrapper">
-          <div class="canvas-wrapper">
-            <div class="canvas-container">
-              <canvas id="annotationCanvas"></canvas>
-            </div>
-          </div>
-
-          <div class="sidebar">
+          <!-- Screenshots sidebar on the left -->
+          <div class="screenshots-sidebar">
             <div class="toolbar-section">
               <h3>Screenshots</h3>
               <div class="screenshots-section">
@@ -49,59 +44,71 @@
                 <div id="screenshotsList" class="screenshots-list"></div>
               </div>
             </div>
+          </div>
 
-            <div class="toolbar-section">
-              <h3>Annotation Tools</h3>
+          <!-- Main canvas area -->
+          <div class="canvas-area">
+            <div class="canvas-container">
+              <canvas id="annotationCanvas"></canvas>
+            </div>
 
-              <div class="tool-grid">
-                <button class="tool-btn active" data-tool="pen" title="Pen">
-                  <span class="tool-icon">✏️</span>
-                  <span class="tool-label">Pen</span>
-                </button>
-                <button class="tool-btn" data-tool="rectangle" title="Rectangle">
-                  <span class="tool-icon">▭</span>
-                  <span class="tool-label">Rectangle</span>
-                </button>
-                <button class="tool-btn" data-tool="circle" title="Circle">
-                  <span class="tool-icon">⭕</span>
-                  <span class="tool-label">Circle</span>
-                </button>
-                <button class="tool-btn" data-tool="arrow" title="Arrow">
-                  <span class="tool-icon">➜</span>
-                  <span class="tool-label">Arrow</span>
-                </button>
-                <button class="tool-btn" data-tool="blackout" title="Blackout/Redact">
-                  <span class="tool-icon">⬛</span>
-                  <span class="tool-label">Blackout</span>
-                </button>
-                <button class="tool-btn" data-tool="text" title="Text">
-                  <span class="tool-icon">T</span>
-                  <span class="tool-label">Text</span>
-                </button>
-              </div>
-
-              <div class="tool-controls">
-                <div class="control-group">
-                  <label for="colorPicker">Color</label>
-                  <input type="color" id="colorPicker" value="#ff0000">
+            <!-- Annotation toolbar at bottom -->
+            <div class="annotation-toolbar-bottom">
+              <div class="toolbar-section-horizontal">
+                <div class="tool-grid-horizontal">
+                  <button class="tool-btn active" data-tool="pen" title="Pen">
+                    <span class="tool-icon">✏️</span>
+                    <span class="tool-label">Pen</span>
+                  </button>
+                  <button class="tool-btn" data-tool="rectangle" title="Rectangle">
+                    <span class="tool-icon">▭</span>
+                    <span class="tool-label">Rectangle</span>
+                  </button>
+                  <button class="tool-btn" data-tool="circle" title="Circle">
+                    <span class="tool-icon">⭕</span>
+                    <span class="tool-label">Circle</span>
+                  </button>
+                  <button class="tool-btn" data-tool="arrow" title="Arrow">
+                    <span class="tool-icon">➜</span>
+                    <span class="tool-label">Arrow</span>
+                  </button>
+                  <button class="tool-btn" data-tool="blackout" title="Blackout/Redact">
+                    <span class="tool-icon">⬛</span>
+                    <span class="tool-label">Blackout</span>
+                  </button>
+                  <button class="tool-btn" data-tool="text" title="Text">
+                    <span class="tool-icon">T</span>
+                    <span class="tool-label">Text</span>
+                  </button>
                 </div>
 
-                <div class="control-group">
-                  <label for="lineWidth">Width: <span id="lineWidthValue">3</span></label>
-                  <input type="range" id="lineWidth" min="1" max="10" value="3">
-                </div>
-              </div>
+                <div class="toolbar-divider"></div>
 
-              <div class="tool-actions">
-                <button id="undoBtn" class="btn btn-secondary btn-small">
-                  ↶ Undo
-                </button>
-                <button id="redoBtn" class="btn btn-secondary btn-small">
-                  ↷ Redo
-                </button>
-                <button id="clearAnnotations" class="btn btn-secondary btn-small">
-                  🗑️ Clear
-                </button>
+                <div class="tool-controls-horizontal">
+                  <div class="control-group">
+                    <label for="colorPicker">Color</label>
+                    <input type="color" id="colorPicker" value="#ff0000">
+                  </div>
+
+                  <div class="control-group">
+                    <label for="lineWidth">Width: <span id="lineWidthValue">3</span></label>
+                    <input type="range" id="lineWidth" min="1" max="10" value="3">
+                  </div>
+                </div>
+
+                <div class="toolbar-divider"></div>
+
+                <div class="tool-actions-horizontal">
+                  <button id="undoBtn" class="btn btn-secondary btn-small">
+                    ↶ Undo
+                  </button>
+                  <button id="redoBtn" class="btn btn-secondary btn-small">
+                    ↷ Redo
+                  </button>
+                  <button id="clearAnnotations" class="btn btn-secondary btn-small">
+                    🗑️ Clear
+                  </button>
+                </div>
               </div>
             </div>
           </div>
