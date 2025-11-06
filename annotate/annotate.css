@@ -198,6 +198,7 @@ main {
 }
 
 .canvas-container {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
@@ -237,6 +238,10 @@ main {
 
 #annotationCanvas.grabbing-cursor {
   cursor: grabbing;
+}
+
+#annotationCanvas.text-cursor {
+  cursor: text;
 }
 
 /* Annotation toolbar at bottom */

@@ -100,6 +100,9 @@ class Annotator {
       } else {
         console.log('[Annotator] No annotation found at click position');
       }
+    } else if (this.currentTool === 'text') {
+      // Show text input at click position
+      this.showTextInput(e.clientX, e.clientY, this.startX, this.startY);
     } else {
       this.isDrawing = true;
 
@@ -506,6 +509,54 @@ class Annotator {
     const dx = px - xx;
     const dy = py - yy;
     return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  showTextInput(clientX, clientY, canvasX, canvasY) {
+    // Remove any existing text input
+    const existingInput = document.getElementById('annotationTextInput');
+    if (existingInput) {
+      existingInput.remove();
+    }
+
+    // Create input element
+    const input = document.createElement('input');
+    input.id = 'annotationTextInput';
+    input.type = 'text';
+    input.style.position = 'absolute';
+    input.style.left = clientX + 'px';
+    input.style.top = clientY + 'px';
+    input.style.fontSize = (this.lineWidth * 5) + 'px';
+    input.style.color = this.currentColor;
+    input.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+    input.style.border = '2px solid ' + this.currentColor;
+    input.style.outline = 'none';
+    input.style.padding = '4px 8px';
+    input.style.fontFamily = 'Arial';
+    input.style.zIndex = '10000';
+    input.style.minWidth = '200px';
+
+    // Add to canvas parent
+    this.canvas.parentElement.appendChild(input);
+    input.focus();
+
+    // Handle Enter key to save text
+    input.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (text) {
+          await this.addText(canvasX, canvasY, text);
+        }
+        input.remove();
+      } else if (e.key === 'Escape') {
+        input.remove();
+      }
+    });
+
+    // Handle click outside to cancel
+    input.addEventListener('blur', () => {
+      setTimeout(() => input.remove(), 100);
+    });
   }
 
   async addText(x, y, text) {
