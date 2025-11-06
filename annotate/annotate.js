@@ -163,6 +163,8 @@ async function loadSettings() {
     redmineUrl: '',
     apiKey: '',
     defaultProject: '',
+    defaultPriority: '',
+    defaultAssignee: '',
     includeNetworkRequests: true,
     includeConsoleLogs: true,
     includeLocalStorage: false,
@@ -910,7 +912,10 @@ async function loadRedmineData() {
       const option = document.createElement('option');
       option.value = priority.id;
       option.textContent = priority.name;
-      if (priority.name.toLowerCase() === 'normal') {
+      // Select default priority from settings, or "Normal" if no default set
+      if (settings.defaultPriority && priority.id == settings.defaultPriority) {
+        option.selected = true;
+      } else if (!settings.defaultPriority && priority.name.toLowerCase() === 'normal') {
         option.selected = true;
       }
       prioritySelect.appendChild(option);
@@ -945,6 +950,10 @@ async function onProjectChange() {
         const option = document.createElement('option');
         option.value = member.user.id;
         option.textContent = member.user.name;
+        // Select default assignee from settings if available
+        if (settings.defaultAssignee && member.user.id == settings.defaultAssignee) {
+          option.selected = true;
+        }
         assigneeSelect.appendChild(option);
       }
     });
