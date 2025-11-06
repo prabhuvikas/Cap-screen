@@ -19,6 +19,8 @@ async function loadSettings() {
       redmineUrl: '',
       apiKey: '',
       defaultProject: '',
+      defaultPriority: '',
+      defaultAssignee: '',
       includeNetworkRequests: true,
       includeConsoleLogs: true,
       includeLocalStorage: false,
@@ -42,7 +44,28 @@ async function loadSettings() {
     // Load projects if credentials exist
     if (settings.redmineUrl && settings.apiKey) {
       await loadProjects(settings.redmineUrl, settings.apiKey, settings.defaultProject);
+      await loadPriorities(settings.redmineUrl, settings.apiKey, settings.defaultPriority);
+
+      // Load members if default project is selected
+      if (settings.defaultProject) {
+        await loadMembers(settings.redmineUrl, settings.apiKey, settings.defaultProject, settings.defaultAssignee);
+      }
     }
+
+    // Add event listener for project change to reload members
+    document.getElementById('defaultProject').addEventListener('change', async (e) => {
+      const projectId = e.target.value;
+      const redmineUrl = document.getElementById('redmineUrl').value.trim();
+      const apiKey = document.getElementById('apiKey').value.trim();
+
+      if (projectId && redmineUrl && apiKey) {
+        await loadMembers(redmineUrl, apiKey, projectId);
+      } else {
+        // Clear assignee dropdown if no project selected
+        const assigneeSelect = document.getElementById('defaultAssignee');
+        assigneeSelect.innerHTML = '<option value="">-- Select Assignee --</option>';
+      }
+    });
   } catch (error) {
     console.error('Error loading settings:', error);
     showStatus('saveStatus', 'Error loading settings', 'error');
@@ -78,8 +101,9 @@ async function testConnection() {
     if (result.success) {
       showStatus('connectionStatus', 'Connection successful!', 'success');
 
-      // Load projects
+      // Load projects and priorities
       await loadProjects(redmineUrl, apiKey);
+      await loadPriorities(redmineUrl, apiKey);
     } else {
       showStatus('connectionStatus', `Connection failed: ${result.message}`, 'error');
     }
@@ -115,6 +139,54 @@ async function loadProjects(redmineUrl, apiKey, selectedProject = '') {
   }
 }
 
+// Load priorities from Redmine
+async function loadPriorities(redmineUrl, apiKey, selectedPriority = '') {
+  try {
+    const api = new RedmineAPI(redmineUrl, apiKey);
+    const priorities = await api.getPriorities();
+
+    const select = document.getElementById('defaultPriority');
+    select.innerHTML = '<option value="">-- Select Priority --</option>';
+
+    priorities.forEach(priority => {
+      const option = document.createElement('option');
+      option.value = priority.id;
+      option.textContent = priority.name;
+      if (priority.id === parseInt(selectedPriority)) {
+        option.selected = true;
+      }
+      select.appendChild(option);
+    });
+  } catch (error) {
+    console.error('Error loading priorities:', error);
+  }
+}
+
+// Load members from Redmine for a specific project
+async function loadMembers(redmineUrl, apiKey, projectId, selectedAssignee = '') {
+  try {
+    const api = new RedmineAPI(redmineUrl, apiKey);
+    const memberships = await api.getProjectMembers(projectId);
+
+    const select = document.getElementById('defaultAssignee');
+    select.innerHTML = '<option value="">-- Select Assignee --</option>';
+
+    memberships.forEach(membership => {
+      if (membership.user) {
+        const option = document.createElement('option');
+        option.value = membership.user.id;
+        option.textContent = membership.user.name;
+        if (membership.user.id === parseInt(selectedAssignee)) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      }
+    });
+  } catch (error) {
+    console.error('Error loading members:', error);
+  }
+}
+
 // Save settings
 async function saveSettings() {
   const button = document.getElementById('saveSettings');
@@ -125,6 +197,8 @@ async function saveSettings() {
     redmineUrl: document.getElementById('redmineUrl').value.trim(),
     apiKey: document.getElementById('apiKey').value.trim(),
     defaultProject: document.getElementById('defaultProject').value,
+    defaultPriority: document.getElementById('defaultPriority').value,
+    defaultAssignee: document.getElementById('defaultAssignee').value,
     includeNetworkRequests: document.getElementById('includeNetworkRequests').checked,
     includeConsoleLogs: document.getElementById('includeConsoleLogs').checked,
     includeLocalStorage: document.getElementById('includeLocalStorage').checked,
@@ -169,6 +243,8 @@ async function resetSettings() {
     redmineUrl: '',
     apiKey: '',
     defaultProject: '',
+    defaultPriority: '',
+    defaultAssignee: '',
     includeNetworkRequests: true,
     includeConsoleLogs: true,
     includeLocalStorage: false,

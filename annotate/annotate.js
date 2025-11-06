@@ -163,6 +163,8 @@ async function loadSettings() {
     redmineUrl: '',
     apiKey: '',
     defaultProject: '',
+    defaultPriority: '',
+    defaultAssignee: '',
     includeNetworkRequests: true,
     includeConsoleLogs: true,
     includeLocalStorage: false,
@@ -177,7 +179,7 @@ async function loadSettings() {
 function setupEventListeners() {
   // Header actions
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
-  document.getElementById('closeTab').addEventListener('click', () => window.close());
+  document.getElementById('closeTab').addEventListener('click', closeTabWithConfirmation);
 
   // Screenshot and video management
   document.getElementById('captureAnotherBtn').addEventListener('click', captureAnotherScreenshot);
@@ -217,7 +219,6 @@ function setupEventListeners() {
   // Navigation
   document.getElementById('continueToReport').addEventListener('click', continueToReport);
   document.getElementById('backToAnnotate').addEventListener('click', () => showSection('annotateSection'));
-  document.getElementById('backToAnnotateBtn').addEventListener('click', () => showSection('annotateSection'));
 
   // Form
   document.getElementById('project').addEventListener('change', onProjectChange);
@@ -395,6 +396,42 @@ async function recordVideo() {
       return;
     }
 
+    console.log('[Annotate] Starting recording on tab:', tabId);
+
+    // Inject the recording overlay script
+    try {
+      console.log('[Annotate] Injecting recording overlay script...');
+      await chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['content/recording-overlay.js']
+      });
+      console.log('[Annotate] Recording overlay script injected');
+    } catch (e) {
+      console.log('[Annotate] Recording overlay script already injected or error:', e.message);
+    }
+
+    // Start recording by sending message to background BEFORE closing window
+    const response = await chrome.runtime.sendMessage({
+      action: 'startTabCapture',
+      tabId: tabId
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Failed to start recording');
+    }
+
+    // Tell content script to show the overlay UI
+    try {
+      console.log('[Annotate] Showing recording overlay...');
+      await chrome.tabs.sendMessage(tabId, {
+        action: 'showRecordingOverlay'
+      });
+      console.log('[Annotate] Recording overlay shown');
+    } catch (e) {
+      console.error('[Annotate] Failed to show overlay:', e);
+      throw new Error('Failed to show recording overlay. The page may not support this feature.');
+    }
+
     console.log('[Annotate] Switching to original tab for recording:', tabId);
 
     // Switch to the original tab
@@ -402,12 +439,6 @@ async function recordVideo() {
 
     // Close this annotation tab temporarily
     window.close();
-
-    // Start recording by sending message to background
-    await chrome.runtime.sendMessage({
-      action: 'startTabCapture',
-      tabId: tabId
-    });
 
     // Note: The annotation page will reopen automatically when recording stops
 
@@ -881,7 +912,10 @@ async function loadRedmineData() {
       const option = document.createElement('option');
       option.value = priority.id;
       option.textContent = priority.name;
-      if (priority.name.toLowerCase() === 'normal') {
+      // Select default priority from settings, or "Normal" if no default set
+      if (settings.defaultPriority && priority.id == settings.defaultPriority) {
+        option.selected = true;
+      } else if (!settings.defaultPriority && priority.name.toLowerCase() === 'normal') {
         option.selected = true;
       }
       prioritySelect.appendChild(option);
@@ -916,6 +950,10 @@ async function onProjectChange() {
         const option = document.createElement('option');
         option.value = member.user.id;
         option.textContent = member.user.name;
+        // Select default assignee from settings if available
+        if (settings.defaultAssignee && member.user.id == settings.defaultAssignee) {
+          option.selected = true;
+        }
         assigneeSelect.appendChild(option);
       }
     });
@@ -1981,7 +2019,18 @@ function closeReviewModal() {
 
 // Open settings
 function openSettings() {
-  chrome.runtime.openOptionsPage();
+  // Always open settings in a new tab
+  chrome.tabs.create({
+    url: chrome.runtime.getURL('options/options.html')
+  });
+}
+
+// Close tab with confirmation
+function closeTabWithConfirmation() {
+  const confirmClose = confirm('Are you sure you want to close? Any unsaved changes will be lost.');
+  if (confirmClose) {
+    window.close();
+  }
 }
 
 // Show section

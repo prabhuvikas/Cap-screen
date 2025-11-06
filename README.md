@@ -1,6 +1,6 @@
-# Chrome Bug Reporter Extension
+# Cred Issue Reporter Extension
 
-A comprehensive Chrome extension for capturing, annotating, and reporting bugs directly to Redmine with full technical context.
+A comprehensive Chrome extension for capturing, annotating, and reporting issues directly to Redmine with full technical context.
 
 ## Features
 
@@ -104,7 +104,7 @@ A comprehensive Chrome extension for capturing, annotating, and reporting bugs d
 
 ### 2. Privacy Settings
 
-Configure what information to include in bug reports:
+Configure what information to include in issue reports:
 
 - **Include Network Requests**: Capture all HTTP/HTTPS requests made by the page
 - **Include Console Logs**: Capture console output (logs, warnings, errors)
@@ -119,12 +119,12 @@ Configure what information to include in bug reports:
 
 ## Usage
 
-### Creating a Bug Report
+### Creating an Issue Report
 
 1. **Navigate to the page** where you found the bug
 
 2. **Open the extension**
-   - Click the Bug Reporter icon in Chrome toolbar, or
+   - Click the Issue Reporter icon in Chrome toolbar, or
    - Use keyboard shortcut: `Ctrl+Shift+B` (Windows/Linux) or `Cmd+Shift+B` (Mac)
 
 3. **Capture Screenshot**
@@ -140,7 +140,7 @@ Configure what information to include in bug reports:
    - Use undo/redo to refine annotations
    - Click "Continue to Report" when ready
 
-5. **Fill Bug Report Details**
+5. **Fill Issue Details**
    - **Project**: Select target Redmine project
    - **Tracker**: Choose Bug, Feature, or Support
    - **Subject**: Brief description of the issue
@@ -155,10 +155,10 @@ Configure what information to include in bug reports:
    - **Attach Technical Data**: Include page info, network requests, and console logs
 
 6. **Review & Submit**
-   - Click "Submit Bug Report"
+   - Click "Submit Issue Report"
    - Review modal will appear with all data in tabs:
-     - **Form Data**: Your bug report details
-     - **Screenshot**: Preview of annotated screenshot
+     - **Issue Details**: Your issue report details
+     - **Media**: Preview of annotated media
      - **Page Info**: Browser and page information
      - **Network**: All captured network requests
      - **Console**: All captured console logs
@@ -274,7 +274,7 @@ To create custom icons, you can use either:
 
 1. Make changes to the code
 2. Go to `chrome://extensions/`
-3. Click the reload icon on the Bug Reporter extension
+3. Click the reload icon on the Issue Reporter extension
 4. Test the functionality
 
 ## Roadmap
@@ -311,5 +311,5 @@ Developed with Chrome Extension Manifest V3 and Redmine REST API.
 ---
 
 **Version**: 1.0.0
-**Author**: Bug Reporter Team
+**Author**: Cred Issue Reporter Team
 **Last Updated**: 2025-10-21

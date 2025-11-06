@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bug Reporter</title>
+  <title>Cred Issue Reporter</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="container">
     <!-- Header -->
     <header>
-      <h1>Bug Reporter</h1>
+      <h1>Cred Issue Reporter</h1>
       <button id="settingsBtn" class="icon-btn" title="Settings">
         ⚙️
       </button>
@@ -20,24 +20,39 @@
     <main id="mainContent">
       <!-- Step 1: Capture Screenshot -->
       <section id="captureSection" class="section active">
-        <h2>1. Capture Screenshot or Video</h2>
-        <div class="button-group">
-          <button id="captureViewport" class="btn btn-primary">
-            📸 Capture Viewport
-          </button>
-          <button id="captureFullPage" class="btn btn-secondary">
-            📄 Capture Full Page
-          </button>
+        <div class="welcome-header">
+          <h2>Create Issue Report</h2>
+          <p class="welcome-text">Choose how you want to capture the issue</p>
         </div>
-        <div class="button-group">
-          <button id="startRecording" class="btn btn-primary">
-            🎥 Start Video Recording
-          </button>
+
+        <div class="capture-options">
+          <!-- Screenshot Options -->
+          <div class="capture-card">
+            <div class="card-icon">📸</div>
+            <h3>Take Screenshot</h3>
+            <p class="card-description">Capture the current page state with annotation tools</p>
+            <div class="card-buttons">
+              <button id="captureViewport" class="btn btn-primary btn-block">
+                Capture Visible Area
+              </button>
+              <button id="captureFullPage" class="btn btn-secondary btn-block">
+                Capture Full Page
+              </button>
+            </div>
+          </div>
+
+          <!-- Video Recording Option -->
+          <div class="capture-card">
+            <div class="card-icon">🎥</div>
+            <h3>Record Video</h3>
+            <p class="card-description">Record screen activity to demonstrate the issue. A recording toolbar will appear in the top-right corner.</p>
+            <button id="startRecording" class="btn btn-primary btn-block">
+              Start Recording
+            </button>
+          </div>
         </div>
+
         <div id="recordingStatus" class="status-message"></div>
-        <div class="info-box" style="font-size: 12px; color: #666; margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px;">
-          💡 Recording will start and this window will close. A recording toolbar will appear in the top-right corner of the page. Click "Stop" to finish recording.
-        </div>
         <div id="captureStatus" class="status-message"></div>
       </section>
 
@@ -105,9 +120,9 @@
         </div>
       </section>
 
-      <!-- Step 3: Fill Bug Report -->
+      <!-- Step 3: Fill Issue Report -->
       <section id="reportSection" class="section hidden">
-        <h2>3. Bug Report Details</h2>
+        <h2>3. Issue Details</h2>
 
         <form id="bugReportForm">
           <div class="form-group">
@@ -186,7 +201,7 @@
 
           <div class="button-group">
             <button type="submit" id="submitBtn" class="btn btn-primary">
-              <span class="btn-text">Submit Bug Report</span>
+              <span class="btn-text">Submit Issue Report</span>
               <span class="spinner hidden"></span>
             </button>
             <button type="button" id="backToAnnotate" class="btn btn-secondary">
@@ -202,8 +217,8 @@
       <section id="successSection" class="section hidden">
         <div class="success-container">
           <div class="success-icon">✓</div>
-          <h2>Bug Report Submitted!</h2>
-          <p>Your bug report has been successfully submitted to Redmine.</p>
+          <h2>Issue Submitted!</h2>
+          <p>Your issue has been successfully submitted to Redmine.</p>
           <div id="issueLink"></div>
           <div class="button-group">
             <button id="createAnother" class="btn btn-primary">
@@ -221,7 +236,7 @@
         <div class="info-container">
           <div class="info-icon">⚠️</div>
           <h2>Configuration Required</h2>
-          <p>Please configure your Redmine server settings before creating bug reports.</p>
+          <p>Please configure your Redmine server settings before creating issue reports.</p>
           <button id="openSettings" class="btn btn-primary">
             Open Settings
           </button>
@@ -243,7 +258,7 @@
 
           <!-- Tab Navigation -->
           <div class="tab-nav">
-            <button class="tab-btn active" data-tab="formData">Form Data</button>
+            <button class="tab-btn active" data-tab="formData">Issue Details</button>
             <button class="tab-btn" data-tab="media">Media</button>
             <button class="tab-btn" data-tab="pageInfo">Page Info</button>
             <button class="tab-btn" data-tab="network">Network (<span id="networkCount">0</span>)</button>
@@ -252,7 +267,7 @@
 
           <!-- Tab Content -->
           <div class="tab-content">
-            <!-- Form Data Tab -->
+            <!-- Issue Details Tab -->
             <div id="formDataTab" class="tab-pane active">
               <div class="review-section">
                 <p class="review-description" style="margin-bottom: 16px; color: #4CAF50;">✏️ You can edit any field below before submitting</p>
@@ -331,7 +346,7 @@
 
     <!-- Footer -->
     <footer>
-      <small>Bug Reporter v1.0.0</small>
+      <small>Cred Issue Reporter v1.0.0</small>
     </footer>
   </div>
 
