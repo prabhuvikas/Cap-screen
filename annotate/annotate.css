@@ -245,6 +245,10 @@ main {
   cursor: text;
 }
 
+#annotationCanvas.pan-cursor {
+  cursor: grab;
+}
+
 /* Annotation toolbar at bottom */
 .annotation-toolbar-bottom {
   background: #ffffff;

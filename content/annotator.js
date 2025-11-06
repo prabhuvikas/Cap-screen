@@ -26,6 +26,13 @@ class Annotator {
     this.maxZoom = 4.0;
     this.zoomStep = 0.25;
 
+    // Pan properties
+    this.isPanning = false;
+    this.panStartX = 0;
+    this.panStartY = 0;
+    this.panStartScrollX = 0;
+    this.panStartScrollY = 0;
+
     // Store the initialization promise
     this.initPromise = this.init();
   }
@@ -74,12 +81,25 @@ class Annotator {
 
   handleMouseDown(e) {
     const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.canvas.width / (rect.width * this.zoomLevel);
-    const scaleY = this.canvas.height / (rect.height * this.zoomLevel);
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
     this.startX = (e.clientX - rect.left) * scaleX;
     this.startY = (e.clientY - rect.top) * scaleY;
 
-    if (this.currentTool === 'move') {
+    if (this.currentTool === 'pan') {
+      // Start panning the canvas
+      this.isPanning = true;
+      this.panStartX = e.clientX;
+      this.panStartY = e.clientY;
+
+      const container = this.canvas.parentElement;
+      this.panStartScrollX = container.scrollLeft;
+      this.panStartScrollY = container.scrollTop;
+
+      this.canvas.style.cursor = 'grabbing';
+      e.preventDefault();
+      return;
+    } else if (this.currentTool === 'move') {
       // Check if clicking on an annotation
       console.log('[Annotator] Move tool clicked at', this.startX, this.startY);
       console.log('[Annotator] Total annotations:', this.annotations.length);
@@ -124,12 +144,23 @@ class Annotator {
 
   handleMouseMove(e) {
     const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.canvas.width / (rect.width * this.zoomLevel);
-    const scaleY = this.canvas.height / (rect.height * this.zoomLevel);
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
 
-    if (this.currentTool === 'move' && this.isDragging && this.selectedAnnotation) {
+    if (this.currentTool === 'pan' && this.isPanning) {
+      // Pan the canvas container
+      const container = this.canvas.parentElement;
+      const deltaX = this.panStartX - e.clientX;
+      const deltaY = this.panStartY - e.clientY;
+
+      container.scrollLeft = this.panStartScrollX + deltaX;
+      container.scrollTop = this.panStartScrollY + deltaY;
+
+      e.preventDefault();
+      return;
+    } else if (this.currentTool === 'move' && this.isDragging && this.selectedAnnotation) {
       // Move the selected annotation
       const newX = x - this.dragOffsetX;
       const newY = y - this.dragOffsetY;
@@ -190,6 +221,12 @@ class Annotator {
   }
 
   async handleMouseUp(e) {
+    if (this.currentTool === 'pan' && this.isPanning) {
+      this.isPanning = false;
+      this.canvas.style.cursor = 'grab';
+      return;
+    }
+
     if (this.currentTool === 'move' && this.isDragging) {
       this.isDragging = false;
       this.selectedAnnotation = null;
@@ -202,8 +239,8 @@ class Annotator {
     if (!this.isDrawing) return;
 
     const rect = this.canvas.getBoundingClientRect();
-    const scaleX = this.canvas.width / (rect.width * this.zoomLevel);
-    const scaleY = this.canvas.height / (rect.height * this.zoomLevel);
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
 
