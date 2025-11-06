@@ -10,6 +10,7 @@ let networkRequests = [];
 let consoleLogs = [];
 let redmineAPI = null;
 let currentTab = null;
+let annotationTabId = null; // Store the annotation tab ID
 
 // Sanitize text to remove unicode/emoji characters that cause 500 errors
 function sanitizeText(text) {
@@ -41,6 +42,11 @@ function sanitizeText(text) {
 // Initialize the page
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('[Annotate] Page loaded, initializing...');
+
+  // Store the current annotation tab ID
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  annotationTabId = tabs[0].id;
+  console.log('[Annotate] Annotation tab ID:', annotationTabId);
 
   // Show loading section initially
   showSection('loadingSection');
@@ -254,11 +260,36 @@ async function captureAnotherScreenshot() {
     // Get the tab ID to capture
     const tabId = currentTab.id;
 
-    // Capture new screenshot
-    const newScreenshotData = await chrome.tabs.captureVisibleTab(null, {
+    if (!tabId) {
+      alert('Original tab not found. Please capture from the popup.');
+      return;
+    }
+
+    // Check if the original tab still exists
+    let targetTab;
+    try {
+      targetTab = await chrome.tabs.get(tabId);
+    } catch (e) {
+      alert('Original tab has been closed. Please open the page again and capture a new screenshot.');
+      return;
+    }
+
+    console.log('[Annotate] Switching to original tab:', tabId);
+
+    // Switch to the original tab to capture it
+    await chrome.tabs.update(tabId, { active: true });
+
+    // Wait a bit for the tab to become visible
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // Capture the screenshot from the original tab
+    const newScreenshotData = await chrome.tabs.captureVisibleTab(targetTab.windowId, {
       format: 'png',
       quality: 100
     });
+
+    // Switch back to the annotation tab
+    await chrome.tabs.update(annotationTabId, { active: true });
 
     if (!newScreenshotData) {
       alert('Failed to capture screenshot');
