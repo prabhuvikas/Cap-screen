@@ -183,7 +183,8 @@ async function captureScreenshot(type) {
       data: screenshotDataUrl,
       annotations: null,
       timestamp: Date.now(),
-      tabId: currentTab.id
+      tabId: currentTab.id,
+      name: 'Screenshot 1'
     };
 
     await chrome.storage.session.set({

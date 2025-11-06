@@ -71,6 +71,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (result.screenshots && result.screenshots.length > 0) {
       // Load existing screenshots array
       screenshots = result.screenshots;
+      // Ensure all screenshots have a name field
+      screenshots.forEach((screenshot, index) => {
+        if (!screenshot.name) {
+          screenshot.name = `Screenshot ${index + 1}`;
+        }
+      });
       currentScreenshotId = result.currentScreenshotId || screenshots[0].id;
       currentTab = { id: result.tabId || screenshots[0].tabId };
       console.log('[Annotate] Loaded', screenshots.length, 'screenshot(s) from storage');
@@ -81,7 +87,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         data: result.screenshotData,
         annotations: null,
         timestamp: Date.now(),
-        tabId: result.tabId
+        tabId: result.tabId,
+        name: 'Screenshot 1'
       };
       screenshots = [newScreenshot];
       currentScreenshotId = newScreenshot.id;
@@ -307,7 +314,8 @@ async function captureAnotherScreenshot() {
       data: newScreenshotData,
       annotations: null,
       timestamp: Date.now(),
-      tabId: tabId
+      tabId: tabId,
+      name: `Screenshot ${screenshots.length + 1}`
     };
 
     // Add to screenshots array
@@ -421,6 +429,21 @@ async function deleteScreenshot(screenshotId) {
   }
 }
 
+// Rename screenshot
+async function renameScreenshot(screenshotId, newName) {
+  const screenshot = screenshots.find(s => s.id === screenshotId);
+  if (screenshot) {
+    screenshot.name = newName || `Screenshot ${screenshots.indexOf(screenshot) + 1}`;
+
+    // Save to storage
+    await chrome.storage.session.set({
+      screenshots: screenshots
+    });
+
+    console.log('[Annotate] Renamed screenshot to:', screenshot.name);
+  }
+}
+
 // Update screenshots list UI
 function updateScreenshotsList() {
   const listContainer = document.getElementById('screenshotsList');
@@ -436,14 +459,28 @@ function updateScreenshotsList() {
     const thumbnail = document.createElement('img');
     thumbnail.className = 'screenshot-thumbnail';
     thumbnail.src = screenshot.data;
-    thumbnail.alt = `Screenshot ${index + 1}`;
+    thumbnail.alt = screenshot.name || `Screenshot ${index + 1}`;
 
     const info = document.createElement('div');
     info.className = 'screenshot-info';
 
-    const number = document.createElement('span');
-    number.className = 'screenshot-number';
-    number.textContent = `Screenshot ${index + 1}`;
+    // Editable name input
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'screenshot-name-input';
+    nameInput.value = screenshot.name || `Screenshot ${index + 1}`;
+    nameInput.onclick = (e) => {
+      e.stopPropagation();
+    };
+    nameInput.onblur = (e) => {
+      renameScreenshot(screenshot.id, e.target.value);
+    };
+    nameInput.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.target.blur();
+      }
+      e.stopPropagation();
+    };
 
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'screenshot-delete';
@@ -453,7 +490,7 @@ function updateScreenshotsList() {
       deleteScreenshot(screenshot.id);
     };
 
-    info.appendChild(number);
+    info.appendChild(nameInput);
     if (screenshots.length > 1) {
       info.appendChild(deleteBtn);
     }
@@ -485,10 +522,10 @@ async function updateScreenshotPreviews() {
     const previewItem = document.createElement('div');
     previewItem.className = 'screenshot-preview-item';
 
-    // Add label
+    // Add label with custom name
     const label = document.createElement('div');
     label.className = 'screenshot-preview-label';
-    label.textContent = `Screenshot ${i + 1}`;
+    label.textContent = screenshot.name || `Screenshot ${i + 1}`;
     previewItem.appendChild(label);
 
     // Create temporary annotator to get annotated image
@@ -806,13 +843,19 @@ async function actuallySubmitBugReport() {
       }
 
       const annotatedImage = tempAnnotator.getAnnotatedImage();
+
+      // Use custom name for filename (sanitize for filesystem)
+      const sanitizedName = (screenshot.name || `Screenshot ${i + 1}`)
+        .replace(/[^a-z0-9]/gi, '-')
+        .toLowerCase();
+
       attachments.push({
         data: annotatedImage,
-        filename: `screenshot-${i + 1}-${Date.now()}.png`,
+        filename: `${sanitizedName}-${Date.now()}.png`,
         type: 'image/png'
       });
 
-      console.log('[Annotate] Added screenshot', i + 1, 'to attachments');
+      console.log('[Annotate] Added screenshot', screenshot.name || (i + 1), 'to attachments');
     }
 
     // Add technical data if requested
@@ -1246,7 +1289,7 @@ async function populateReviewModal() {
 
         const label = document.createElement('p');
         label.style.cssText = 'font-weight: 600; margin-bottom: 8px; color: #333;';
-        label.textContent = `Screenshot ${index + 1}`;
+        label.textContent = screenshot.name || `Screenshot ${index + 1}`;
 
         const img = document.createElement('img');
         img.className = 'review-image';

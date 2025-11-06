@@ -999,6 +999,7 @@ main {
   justify-content: space-between;
   align-items: center;
   margin-top: 8px;
+  gap: 8px;
   font-size: 12px;
   color: #666;
 }
@@ -1006,6 +1007,30 @@ main {
 .screenshot-number {
   font-weight: 600;
   color: #2196F3;
+}
+
+.screenshot-name-input {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2196F3;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.screenshot-name-input:hover {
+  background: rgba(33, 150, 243, 0.05);
+  border-color: rgba(33, 150, 243, 0.2);
+}
+
+.screenshot-name-input:focus {
+  background: white;
+  border-color: #2196F3;
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.1);
 }
 
 .screenshot-delete {
