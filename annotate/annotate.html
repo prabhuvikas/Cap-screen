@@ -58,46 +58,56 @@
             <!-- Annotation toolbar at bottom -->
             <div class="annotation-toolbar-bottom">
               <div class="toolbar-section-horizontal">
-                <div class="tool-grid-horizontal">
-                  <button class="tool-btn active" data-tool="pen" title="Pen">
-                    <span class="tool-icon">✏️</span>
-                    <span class="tool-label">Pen</span>
-                  </button>
-                  <button class="tool-btn" data-tool="rectangle" title="Rectangle">
-                    <span class="tool-icon">▭</span>
-                    <span class="tool-label">Rectangle</span>
-                  </button>
-                  <button class="tool-btn" data-tool="circle" title="Circle">
-                    <span class="tool-icon">⭕</span>
-                    <span class="tool-label">Circle</span>
-                  </button>
-                  <button class="tool-btn" data-tool="arrow" title="Arrow">
-                    <span class="tool-icon">➜</span>
-                    <span class="tool-label">Arrow</span>
-                  </button>
-                  <button class="tool-btn" data-tool="blackout" title="Blackout/Redact">
-                    <span class="tool-icon">⬛</span>
-                    <span class="tool-label">Blackout</span>
-                  </button>
-                  <button class="tool-btn" data-tool="text" title="Text">
-                    <span class="tool-icon">T</span>
-                    <span class="tool-label">Text</span>
-                  </button>
-                  <button class="tool-btn" data-tool="move" title="Move/Select">
-                    <span class="tool-icon">✋</span>
-                    <span class="tool-label">Move</span>
-                  </button>
-                  <button class="tool-btn" data-tool="pan" title="Pan Canvas">
-                    <span class="tool-icon">👆</span>
-                    <span class="tool-label">Pan</span>
-                  </button>
-                  <button class="tool-btn" data-tool="crop" title="Crop Screenshot">
-                    <span class="tool-icon">✂️</span>
-                    <span class="tool-label">Crop</span>
-                  </button>
+
+                <!-- Draw Tools Section -->
+                <div class="tool-group">
+                  <div class="tool-group-label">Draw</div>
+                  <div class="tool-grid-horizontal">
+                    <button class="tool-btn active" data-tool="pen" title="Pen">
+                      <span class="tool-icon">✏️</span>
+                      <span class="tool-label">Pen</span>
+                    </button>
+                    <button class="tool-btn" data-tool="rectangle" title="Rectangle">
+                      <span class="tool-icon">▭</span>
+                      <span class="tool-label">Box</span>
+                    </button>
+                    <button class="tool-btn" data-tool="circle" title="Circle">
+                      <span class="tool-icon">⭕</span>
+                      <span class="tool-label">Circle</span>
+                    </button>
+                    <button class="tool-btn" data-tool="arrow" title="Arrow">
+                      <span class="tool-icon">➜</span>
+                      <span class="tool-label">Arrow</span>
+                    </button>
+                    <button class="tool-btn" data-tool="text" title="Text">
+                      <span class="tool-icon">T</span>
+                      <span class="tool-label">Text</span>
+                    </button>
+                    <button class="tool-btn" data-tool="blackout" title="Blackout/Redact">
+                      <span class="tool-icon">⬛</span>
+                      <span class="tool-label">Redact</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div class="toolbar-divider"></div>
+
+                <!-- Edit Tools Section -->
+                <div class="tool-group">
+                  <div class="tool-group-label">Edit</div>
+                  <div class="tool-grid-horizontal">
+                    <button class="tool-btn" data-tool="move" title="Move/Select Annotation">
+                      <span class="tool-icon">✋</span>
+                      <span class="tool-label">Move</span>
+                    </button>
+                    <button class="tool-btn" data-tool="crop" title="Crop Screenshot">
+                      <span class="tool-icon">✂️</span>
+                      <span class="tool-label">Crop</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="toolbar-divider" id="cropDivider" style="display: none;"></div>
 
                 <div id="cropControls" class="crop-controls-horizontal" style="display: none;">
                   <button id="applyCrop" class="btn btn-primary btn-small">
@@ -108,8 +118,9 @@
                   </button>
                 </div>
 
-                <div class="toolbar-divider" id="cropDivider" style="display: none;"></div>
+                <div class="toolbar-divider"></div>
 
+                <!-- Color & Width Controls -->
                 <div class="tool-controls-horizontal">
                   <div class="control-group">
                     <label for="colorPicker">Color</label>
@@ -124,6 +135,7 @@
 
                 <div class="toolbar-divider"></div>
 
+                <!-- Actions Section -->
                 <div class="tool-actions-horizontal">
                   <button id="undoBtn" class="btn btn-secondary btn-small">
                     ↶ Undo
@@ -138,13 +150,27 @@
 
                 <div class="toolbar-divider"></div>
 
+                <!-- View Section -->
+                <div class="tool-group">
+                  <div class="tool-group-label">View</div>
+                  <div class="tool-grid-horizontal">
+                    <button class="tool-btn" data-tool="pan" title="Pan Canvas">
+                      <span class="tool-icon">👆</span>
+                      <span class="tool-label">Pan</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="toolbar-divider"></div>
+
+                <!-- Zoom Controls -->
                 <div class="zoom-controls-horizontal">
                   <button id="zoomOutBtn" class="btn btn-secondary btn-small" title="Zoom Out (Ctrl+-)">
-                    🔍− Zoom Out
+                    − Zoom Out
                   </button>
                   <span id="zoomLevel" class="zoom-level-display">100%</span>
                   <button id="zoomInBtn" class="btn btn-secondary btn-small" title="Zoom In (Ctrl++)">
-                    🔍+ Zoom In
+                    + Zoom In
                   </button>
                   <button id="zoomResetBtn" class="btn btn-secondary btn-small" title="Reset Zoom (Ctrl+0)">
                     ⟲ Reset
