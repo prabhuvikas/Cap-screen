@@ -117,26 +117,33 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.log('[Annotate] Video recording loaded successfully');
       // Clear from session storage after loading
       await chrome.storage.session.remove(['videoRecording', 'hasVideoRecording']);
+
+      // Add video to media items
+      const videoItem = {
+        id: 'video-' + Date.now().toString(36),
+        type: 'video',
+        data: videoDataUrl,
+        timestamp: Date.now(),
+        name: 'Video Recording 1'
+      };
+      screenshots.push(videoItem);
+      currentScreenshotId = videoItem.id;
+
+      // Save updated media list
+      await chrome.storage.session.set({
+        screenshots: screenshots,
+        currentScreenshotId: currentScreenshotId
+      });
     }
 
     // Setup event listeners
     setupEventListeners();
 
-    // If we have a video recording, skip annotation and go directly to report
-    if (videoDataUrl) {
-      console.log('[Annotate] Video recording detected, skipping annotation and going directly to report');
-      // Show loading for a moment
-      showSection('loadingSection');
-      // Initialize annotation in background (needed for rendering screenshots)
-      await initializeAnnotationSilent();
-      // Go directly to report section
-      await continueToReport();
-    } else {
-      // Initialize annotation with current screenshot
-      initializeAnnotation();
-      // Update screenshots list UI
-      updateScreenshotsList();
-    }
+    // Initialize annotation with current media item (screenshot or video)
+    initializeAnnotation();
+
+    // Update media list UI
+    updateScreenshotsList();
 
   } catch (error) {
     console.error('[Annotate] Initialization error:', error);
@@ -166,8 +173,9 @@ function setupEventListeners() {
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('closeTab').addEventListener('click', () => window.close());
 
-  // Screenshot management
+  // Screenshot and video management
   document.getElementById('captureAnotherBtn').addEventListener('click', captureAnotherScreenshot);
+  document.getElementById('recordVideoBtn').addEventListener('click', recordVideo);
 
   // Annotation tools
   document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -230,15 +238,68 @@ function setupEventListeners() {
 
 // Initialize annotation
 async function initializeAnnotation() {
-  console.log('[Annotate] Initializing annotation canvas...');
+  console.log('[Annotate] Initializing annotation...');
 
-  const currentScreenshot = screenshots.find(s => s.id === currentScreenshotId);
-  if (!currentScreenshot) {
-    console.error('[Annotate] Current screenshot not found');
+  const currentItem = screenshots.find(s => s.id === currentScreenshotId);
+  if (!currentItem) {
+    console.error('[Annotate] Current media item not found');
     return;
   }
 
-  screenshotDataUrl = currentScreenshot.data;
+  // Check if current item is a video
+  if (currentItem.type === 'video') {
+    console.log('[Annotate] Current item is a video, showing video player');
+    showVideoPlayer(currentItem.data);
+  } else {
+    // It's a screenshot, show annotation canvas
+    console.log('[Annotate] Current item is a screenshot, showing annotation canvas');
+    showAnnotationCanvas(currentItem);
+  }
+
+  // Show annotation section
+  showSection('annotateSection');
+
+  console.log('[Annotate] Annotation initialized successfully');
+}
+
+// Show video player
+function showVideoPlayer(videoData) {
+  // Hide canvas and annotation toolbar
+  document.getElementById('annotationCanvas').style.display = 'none';
+  document.querySelector('.annotation-toolbar-bottom').style.display = 'none';
+
+  // Get or create video player container
+  let videoContainer = document.getElementById('videoPlayerContainer');
+  if (!videoContainer) {
+    videoContainer = document.createElement('div');
+    videoContainer.id = 'videoPlayerContainer';
+    videoContainer.className = 'video-player-container';
+    document.querySelector('.canvas-container').appendChild(videoContainer);
+  }
+
+  // Show video player
+  videoContainer.style.display = 'block';
+  videoContainer.innerHTML = `
+    <video controls style="width: 100%; height: 100%; object-fit: contain;">
+      <source src="${videoData}" type="video/webm">
+      Your browser does not support the video tag.
+    </video>
+  `;
+}
+
+// Show annotation canvas
+async function showAnnotationCanvas(screenshot) {
+  // Hide video player
+  const videoContainer = document.getElementById('videoPlayerContainer');
+  if (videoContainer) {
+    videoContainer.style.display = 'none';
+  }
+
+  // Show canvas and annotation toolbar
+  document.getElementById('annotationCanvas').style.display = 'block';
+  document.querySelector('.annotation-toolbar-bottom').style.display = 'flex';
+
+  screenshotDataUrl = screenshot.data;
 
   const canvas = document.getElementById('annotationCanvas');
   annotator = new Annotator(canvas, screenshotDataUrl);
@@ -248,15 +309,10 @@ async function initializeAnnotation() {
   console.log('[Annotate] Annotator initialized');
 
   // Restore annotations if they exist
-  if (currentScreenshot.annotations) {
+  if (screenshot.annotations) {
     console.log('[Annotate] Restoring annotations for screenshot:', currentScreenshotId);
-    await annotator.restoreState(currentScreenshot.annotations);
+    await annotator.restoreState(screenshot.annotations);
   }
-
-  // Show annotation section
-  showSection('annotateSection');
-
-  console.log('[Annotate] Annotation initialized successfully');
 }
 
 // Initialize annotation silently (without showing the section)
@@ -306,6 +362,53 @@ function selectTool(tool, buttonElement) {
 // Generate unique ID
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
+}
+
+// Record video
+async function recordVideo() {
+  try {
+    console.log('[Annotate] Starting video recording...');
+
+    // Save current annotations before switching
+    await saveCurrentAnnotations();
+
+    // Get the tab ID to record
+    const tabId = currentTab.id;
+
+    if (!tabId) {
+      alert('Original tab not found. Please record from the popup.');
+      return;
+    }
+
+    // Check if the original tab still exists
+    let targetTab;
+    try {
+      targetTab = await chrome.tabs.get(tabId);
+    } catch (e) {
+      alert('Original tab has been closed. Please open the page again.');
+      return;
+    }
+
+    console.log('[Annotate] Switching to original tab for recording:', tabId);
+
+    // Switch to the original tab
+    await chrome.tabs.update(tabId, { active: true });
+
+    // Close this annotation tab temporarily
+    window.close();
+
+    // Start recording by sending message to background
+    await chrome.runtime.sendMessage({
+      action: 'startTabCapture',
+      tabId: tabId
+    });
+
+    // Note: The annotation page will reopen automatically when recording stops
+
+  } catch (error) {
+    console.error('[Annotate] Error starting video recording:', error);
+    alert('Error starting video recording: ' + error.message);
+  }
 }
 
 // Capture another screenshot
@@ -496,17 +599,28 @@ function updateScreenshotsList() {
   const listContainer = document.getElementById('screenshotsList');
   listContainer.innerHTML = '';
 
-  screenshots.forEach((screenshot, index) => {
-    const item = document.createElement('div');
-    item.className = 'screenshot-item' + (screenshot.id === currentScreenshotId ? ' active' : '');
+  screenshots.forEach((item, index) => {
+    const itemElement = document.createElement('div');
+    itemElement.className = 'screenshot-item' + (item.id === currentScreenshotId ? ' active' : '');
 
     const content = document.createElement('div');
     content.className = 'screenshot-item-content';
 
-    const thumbnail = document.createElement('img');
-    thumbnail.className = 'screenshot-thumbnail';
-    thumbnail.src = screenshot.data;
-    thumbnail.alt = screenshot.name || `Screenshot ${index + 1}`;
+    // Create thumbnail based on type
+    if (item.type === 'video') {
+      // Video thumbnail - show video icon
+      const videoThumbnail = document.createElement('div');
+      videoThumbnail.className = 'screenshot-thumbnail video-thumbnail';
+      videoThumbnail.innerHTML = '<span style="font-size: 48px;">🎥</span>';
+      content.appendChild(videoThumbnail);
+    } else {
+      // Screenshot thumbnail
+      const thumbnail = document.createElement('img');
+      thumbnail.className = 'screenshot-thumbnail';
+      thumbnail.src = item.data;
+      thumbnail.alt = item.name || `Screenshot ${index + 1}`;
+      content.appendChild(thumbnail);
+    }
 
     const info = document.createElement('div');
     info.className = 'screenshot-info';
@@ -515,12 +629,12 @@ function updateScreenshotsList() {
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.className = 'screenshot-name-input';
-    nameInput.value = screenshot.name || `Screenshot ${index + 1}`;
+    nameInput.value = item.name || (item.type === 'video' ? `Video ${index + 1}` : `Screenshot ${index + 1}`);
     nameInput.onclick = (e) => {
       e.stopPropagation();
     };
     nameInput.onblur = (e) => {
-      renameScreenshot(screenshot.id, e.target.value);
+      renameScreenshot(item.id, e.target.value);
     };
     nameInput.onkeydown = (e) => {
       if (e.key === 'Enter') {
@@ -534,7 +648,7 @@ function updateScreenshotsList() {
     deleteBtn.textContent = '✕';
     deleteBtn.onclick = (e) => {
       e.stopPropagation();
-      deleteScreenshot(screenshot.id);
+      deleteScreenshot(item.id);
     };
 
     info.appendChild(nameInput);
@@ -542,14 +656,13 @@ function updateScreenshotsList() {
       info.appendChild(deleteBtn);
     }
 
-    content.appendChild(thumbnail);
     content.appendChild(info);
 
-    item.appendChild(content);
+    itemElement.appendChild(content);
 
-    item.onclick = () => switchScreenshot(screenshot.id);
+    itemElement.onclick = () => switchScreenshot(item.id);
 
-    listContainer.appendChild(item);
+    listContainer.appendChild(itemElement);
   });
 }
 
@@ -560,10 +673,10 @@ async function updateScreenshotPreviews() {
 
   previewContainer.innerHTML = '';
 
-  console.log('[Annotate] Updating screenshot previews, total:', screenshots.length);
+  console.log('[Annotate] Updating media previews, total:', screenshots.length);
 
   for (let i = 0; i < screenshots.length; i++) {
-    const screenshot = screenshots[i];
+    const item = screenshots[i];
 
     // Create preview item container
     const previewItem = document.createElement('div');
@@ -572,31 +685,41 @@ async function updateScreenshotPreviews() {
     // Add label with custom name
     const label = document.createElement('div');
     label.className = 'screenshot-preview-label';
-    label.textContent = screenshot.name || `Screenshot ${i + 1}`;
+    label.textContent = item.name || (item.type === 'video' ? `Video ${i + 1}` : `Screenshot ${i + 1}`);
     previewItem.appendChild(label);
 
-    // Create temporary annotator to get annotated image
-    const tempCanvas = document.createElement('canvas');
-    const tempAnnotator = new Annotator(tempCanvas, screenshot.data);
+    if (item.type === 'video') {
+      // Create and add video element
+      const video = document.createElement('video');
+      video.src = item.data;
+      video.controls = true;
+      video.style.maxWidth = '100%';
+      video.alt = `Video ${i + 1}`;
+      previewItem.appendChild(video);
+    } else {
+      // Create temporary annotator to get annotated image
+      const tempCanvas = document.createElement('canvas');
+      const tempAnnotator = new Annotator(tempCanvas, item.data);
 
-    // Wait for initialization
-    await tempAnnotator.initPromise;
+      // Wait for initialization
+      await tempAnnotator.initPromise;
 
-    // Restore annotations if they exist
-    if (screenshot.annotations && tempAnnotator.restoreState) {
-      await tempAnnotator.restoreState(screenshot.annotations);
+      // Restore annotations if they exist
+      if (item.annotations && tempAnnotator.restoreState) {
+        await tempAnnotator.restoreState(item.annotations);
+      }
+
+      // Create and add image
+      const img = document.createElement('img');
+      img.src = tempAnnotator.getAnnotatedImage();
+      img.alt = `Screenshot ${i + 1}`;
+      previewItem.appendChild(img);
     }
-
-    // Create and add image
-    const img = document.createElement('img');
-    img.src = tempAnnotator.getAnnotatedImage();
-    img.alt = `Screenshot ${i + 1}`;
-    previewItem.appendChild(img);
 
     previewContainer.appendChild(previewItem);
   }
 
-  console.log('[Annotate] Screenshot previews updated');
+  console.log('[Annotate] Media previews updated');
 }
 
 // Continue to report form
@@ -872,47 +995,53 @@ async function actuallySubmitBugReport() {
     // Prepare attachments
     const attachments = [];
 
-    // Add all annotated screenshots
-    console.log('[Annotate] Adding', screenshots.length, 'screenshot(s) to attachments...');
+    // Add all media items (screenshots and videos)
+    console.log('[Annotate] Adding', screenshots.length, 'media item(s) to attachments...');
     for (let i = 0; i < screenshots.length; i++) {
-      const screenshot = screenshots[i];
+      const item = screenshots[i];
 
-      // Create a temporary annotator to get the annotated image
-      const tempCanvas = document.createElement('canvas');
-      const tempAnnotator = new Annotator(tempCanvas, screenshot.data);
+      if (item.type === 'video') {
+        // Add video
+        const sanitizedName = (item.name || `Video ${i + 1}`)
+          .replace(/[^a-z0-9]/gi, '-')
+          .toLowerCase();
 
-      // Wait for initialization
-      await tempAnnotator.initPromise;
+        attachments.push({
+          data: item.data,
+          filename: `${sanitizedName}-${Date.now()}.webm`,
+          type: 'video/webm'
+        });
 
-      // Restore annotations if they exist
-      if (screenshot.annotations && tempAnnotator.restoreState) {
-        await tempAnnotator.restoreState(screenshot.annotations);
+        console.log('[Annotate] Added video', item.name || (i + 1), 'to attachments');
+      } else {
+        // Add screenshot with annotations
+        // Create a temporary annotator to get the annotated image
+        const tempCanvas = document.createElement('canvas');
+        const tempAnnotator = new Annotator(tempCanvas, item.data);
+
+        // Wait for initialization
+        await tempAnnotator.initPromise;
+
+        // Restore annotations if they exist
+        if (item.annotations && tempAnnotator.restoreState) {
+          await tempAnnotator.restoreState(item.annotations);
+        }
+
+        const annotatedImage = tempAnnotator.getAnnotatedImage();
+
+        // Use custom name for filename (sanitize for filesystem)
+        const sanitizedName = (item.name || `Screenshot ${i + 1}`)
+          .replace(/[^a-z0-9]/gi, '-')
+          .toLowerCase();
+
+        attachments.push({
+          data: annotatedImage,
+          filename: `${sanitizedName}-${Date.now()}.png`,
+          type: 'image/png'
+        });
+
+        console.log('[Annotate] Added screenshot', item.name || (i + 1), 'to attachments');
       }
-
-      const annotatedImage = tempAnnotator.getAnnotatedImage();
-
-      // Use custom name for filename (sanitize for filesystem)
-      const sanitizedName = (screenshot.name || `Screenshot ${i + 1}`)
-        .replace(/[^a-z0-9]/gi, '-')
-        .toLowerCase();
-
-      attachments.push({
-        data: annotatedImage,
-        filename: `${sanitizedName}-${Date.now()}.png`,
-        type: 'image/png'
-      });
-
-      console.log('[Annotate] Added screenshot', screenshot.name || (i + 1), 'to attachments');
-    }
-
-    // Add recorded video if available
-    if (videoDataUrl) {
-      attachments.push({
-        data: videoDataUrl,
-        filename: `recording-${Date.now()}.webm`,
-        type: 'video/webm'
-      });
-      console.log('[Annotate] Added video recording to attachments');
     }
 
     // Add technical data if requested
@@ -1073,10 +1202,20 @@ function buildDescription() {
     description += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
   }
 
-  // Mention multiple screenshots if applicable
-  if (screenshots && screenshots.length > 1) {
-    description += `\n### Screenshots\n`;
-    description += `${screenshots.length} screenshot(s) attached to this report.\n`;
+  // Mention media attachments
+  if (screenshots && screenshots.length > 0) {
+    const screenshotCount = screenshots.filter(s => s.type !== 'video').length;
+    const videoCount = screenshots.filter(s => s.type === 'video').length;
+
+    if (screenshotCount > 0 || videoCount > 0) {
+      description += `\n### Media Attachments\n`;
+      if (screenshotCount > 0) {
+        description += `- ${screenshotCount} screenshot(s) attached\n`;
+      }
+      if (videoCount > 0) {
+        description += `- ${videoCount} video recording(s) attached\n`;
+      }
+    }
   }
 
   // Mention additional user-uploaded documents
@@ -1350,41 +1489,53 @@ async function populateReviewModal() {
       }
     }
 
-    // Screenshot Tab - Show all screenshots
+    // Screenshot Tab - Show all media items (screenshots and videos)
     const screenshotTabContent = document.getElementById('screenshotTab').querySelector('.review-section');
     screenshotTabContent.innerHTML = '';
 
     if (screenshots && screenshots.length > 0) {
       const screenshotInfo = document.createElement('p');
       screenshotInfo.className = 'tab-info';
-      screenshotInfo.textContent = `${screenshots.length} screenshot(s) will be attached:`;
+      const screenshotCount = screenshots.filter(s => s.type !== 'video').length;
+      const videoCount = screenshots.filter(s => s.type === 'video').length;
+      screenshotInfo.textContent = `${screenshotCount} screenshot(s) and ${videoCount} video(s) will be attached:`;
       screenshotTabContent.appendChild(screenshotInfo);
 
       for (let index = 0; index < screenshots.length; index++) {
-        const screenshot = screenshots[index];
-
-        // Create temporary annotator to get annotated image
-        const tempCanvas = document.createElement('canvas');
-        const tempAnnotator = new Annotator(tempCanvas, screenshot.data);
-
-        // Wait for initialization
-        await tempAnnotator.initPromise;
-
-        if (screenshot.annotations && tempAnnotator.restoreState) {
-          await tempAnnotator.restoreState(screenshot.annotations);
-        }
+        const item = screenshots[index];
 
         const label = document.createElement('p');
         label.style.cssText = 'font-weight: 600; margin-bottom: 8px; color: #333;';
-        label.textContent = screenshot.name || `Screenshot ${index + 1}`;
-
-        const img = document.createElement('img');
-        img.className = 'review-image';
-        img.src = tempAnnotator.getAnnotatedImage();
-        img.style.marginBottom = '16px';
-
+        label.textContent = item.name || (item.type === 'video' ? `Video ${index + 1}` : `Screenshot ${index + 1}`);
         screenshotTabContent.appendChild(label);
-        screenshotTabContent.appendChild(img);
+
+        if (item.type === 'video') {
+          // Show video
+          const video = document.createElement('video');
+          video.className = 'review-image';
+          video.src = item.data;
+          video.controls = true;
+          video.style.marginBottom = '16px';
+          screenshotTabContent.appendChild(video);
+        } else {
+          // Show screenshot
+          // Create temporary annotator to get annotated image
+          const tempCanvas = document.createElement('canvas');
+          const tempAnnotator = new Annotator(tempCanvas, item.data);
+
+          // Wait for initialization
+          await tempAnnotator.initPromise;
+
+          if (item.annotations && tempAnnotator.restoreState) {
+            await tempAnnotator.restoreState(item.annotations);
+          }
+
+          const img = document.createElement('img');
+          img.className = 'review-image';
+          img.src = tempAnnotator.getAnnotatedImage();
+          img.style.marginBottom = '16px';
+          screenshotTabContent.appendChild(img);
+        }
       }
     } else if (annotator) {
       // Fallback to single screenshot
