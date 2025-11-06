@@ -262,6 +262,38 @@ class Annotator {
   getAnnotatedImage() {
     return this.canvas.toDataURL('image/png');
   }
+
+  // Get the current state (for saving annotations when switching screenshots)
+  getState() {
+    return {
+      history: this.history.slice(),
+      historyStep: this.historyStep,
+      currentTool: this.currentTool,
+      currentColor: this.currentColor,
+      lineWidth: this.lineWidth
+    };
+  }
+
+  // Restore a saved state (when switching back to a screenshot)
+  restoreState(state) {
+    if (!state) return;
+
+    this.history = state.history ? state.history.slice() : [];
+    this.historyStep = state.historyStep !== undefined ? state.historyStep : -1;
+    this.currentTool = state.currentTool || 'pen';
+    this.currentColor = state.currentColor || '#ff0000';
+    this.lineWidth = state.lineWidth || 3;
+
+    // Restore the canvas to the last history state
+    if (this.historyStep >= 0 && this.historyStep < this.history.length) {
+      const img = new Image();
+      img.src = this.history[this.historyStep];
+      img.onload = () => {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.drawImage(img, 0, 0);
+      };
+    }
+  }
 }
 
 // Export for use in other scripts
