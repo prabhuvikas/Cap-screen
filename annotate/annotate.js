@@ -11,6 +11,7 @@ let consoleLogs = [];
 let redmineAPI = null;
 let currentTab = null;
 let annotationTabId = null; // Store the annotation tab ID
+let accumulatedFiles = []; // Store accumulated files for additional documents
 
 // Sanitize text to remove unicode/emoji characters that cause 500 errors
 function sanitizeText(text) {
@@ -1586,12 +1587,36 @@ function updateSelectedFilesList() {
 
   if (!fileInput || !filesList) return;
 
+  // Accumulate new files with existing ones
+  if (fileInput.files.length > 0) {
+    const newFiles = Array.from(fileInput.files);
+
+    // Check for duplicates and add only new files
+    for (const newFile of newFiles) {
+      const isDuplicate = accumulatedFiles.some(
+        existingFile => existingFile.name === newFile.name && existingFile.size === newFile.size
+      );
+
+      if (!isDuplicate) {
+        accumulatedFiles.push(newFile);
+      }
+    }
+
+    // Update the file input with all accumulated files
+    const dt = new DataTransfer();
+    for (const file of accumulatedFiles) {
+      dt.items.add(file);
+    }
+    fileInput.files = dt.files;
+  }
+
+  // Render the file list
   filesList.innerHTML = '';
 
-  if (fileInput.files.length === 0) return;
+  if (accumulatedFiles.length === 0) return;
 
-  for (let i = 0; i < fileInput.files.length; i++) {
-    const file = fileInput.files[i];
+  for (let i = 0; i < accumulatedFiles.length; i++) {
+    const file = accumulatedFiles[i];
 
     const item = document.createElement('div');
     item.className = 'selected-file-item';
@@ -1639,17 +1664,67 @@ function removeFile(index) {
   const fileInput = document.getElementById('additionalDocuments');
   if (!fileInput) return;
 
-  const dt = new DataTransfer();
-  const files = fileInput.files;
+  // Remove from accumulated files array
+  accumulatedFiles.splice(index, 1);
 
-  for (let i = 0; i < files.length; i++) {
-    if (i !== index) {
-      dt.items.add(files[i]);
-    }
+  // Update file input with remaining files
+  const dt = new DataTransfer();
+  for (const file of accumulatedFiles) {
+    dt.items.add(file);
   }
 
   fileInput.files = dt.files;
-  updateSelectedFilesList();
+
+  // Re-render the list
+  const filesList = document.getElementById('selectedFilesList');
+  if (!filesList) return;
+
+  filesList.innerHTML = '';
+
+  if (accumulatedFiles.length === 0) return;
+
+  for (let i = 0; i < accumulatedFiles.length; i++) {
+    const file = accumulatedFiles[i];
+
+    const item = document.createElement('div');
+    item.className = 'selected-file-item';
+
+    const fileInfo = document.createElement('div');
+    fileInfo.className = 'file-info';
+
+    const icon = document.createElement('span');
+    icon.className = 'file-icon';
+    icon.textContent = getFileIcon(file.type, file.name);
+
+    const details = document.createElement('div');
+    details.className = 'file-details';
+
+    const name = document.createElement('div');
+    name.className = 'file-name';
+    name.textContent = file.name;
+    name.title = file.name;
+
+    const size = document.createElement('div');
+    size.className = 'file-size';
+    size.textContent = formatFileSize(file.size);
+
+    details.appendChild(name);
+    details.appendChild(size);
+
+    fileInfo.appendChild(icon);
+    fileInfo.appendChild(details);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'file-remove-btn';
+    removeBtn.textContent = 'Remove';
+    removeBtn.type = 'button';
+    removeBtn.onclick = () => removeFile(i);
+
+    item.appendChild(fileInfo);
+    item.appendChild(removeBtn);
+
+    filesList.appendChild(item);
+  }
 }
 
 // Get file icon based on file type
