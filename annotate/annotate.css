@@ -97,55 +97,56 @@ main {
 
 /* Buttons */
 .btn {
-  padding: 10px 18px;
-  border: 1px solid #e5e5e5;
-  border-radius: 6px;
-  font-size: 14px;
+  padding: 8px 16px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   justify-content: center;
   background-color: #ffffff;
-  color: #1a1a1a;
+  color: #3c4043;
 }
 
 .btn:hover {
-  border-color: #d0d0d0;
-  background-color: #fafafa;
+  background-color: #f8f9fa;
+  border-color: #dadce0;
 }
 
 .btn:active {
-  background-color: #f5f5f5;
+  background-color: #e8eaed;
 }
 
 .btn-primary {
-  background-color: #1a1a1a;
+  background-color: #1a73e8;
   color: #fff;
-  border-color: #1a1a1a;
+  border-color: #1a73e8;
 }
 
 .btn-primary:hover {
-  background-color: #333;
-  border-color: #333;
+  background-color: #1765cc;
+  border-color: #1765cc;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .btn-secondary {
   background-color: #ffffff;
-  color: #1a1a1a;
-  border-color: #d0d0d0;
+  color: #3c4043;
+  border-color: #dadce0;
 }
 
 .btn-secondary:hover {
-  border-color: #999;
-  background-color: #fafafa;
+  background-color: #f8f9fa;
+  border-color: #dadce0;
 }
 
 .btn-small {
-  padding: 5px 10px;
-  font-size: 11px;
+  padding: 6px 12px;
+  font-size: 12px;
   border-radius: 4px;
 }
 
@@ -256,11 +257,11 @@ main {
 
 /* Annotation toolbar at bottom */
 .annotation-toolbar-bottom {
-  background: #ffffff;
-  border-top: 2px solid #e5e5e5;
-  padding: 8px 16px;
+  background: #f9f9f9;
+  border-top: 1px solid #dadce0;
+  padding: 10px 20px;
   flex-shrink: 0;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .toolbar-section-horizontal {
@@ -274,22 +275,27 @@ main {
 .tool-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  padding: 4px 8px;
 }
 
 .tool-group-label {
-  font-size: 9px;
-  font-weight: 600;
-  color: #999;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #5f6368;
+  letter-spacing: 0.3px;
   text-align: center;
-  padding: 0 2px;
+  padding: 0 4px;
+  margin-bottom: 2px;
 }
 
 .tool-grid-horizontal {
   display: flex;
-  gap: 4px;
+  gap: 2px;
+  background: #ffffff;
+  border-radius: 4px;
+  padding: 2px;
+  border: 1px solid #dadce0;
 }
 
 .tool-controls-horizontal {
@@ -306,22 +312,28 @@ main {
 
 .control-group label {
   font-size: 11px;
-  color: #666;
+  color: #5f6368;
   font-weight: 500;
   white-space: nowrap;
 }
 
 .control-group input[type="color"] {
-  width: 28px;
-  height: 28px;
-  border: 1px solid #ddd;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #dadce0;
   border-radius: 4px;
   cursor: pointer;
-  padding: 2px;
+  padding: 3px;
+  transition: border-color 0.2s ease;
+}
+
+.control-group input[type="color"]:hover {
+  border-color: #5f6368;
 }
 
 .control-group input[type="range"] {
-  width: 60px;
+  width: 80px;
+  accent-color: #1967d2;
 }
 
 .tool-actions-horizontal {
@@ -336,11 +348,15 @@ main {
 }
 
 .zoom-level-display {
-  min-width: 40px;
+  min-width: 50px;
   text-align: center;
-  font-weight: 600;
-  color: #1a1a1a;
+  font-weight: 500;
+  color: #5f6368;
   font-size: 12px;
+  padding: 4px 8px;
+  background: #ffffff;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
 }
 
 .crop-controls-horizontal {
@@ -351,9 +367,10 @@ main {
 
 .toolbar-divider {
   width: 1px;
-  height: 32px;
-  background: #e5e5e5;
+  height: 28px;
+  background: #dadce0;
   align-self: center;
+  margin: 0 4px;
 }
 
 /* Sidebar */
@@ -406,37 +423,43 @@ main {
 
 /* Horizontal toolbar specific styles */
 .tool-grid-horizontal .tool-btn {
-  padding: 6px 8px;
-  gap: 2px;
-  min-width: 40px;
+  padding: 8px 10px;
+  gap: 3px;
+  min-width: 44px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  transition: background-color 0.2s ease, transform 0.1s ease;
 }
 
 .tool-grid-horizontal .tool-icon {
-  font-size: 16px;
+  font-size: 18px;
   line-height: 1;
 }
 
 .tool-grid-horizontal .tool-label {
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1;
+  font-weight: 500;
 }
 
 .tool-btn:hover {
-  border-color: #3498db;
-  background-color: #f0f8ff;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background-color: #e8eaed;
+  border: none;
+  transform: none;
+  box-shadow: none;
 }
 
 .tool-btn.active {
-  border-color: #3498db;
-  background-color: #3498db;
-  color: #fff;
-  box-shadow: 0 2px 4px rgba(52,152,219,0.3);
+  background-color: #d3e3fd;
+  color: #1967d2;
+  border: none;
+  box-shadow: none;
 }
 
 .tool-btn.active .tool-label {
-  color: #fff;
+  color: #1967d2;
+  font-weight: 600;
 }
 
 .tool-icon {
