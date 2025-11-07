@@ -145,8 +145,8 @@ main {
 }
 
 .btn-small {
-  padding: 6px 12px;
-  font-size: 12px;
+  padding: 4px 10px;
+  font-size: 11px;
   border-radius: 4px;
 }
 
@@ -259,7 +259,7 @@ main {
 .annotation-toolbar-bottom {
   background: #f9f9f9;
   border-top: 1px solid #dadce0;
-  padding: 10px 20px;
+  padding: 6px 12px;
   flex-shrink: 0;
   box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.05);
 }
@@ -267,7 +267,7 @@ main {
 .toolbar-section-horizontal {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   justify-content: center;
   flex-wrap: nowrap;
   overflow-x: auto;
@@ -292,16 +292,16 @@ main {
 
 .tool-grid-horizontal {
   display: flex;
-  gap: 2px;
+  gap: 1px;
   background: #ffffff;
   border-radius: 4px;
-  padding: 2px;
+  padding: 1px;
   border: 1px solid #dadce0;
 }
 
 .tool-controls-horizontal {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
 }
 
@@ -312,19 +312,19 @@ main {
 }
 
 .control-group label {
-  font-size: 11px;
+  font-size: 10px;
   color: #5f6368;
   font-weight: 500;
   white-space: nowrap;
 }
 
 .control-group input[type="color"] {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border: 1px solid #dadce0;
   border-radius: 4px;
   cursor: pointer;
-  padding: 3px;
+  padding: 2px;
   transition: border-color 0.2s ease;
 }
 
@@ -338,16 +338,16 @@ main {
 }
 
 .width-selector {
-  padding: 4px 8px;
+  padding: 2px 4px;
   border: 1px solid #dadce0;
   border-radius: 4px;
   background: #ffffff;
   color: #3c4043;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
   outline: none;
   transition: border-color 0.2s ease;
-  min-width: 65px;
+  min-width: 50px;
 }
 
 .width-selector:hover {
@@ -360,22 +360,22 @@ main {
 
 .tool-actions-horizontal {
   display: flex;
-  gap: 4px;
+  gap: 3px;
 }
 
 .zoom-controls-horizontal {
   display: flex;
-  gap: 4px;
+  gap: 3px;
   align-items: center;
 }
 
 .zoom-level-display {
-  min-width: 50px;
+  min-width: 45px;
   text-align: center;
   font-weight: 500;
   color: #5f6368;
-  font-size: 12px;
-  padding: 4px 8px;
+  font-size: 11px;
+  padding: 3px 6px;
   background: #ffffff;
   border: 1px solid #dadce0;
   border-radius: 4px;
@@ -383,16 +383,16 @@ main {
 
 .crop-controls-horizontal {
   display: flex;
-  gap: 4px;
+  gap: 3px;
   align-items: center;
 }
 
 .toolbar-divider {
   width: 1px;
-  height: 28px;
+  height: 24px;
   background: #dadce0;
   align-self: center;
-  margin: 0 4px;
+  margin: 0 2px;
 }
 
 /* Sidebar */
@@ -445,24 +445,27 @@ main {
 
 /* Horizontal toolbar specific styles */
 .tool-grid-horizontal .tool-btn {
-  padding: 8px 10px;
-  gap: 3px;
-  min-width: 44px;
+  padding: 6px;
+  gap: 0;
+  min-width: 32px;
+  width: 32px;
+  height: 32px;
   border: none;
   background: transparent;
   border-radius: 4px;
-  transition: background-color 0.2s ease, transform 0.1s ease;
+  transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .tool-grid-horizontal .tool-icon {
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
 }
 
 .tool-grid-horizontal .tool-label {
-  font-size: 10px;
-  line-height: 1;
-  font-weight: 500;
+  display: none;
 }
 
 .tool-btn:hover {
