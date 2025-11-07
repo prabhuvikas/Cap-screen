@@ -3,7 +3,7 @@
 class Annotator {
   constructor(canvas, imageDataUrl) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+    this.ctx = canvas.getContext('2d', { willReadFrequently: true });
     this.imageDataUrl = imageDataUrl;
     this.isDrawing = false;
     this.currentTool = 'pen';
