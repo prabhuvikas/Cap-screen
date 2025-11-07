@@ -1,5 +1,8 @@
 // Recording Overlay - Shows floating recording indicator and controls
 
+// Prevent redeclaration if script is injected multiple times
+if (typeof window.RecordingOverlay === 'undefined') {
+
 class RecordingOverlay {
   constructor() {
     this.overlay = null;
@@ -194,19 +197,26 @@ class RecordingOverlay {
   }
 }
 
-// Global instance
-let recordingOverlay = new RecordingOverlay();
+// Store class globally to prevent redeclaration
+window.RecordingOverlay = RecordingOverlay;
+
+// Create or reuse global instance
+if (!window.recordingOverlay) {
+  window.recordingOverlay = new RecordingOverlay();
+}
 
 // Listen for messages from popup and background
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'showRecordingOverlay') {
-    const result = recordingOverlay.showRecordingOverlay();
+    const result = window.recordingOverlay.showRecordingOverlay();
     sendResponse(result);
     return true;
   } else if (request.action === 'recordingStopped') {
     // Called by background when recording actually stops
-    recordingOverlay.handleRecordingStopped();
+    window.recordingOverlay.handleRecordingStopped();
     sendResponse({ success: true });
     return true;
   }
 });
+
+} // End of redeclaration prevention check
