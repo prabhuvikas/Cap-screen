@@ -32,7 +32,7 @@ class RecordingOverlay {
           top: 20px;
           right: 20px;
           z-index: 2147483647;
-          background: rgba(0, 0, 0, 0.9);
+          background: rgba(0, 0, 0, 0.3);
           color: white;
           padding: 12px 16px;
           border-radius: 8px;
@@ -43,6 +43,11 @@ class RecordingOverlay {
           align-items: center;
           gap: 12px;
           backdrop-filter: blur(10px);
+          transition: background 0.3s ease;
+        }
+
+        #bug-reporter-recording-overlay:hover {
+          background: rgba(0, 0, 0, 0.9);
         }
 
         #bug-reporter-recording-overlay .recording-dot {
