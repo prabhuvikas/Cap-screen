@@ -1,5 +1,8 @@
 // Recording Overlay - Shows floating recording indicator and controls
 
+// Prevent redeclaration if script is injected multiple times
+if (typeof window.RecordingOverlay === 'undefined') {
+
 class RecordingOverlay {
   constructor() {
     this.overlay = null;
@@ -32,17 +35,23 @@ class RecordingOverlay {
           top: 20px;
           right: 20px;
           z-index: 2147483647;
-          background: rgba(0, 0, 0, 0.9);
+          background: rgba(0, 0, 0, 0.15);
           color: white;
           padding: 12px 16px;
           border-radius: 8px;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           font-size: 14px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
           display: flex;
           align-items: center;
           gap: 12px;
           backdrop-filter: blur(10px);
+          transition: background 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        #bug-reporter-recording-overlay:hover {
+          background: rgba(0, 0, 0, 0.9);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
         }
 
         #bug-reporter-recording-overlay .recording-dot {
@@ -86,10 +95,20 @@ class RecordingOverlay {
           font-weight: 600;
           font-size: 13px;
           transition: background 0.2s;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 2px;
         }
 
         #bug-reporter-recording-overlay .stop-btn:hover {
           background: #cc0000;
+        }
+
+        #bug-reporter-recording-overlay .shortcut-hint {
+          font-size: 9px;
+          opacity: 0.8;
+          font-weight: 400;
         }
       </style>
       <div class="recording-dot"></div>
@@ -97,7 +116,10 @@ class RecordingOverlay {
         <div class="recording-label">Recording</div>
         <div class="recording-time" id="recording-timer">00:00</div>
       </div>
-      <button class="stop-btn" id="stop-recording-btn">Stop</button>
+      <button class="stop-btn" id="stop-recording-btn">
+        <span>Stop</span>
+        <span class="shortcut-hint">Esc / Ctrl+Shift+S</span>
+      </button>
     `;
 
     // Add to page
@@ -107,6 +129,15 @@ class RecordingOverlay {
     document.getElementById('stop-recording-btn').addEventListener('click', () => {
       this.stopRecording();
     });
+
+    // Add keyboard shortcut listener (Ctrl+Shift+S or Escape)
+    this.keyboardHandler = (e) => {
+      if ((e.ctrlKey && e.shiftKey && e.key === 'S') || e.key === 'Escape') {
+        e.preventDefault();
+        this.stopRecording();
+      }
+    };
+    document.addEventListener('keydown', this.keyboardHandler);
   }
 
   startTimer() {
@@ -158,22 +189,34 @@ class RecordingOverlay {
       this.overlay.parentNode.removeChild(this.overlay);
       this.overlay = null;
     }
+    // Remove keyboard event listener
+    if (this.keyboardHandler) {
+      document.removeEventListener('keydown', this.keyboardHandler);
+      this.keyboardHandler = null;
+    }
   }
 }
 
-// Global instance
-let recordingOverlay = new RecordingOverlay();
+// Store class globally to prevent redeclaration
+window.RecordingOverlay = RecordingOverlay;
+
+// Create or reuse global instance
+if (!window.recordingOverlay) {
+  window.recordingOverlay = new RecordingOverlay();
+}
 
 // Listen for messages from popup and background
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'showRecordingOverlay') {
-    const result = recordingOverlay.showRecordingOverlay();
+    const result = window.recordingOverlay.showRecordingOverlay();
     sendResponse(result);
     return true;
   } else if (request.action === 'recordingStopped') {
     // Called by background when recording actually stops
-    recordingOverlay.handleRecordingStopped();
+    window.recordingOverlay.handleRecordingStopped();
     sendResponse({ success: true });
     return true;
   }
 });
+
+} // End of redeclaration prevention check

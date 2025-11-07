@@ -20,6 +20,27 @@ class Annotator {
     this.dragOffsetY = 0;
     this.ready = false;
 
+    // Zoom properties
+    this.zoomLevel = 1.0;
+    this.minZoom = 0.25;
+    this.maxZoom = 4.0;
+    this.zoomStep = 0.25;
+
+    // Pan properties
+    this.isPanning = false;
+    this.panStartX = 0;
+    this.panStartY = 0;
+    this.panStartScrollX = 0;
+    this.panStartScrollY = 0;
+
+    // Crop properties
+    this.isCropping = false;
+    this.cropStartX = 0;
+    this.cropStartY = 0;
+    this.cropEndX = 0;
+    this.cropEndY = 0;
+    this.cropActive = false;
+
     // Store the initialization promise
     this.initPromise = this.init();
   }
@@ -64,6 +85,9 @@ class Annotator {
     this.canvas.addEventListener('touchstart', this.handleTouchStart.bind(this));
     this.canvas.addEventListener('touchmove', this.handleTouchMove.bind(this));
     this.canvas.addEventListener('touchend', this.handleTouchEnd.bind(this));
+
+    // Keyboard events for delete functionality
+    document.addEventListener('keydown', this.handleKeyDown.bind(this));
   }
 
   handleMouseDown(e) {
@@ -73,7 +97,30 @@ class Annotator {
     this.startX = (e.clientX - rect.left) * scaleX;
     this.startY = (e.clientY - rect.top) * scaleY;
 
-    if (this.currentTool === 'move') {
+    if (this.currentTool === 'pan') {
+      // Start panning the canvas
+      this.isPanning = true;
+      this.panStartX = e.clientX;
+      this.panStartY = e.clientY;
+
+      const container = this.canvas.parentElement;
+      this.panStartScrollX = container.scrollLeft;
+      this.panStartScrollY = container.scrollTop;
+
+      this.canvas.classList.remove('pan-cursor');
+      this.canvas.classList.add('grabbing-cursor');
+      e.preventDefault();
+      return;
+    } else if (this.currentTool === 'crop') {
+      // Start crop selection
+      this.isCropping = true;
+      this.cropStartX = this.startX;
+      this.cropStartY = this.startY;
+      this.cropEndX = this.startX;
+      this.cropEndY = this.startY;
+      console.log('[Annotator] Crop tool started at', this.cropStartX, this.cropStartY);
+      return;
+    } else if (this.currentTool === 'move') {
       // Check if clicking on an annotation
       console.log('[Annotator] Move tool clicked at', this.startX, this.startY);
       console.log('[Annotator] Total annotations:', this.annotations.length);
@@ -123,7 +170,24 @@ class Annotator {
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
 
-    if (this.currentTool === 'move' && this.isDragging && this.selectedAnnotation) {
+    if (this.currentTool === 'pan' && this.isPanning) {
+      // Pan the canvas container
+      const container = this.canvas.parentElement;
+      const deltaX = this.panStartX - e.clientX;
+      const deltaY = this.panStartY - e.clientY;
+
+      container.scrollLeft = this.panStartScrollX + deltaX;
+      container.scrollTop = this.panStartScrollY + deltaY;
+
+      e.preventDefault();
+      return;
+    } else if (this.currentTool === 'crop' && this.isCropping) {
+      // Update crop selection
+      this.cropEndX = x;
+      this.cropEndY = y;
+      this.drawCropOverlay();
+      return;
+    } else if (this.currentTool === 'move' && this.isDragging && this.selectedAnnotation) {
       // Move the selected annotation
       const newX = x - this.dragOffsetX;
       const newY = y - this.dragOffsetY;
@@ -184,6 +248,33 @@ class Annotator {
   }
 
   async handleMouseUp(e) {
+    if (this.currentTool === 'pan' && this.isPanning) {
+      this.isPanning = false;
+      this.canvas.classList.remove('grabbing-cursor');
+      this.canvas.classList.add('pan-cursor');
+      return;
+    }
+
+    if (this.currentTool === 'crop' && this.isCropping) {
+      // Finish crop selection
+      this.isCropping = false;
+      this.cropActive = true;
+      this.drawCropOverlay();
+
+      // Trigger crop controls display
+      if (window.showCropControls) {
+        window.showCropControls();
+      }
+
+      console.log('[Annotator] Crop selection completed:', {
+        x: Math.min(this.cropStartX, this.cropEndX),
+        y: Math.min(this.cropStartY, this.cropEndY),
+        width: Math.abs(this.cropEndX - this.cropStartX),
+        height: Math.abs(this.cropEndY - this.cropStartY)
+      });
+      return;
+    }
+
     if (this.currentTool === 'move' && this.isDragging) {
       this.isDragging = false;
       this.selectedAnnotation = null;
@@ -256,6 +347,34 @@ class Annotator {
     e.preventDefault();
     const mouseEvent = new MouseEvent('mouseup', {});
     this.canvas.dispatchEvent(mouseEvent);
+  }
+
+  handleKeyDown(e) {
+    // Delete selected annotation when Delete or Backspace is pressed
+    if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedAnnotation) {
+      // Prevent default behavior (e.g., browser back navigation for Backspace)
+      e.preventDefault();
+      this.deleteSelectedAnnotation();
+    }
+  }
+
+  deleteSelectedAnnotation() {
+    if (!this.selectedAnnotation) return;
+
+    // Find and remove the selected annotation from the array
+    const index = this.annotations.indexOf(this.selectedAnnotation);
+    if (index > -1) {
+      this.annotations.splice(index, 1);
+      console.log('[Annotator] Deleted annotation at index', index);
+    }
+
+    // Clear selection
+    this.selectedAnnotation = null;
+
+    // Redraw canvas and save state
+    this.redrawCanvas().then(() => {
+      this.saveState();
+    });
   }
 
   drawShape(startX, startY, endX, endY, shape, isPreview) {
@@ -672,7 +791,8 @@ class Annotator {
       currentTool: this.currentTool,
       currentColor: this.currentColor,
       lineWidth: this.lineWidth,
-      annotations: JSON.parse(JSON.stringify(this.annotations)) // Deep copy
+      annotations: JSON.parse(JSON.stringify(this.annotations)), // Deep copy
+      zoomLevel: this.zoomLevel
     };
   }
 
@@ -689,6 +809,12 @@ class Annotator {
     this.lineWidth = state.lineWidth || 3;
     this.annotations = state.annotations ? JSON.parse(JSON.stringify(state.annotations)) : [];
 
+    // Restore zoom level if saved
+    if (state.zoomLevel) {
+      this.zoomLevel = state.zoomLevel;
+      this.applyZoom();
+    }
+
     // Restore the canvas to the last history state
     if (this.historyStep >= 0 && this.historyStep < this.history.length) {
       const img = await this.loadImage(this.history[this.historyStep]);
@@ -699,6 +825,272 @@ class Annotator {
       // If no history, just redraw from annotations
       await this.redrawCanvas();
     }
+  }
+
+  // Zoom methods
+  setZoom(level) {
+    this.zoomLevel = Math.max(this.minZoom, Math.min(this.maxZoom, level));
+    this.applyZoom();
+    console.log('[Annotator] Zoom level set to:', this.zoomLevel);
+    return this.zoomLevel;
+  }
+
+  zoomIn() {
+    const newZoom = this.zoomLevel + this.zoomStep;
+    return this.setZoom(newZoom);
+  }
+
+  zoomOut() {
+    const newZoom = this.zoomLevel - this.zoomStep;
+    return this.setZoom(newZoom);
+  }
+
+  zoomReset() {
+    return this.setZoom(1.0);
+  }
+
+  applyZoom() {
+    // Apply CSS transform to scale the canvas
+    this.canvas.style.transform = `scale(${this.zoomLevel})`;
+    this.canvas.style.transformOrigin = 'top left';
+
+    // Update canvas container to handle overflow
+    const container = this.canvas.parentElement;
+    if (container) {
+      container.style.overflow = 'auto';
+    }
+  }
+
+  getZoomLevel() {
+    return this.zoomLevel;
+  }
+
+  // Crop methods
+  drawCropOverlay() {
+    // Redraw canvas with annotations
+    this.redrawCanvas().then(() => {
+      // Calculate crop rectangle bounds
+      const x1 = Math.min(this.cropStartX, this.cropEndX);
+      const y1 = Math.min(this.cropStartY, this.cropEndY);
+      const x2 = Math.max(this.cropStartX, this.cropEndX);
+      const y2 = Math.max(this.cropStartY, this.cropEndY);
+      const width = x2 - x1;
+      const height = y2 - y1;
+
+      // Draw semi-transparent dark overlay over entire canvas
+      this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+      // Clear the selected crop area (making it visible)
+      this.ctx.clearRect(x1, y1, width, height);
+
+      // Redraw the image and annotations in the crop area
+      const img = new Image();
+      img.src = this.imageDataUrl;
+      img.onload = () => {
+        this.ctx.drawImage(img, x1, y1, width, height, x1, y1, width, height);
+
+        // Redraw annotations that are in crop area
+        this.annotations.forEach(annotation => {
+          this.ctx.save();
+          this.ctx.beginPath();
+          this.ctx.rect(x1, y1, width, height);
+          this.ctx.clip();
+          this.renderAnnotation(annotation);
+          this.ctx.restore();
+        });
+
+        // Draw crop selection border
+        this.ctx.strokeStyle = '#00BFFF';
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([5, 5]);
+        this.ctx.strokeRect(x1, y1, width, height);
+        this.ctx.setLineDash([]);
+
+        // Draw corner handles
+        const handleSize = 8;
+        this.ctx.fillStyle = '#00BFFF';
+        this.ctx.fillRect(x1 - handleSize / 2, y1 - handleSize / 2, handleSize, handleSize);
+        this.ctx.fillRect(x2 - handleSize / 2, y1 - handleSize / 2, handleSize, handleSize);
+        this.ctx.fillRect(x1 - handleSize / 2, y2 - handleSize / 2, handleSize, handleSize);
+        this.ctx.fillRect(x2 - handleSize / 2, y2 - handleSize / 2, handleSize, handleSize);
+      };
+    });
+  }
+
+  async applyCrop() {
+    if (!this.cropActive) return;
+
+    const x1 = Math.min(this.cropStartX, this.cropEndX);
+    const y1 = Math.min(this.cropStartY, this.cropEndY);
+    const x2 = Math.max(this.cropStartX, this.cropEndX);
+    const y2 = Math.max(this.cropStartY, this.cropEndY);
+    const width = Math.abs(x2 - x1);
+    const height = Math.abs(y2 - y1);
+
+    // Validate crop dimensions
+    if (width < 10 || height < 10) {
+      alert('Crop area is too small. Please select a larger area.');
+      return false;
+    }
+
+    console.log('[Annotator] Applying crop:', { x: x1, y: y1, width, height });
+
+    // Create a temporary canvas to extract the cropped image
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    // Draw the original image cropped
+    const img = await this.loadImage(this.imageDataUrl);
+    tempCtx.drawImage(img, x1, y1, width, height, 0, 0, width, height);
+
+    // Draw annotations in the cropped area
+    this.annotations.forEach(annotation => {
+      tempCtx.save();
+
+      // Adjust annotation coordinates to crop offset
+      const adjustedAnnotation = this.adjustAnnotationForCrop(annotation, x1, y1);
+      if (adjustedAnnotation) {
+        this.renderAnnotationOnContext(tempCtx, adjustedAnnotation);
+      }
+
+      tempCtx.restore();
+    });
+
+    // Get the cropped image as data URL
+    this.imageDataUrl = tempCanvas.toDataURL('image/png');
+
+    // Update canvas size
+    this.canvas.width = width;
+    this.canvas.height = height;
+
+    // Filter and adjust annotations to new coordinates
+    this.annotations = this.annotations
+      .map(annotation => this.adjustAnnotationForCrop(annotation, x1, y1))
+      .filter(annotation => annotation !== null);
+
+    // Reset crop state
+    this.cropActive = false;
+    this.isCropping = false;
+
+    // Redraw the cropped canvas
+    await this.redrawCanvas();
+
+    // Save state
+    this.saveState();
+
+    // Hide crop controls
+    if (window.hideCropControls) {
+      window.hideCropControls();
+    }
+
+    console.log('[Annotator] Crop applied successfully');
+    return true;
+  }
+
+  adjustAnnotationForCrop(annotation, offsetX, offsetY) {
+    const adjusted = JSON.parse(JSON.stringify(annotation)); // Deep copy
+
+    if (annotation.type === 'pen') {
+      // Adjust all points
+      adjusted.points = annotation.points.map(point => ({
+        x: point.x - offsetX,
+        y: point.y - offsetY
+      }));
+
+      // Check if any points are in the cropped area
+      const inBounds = adjusted.points.some(p => p.x >= 0 && p.y >= 0);
+      return inBounds ? adjusted : null;
+    } else if (annotation.type === 'text') {
+      adjusted.x = annotation.x - offsetX;
+      adjusted.y = annotation.y - offsetY;
+
+      // Check if text is in bounds
+      return (adjusted.x >= 0 && adjusted.y >= 0) ? adjusted : null;
+    } else {
+      // For shapes (rectangle, circle, arrow, blackout)
+      adjusted.x = annotation.x - offsetX;
+      adjusted.y = annotation.y - offsetY;
+      adjusted.endX = annotation.endX - offsetX;
+      adjusted.endY = annotation.endY - offsetY;
+
+      // Check if shape overlaps with cropped area
+      const inBounds = (adjusted.x >= 0 || adjusted.endX >= 0) &&
+                       (adjusted.y >= 0 || adjusted.endY >= 0);
+      return inBounds ? adjusted : null;
+    }
+  }
+
+  renderAnnotationOnContext(ctx, annotation) {
+    ctx.strokeStyle = annotation.color;
+    ctx.lineWidth = annotation.lineWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (annotation.type === 'pen') {
+      if (annotation.points && annotation.points.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(annotation.points[0].x, annotation.points[0].y);
+        for (let i = 1; i < annotation.points.length; i++) {
+          ctx.lineTo(annotation.points[i].x, annotation.points[i].y);
+        }
+        ctx.stroke();
+      }
+    } else if (annotation.type === 'rectangle') {
+      const width = annotation.endX - annotation.x;
+      const height = annotation.endY - annotation.y;
+      ctx.strokeRect(annotation.x, annotation.y, width, height);
+    } else if (annotation.type === 'circle') {
+      const radius = Math.sqrt(Math.pow(annotation.endX - annotation.x, 2) + Math.pow(annotation.endY - annotation.y, 2));
+      ctx.beginPath();
+      ctx.arc(annotation.x, annotation.y, radius, 0, 2 * Math.PI);
+      ctx.stroke();
+    } else if (annotation.type === 'arrow') {
+      const headLength = 15;
+      const angle = Math.atan2(annotation.endY - annotation.y, annotation.endX - annotation.x);
+
+      ctx.beginPath();
+      ctx.moveTo(annotation.x, annotation.y);
+      ctx.lineTo(annotation.endX, annotation.endY);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(annotation.endX, annotation.endY);
+      ctx.lineTo(
+        annotation.endX - headLength * Math.cos(angle - Math.PI / 6),
+        annotation.endY - headLength * Math.sin(angle - Math.PI / 6)
+      );
+      ctx.moveTo(annotation.endX, annotation.endY);
+      ctx.lineTo(
+        annotation.endX - headLength * Math.cos(angle + Math.PI / 6),
+        annotation.endY - headLength * Math.sin(angle + Math.PI / 6)
+      );
+      ctx.stroke();
+    } else if (annotation.type === 'blackout') {
+      const width = annotation.endX - annotation.x;
+      const height = annotation.endY - annotation.y;
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(annotation.x, annotation.y, width, height);
+    } else if (annotation.type === 'text') {
+      ctx.fillStyle = annotation.color;
+      ctx.font = `${annotation.fontSize}px Arial`;
+      ctx.fillText(annotation.text, annotation.x, annotation.y);
+    }
+  }
+
+  cancelCrop() {
+    this.cropActive = false;
+    this.isCropping = false;
+    this.redrawCanvas();
+
+    // Hide crop controls
+    if (window.hideCropControls) {
+      window.hideCropControls();
+    }
+
+    console.log('[Annotator] Crop cancelled');
   }
 }
 

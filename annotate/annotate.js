@@ -178,6 +178,7 @@ async function loadSettings() {
 // Setup event listeners
 function setupEventListeners() {
   // Header actions
+  document.getElementById('helpBtn').addEventListener('click', openHelp);
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('closeTab').addEventListener('click', closeTabWithConfirmation);
 
@@ -197,8 +198,7 @@ function setupEventListeners() {
     if (annotator) annotator.setColor(e.target.value);
   });
 
-  document.getElementById('lineWidth').addEventListener('input', (e) => {
-    document.getElementById('lineWidthValue').textContent = e.target.value;
+  document.getElementById('lineWidth').addEventListener('change', (e) => {
     if (annotator) annotator.setLineWidth(parseInt(e.target.value));
   });
 
@@ -213,6 +213,73 @@ function setupEventListeners() {
   document.getElementById('clearAnnotations').addEventListener('click', () => {
     if (annotator && confirm('Clear all annotations?')) {
       annotator.clear();
+    }
+  });
+
+  // Zoom controls
+  document.getElementById('zoomInBtn').addEventListener('click', () => {
+    if (annotator) {
+      const newZoom = annotator.zoomIn();
+      updateZoomDisplay(newZoom);
+    }
+  });
+
+  document.getElementById('zoomOutBtn').addEventListener('click', () => {
+    if (annotator) {
+      const newZoom = annotator.zoomOut();
+      updateZoomDisplay(newZoom);
+    }
+  });
+
+  document.getElementById('zoomResetBtn').addEventListener('click', () => {
+    if (annotator) {
+      const newZoom = annotator.zoomReset();
+      updateZoomDisplay(newZoom);
+    }
+  });
+
+  // Crop controls
+  document.getElementById('applyCrop').addEventListener('click', async () => {
+    if (annotator) {
+      const success = await annotator.applyCrop();
+      if (success) {
+        // Update the current screenshot data with cropped image
+        const currentScreenshot = screenshots.find(s => s.id === currentScreenshotId);
+        if (currentScreenshot) {
+          currentScreenshot.data = annotator.imageDataUrl;
+          await chrome.storage.session.set({ screenshots: screenshots });
+        }
+      }
+    }
+  });
+
+  document.getElementById('cancelCrop').addEventListener('click', () => {
+    if (annotator) {
+      annotator.cancelCrop();
+    }
+  });
+
+  // Keyboard shortcuts for zoom
+  document.addEventListener('keydown', (e) => {
+    if (!annotator) return;
+
+    // Ctrl/Cmd + Plus/Equals for zoom in
+    if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '=')) {
+      e.preventDefault();
+      const newZoom = annotator.zoomIn();
+      updateZoomDisplay(newZoom);
+    }
+    // Ctrl/Cmd + Minus for zoom out
+    else if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+      e.preventDefault();
+      const newZoom = annotator.zoomOut();
+      updateZoomDisplay(newZoom);
+    }
+    // Ctrl/Cmd + 0 for reset zoom
+    else if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+      e.preventDefault();
+      const newZoom = annotator.zoomReset();
+      updateZoomDisplay(newZoom);
     }
   });
 
@@ -320,6 +387,9 @@ async function showAnnotationCanvas(screenshot) {
     console.log('[Annotate] Restoring annotations for screenshot:', currentScreenshotId);
     await annotator.restoreState(screenshot.annotations);
   }
+
+  // Update zoom display
+  updateZoomDisplay(annotator.getZoomLevel());
 }
 
 // Initialize annotation silently (without showing the section)
@@ -358,11 +428,52 @@ function selectTool(tool, buttonElement) {
 
   // Update canvas cursor based on tool
   const canvas = document.getElementById('annotationCanvas');
-  canvas.classList.remove('move-cursor', 'grab-cursor', 'grabbing-cursor', 'text-cursor');
+  canvas.classList.remove('move-cursor', 'grab-cursor', 'grabbing-cursor', 'text-cursor', 'pan-cursor', 'crop-cursor');
+
+  // Clear any inline cursor styles that might override CSS
+  canvas.style.cursor = '';
+
   if (tool === 'move') {
     canvas.classList.add('grab-cursor');
   } else if (tool === 'text') {
     canvas.classList.add('text-cursor');
+  } else if (tool === 'pan') {
+    canvas.classList.add('pan-cursor');
+  } else if (tool === 'crop') {
+    canvas.classList.add('crop-cursor');
+  }
+  // All other tools (pen, rectangle, circle, arrow, blackout) will use the default crosshair cursor
+}
+
+// Update zoom display
+function updateZoomDisplay(zoomLevel) {
+  const display = document.getElementById('zoomLevel');
+  if (display) {
+    display.textContent = Math.round(zoomLevel * 100) + '%';
+  }
+}
+
+// Show crop controls
+window.showCropControls = function() {
+  const cropControls = document.getElementById('cropControls');
+  const cropDivider = document.getElementById('cropDivider');
+  if (cropControls) {
+    cropControls.style.display = 'flex';
+  }
+  if (cropDivider) {
+    cropDivider.style.display = 'block';
+  }
+}
+
+// Hide crop controls
+window.hideCropControls = function() {
+  const cropControls = document.getElementById('cropControls');
+  const cropDivider = document.getElementById('cropDivider');
+  if (cropControls) {
+    cropControls.style.display = 'none';
+  }
+  if (cropDivider) {
+    cropDivider.style.display = 'none';
   }
 }
 
@@ -2023,6 +2134,12 @@ function openSettings() {
   chrome.tabs.create({
     url: chrome.runtime.getURL('options/options.html')
   });
+}
+
+// Open help guide in new window
+function openHelp() {
+  const helpUrl = chrome.runtime.getURL('annotate/help.html');
+  window.open(helpUrl, 'CapScreenHelp', 'width=1000,height=800,scrollbars=yes,resizable=yes');
 }
 
 // Close tab with confirmation
