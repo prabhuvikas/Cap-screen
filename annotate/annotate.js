@@ -178,6 +178,7 @@ async function loadSettings() {
 // Setup event listeners
 function setupEventListeners() {
   // Header actions
+  document.getElementById('helpBtn').addEventListener('click', openHelp);
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('closeTab').addEventListener('click', closeTabWithConfirmation);
 
@@ -2133,6 +2134,12 @@ function openSettings() {
   chrome.tabs.create({
     url: chrome.runtime.getURL('options/options.html')
   });
+}
+
+// Open help guide in new window
+function openHelp() {
+  const helpUrl = chrome.runtime.getURL('annotate/help.html');
+  window.open(helpUrl, 'CapScreenHelp', 'width=1000,height=800,scrollbars=yes,resizable=yes');
 }
 
 // Close tab with confirmation
