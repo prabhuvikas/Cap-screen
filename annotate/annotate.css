@@ -194,7 +194,7 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px;
+  padding: 8px;
   background: #fafafa;
   overflow: auto;
 }
@@ -205,7 +205,7 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px;
+  padding: 8px;
   background: #fafafa;
   overflow: auto;
   border: 1px solid #ddd;
@@ -227,7 +227,7 @@ main {
   display: block;
   cursor: crosshair; /* Default cursor for drawing tools (pen, rectangle, circle, arrow, blackout) */
   max-width: 100%;
-  max-height: calc(100vh - 350px);
+  max-height: calc(100vh - 250px);
   transition: transform 0.2s ease;
 }
 
