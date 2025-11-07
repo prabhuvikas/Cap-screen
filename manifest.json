@@ -3,12 +3,13 @@
   "name": "Cred Issue Reporter",
   "version": "1.0.0",
   "description": "Comprehensive issue reporting tool with media annotation and Redmine integration",
+  "author": "Cred Issue Reporter Team",
+  "homepage_url": "https://github.com/prabhuvikas/Cap-screen",
   "permissions": [
     "activeTab",
     "storage",
     "tabs",
     "webRequest",
-    "debugger",
     "scripting",
     "tabCapture",
     "offscreen"
