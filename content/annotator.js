@@ -3,7 +3,7 @@
 class Annotator {
   constructor(canvas, imageDataUrl) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+    this.ctx = canvas.getContext('2d', { willReadFrequently: true });
     this.imageDataUrl = imageDataUrl;
     this.isDrawing = false;
     this.currentTool = 'pen';
@@ -124,6 +124,7 @@ class Annotator {
       // Check if clicking on an annotation
       console.log('[Annotator] Move tool clicked at', this.startX, this.startY);
       console.log('[Annotator] Total annotations:', this.annotations.length);
+      const previousSelection = this.selectedAnnotation;
       this.selectedAnnotation = this.findAnnotationAt(this.startX, this.startY);
       console.log('[Annotator] Selected annotation:', this.selectedAnnotation);
 
@@ -146,6 +147,10 @@ class Annotator {
         this.redrawCanvas();
       } else {
         console.log('[Annotator] No annotation found at click position');
+        // If we had a previous selection, redraw to remove the selection box
+        if (previousSelection) {
+          this.redrawCanvas();
+        }
       }
     } else if (this.currentTool === 'text') {
       // Show text input at click position
@@ -277,9 +282,12 @@ class Annotator {
 
     if (this.currentTool === 'move' && this.isDragging) {
       this.isDragging = false;
-      this.selectedAnnotation = null;
+      // Keep the annotation selected after dragging so user can delete it
+      // this.selectedAnnotation = null; // REMOVED: Don't clear selection after drag
       this.canvas.classList.remove('grabbing-cursor');
       this.canvas.classList.add('grab-cursor');
+      // Redraw to show selection box on the moved annotation
+      await this.redrawCanvas();
       this.saveState();
       return;
     }
