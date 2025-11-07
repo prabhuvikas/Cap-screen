@@ -85,6 +85,9 @@ class Annotator {
     this.canvas.addEventListener('touchstart', this.handleTouchStart.bind(this));
     this.canvas.addEventListener('touchmove', this.handleTouchMove.bind(this));
     this.canvas.addEventListener('touchend', this.handleTouchEnd.bind(this));
+
+    // Keyboard events for delete functionality
+    document.addEventListener('keydown', this.handleKeyDown.bind(this));
   }
 
   handleMouseDown(e) {
@@ -344,6 +347,34 @@ class Annotator {
     e.preventDefault();
     const mouseEvent = new MouseEvent('mouseup', {});
     this.canvas.dispatchEvent(mouseEvent);
+  }
+
+  handleKeyDown(e) {
+    // Delete selected annotation when Delete or Backspace is pressed
+    if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedAnnotation) {
+      // Prevent default behavior (e.g., browser back navigation for Backspace)
+      e.preventDefault();
+      this.deleteSelectedAnnotation();
+    }
+  }
+
+  deleteSelectedAnnotation() {
+    if (!this.selectedAnnotation) return;
+
+    // Find and remove the selected annotation from the array
+    const index = this.annotations.indexOf(this.selectedAnnotation);
+    if (index > -1) {
+      this.annotations.splice(index, 1);
+      console.log('[Annotator] Deleted annotation at index', index);
+    }
+
+    // Clear selection
+    this.selectedAnnotation = null;
+
+    // Redraw canvas and save state
+    this.redrawCanvas().then(() => {
+      this.saveState();
+    });
   }
 
   drawShape(startX, startY, endX, endY, shape, isPreview) {
