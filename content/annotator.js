@@ -277,7 +277,8 @@ class Annotator {
 
     if (this.currentTool === 'move' && this.isDragging) {
       this.isDragging = false;
-      this.selectedAnnotation = null;
+      // Keep the annotation selected after dragging so user can delete it
+      // this.selectedAnnotation = null; // REMOVED: Don't clear selection after drag
       this.canvas.classList.remove('grabbing-cursor');
       this.canvas.classList.add('grab-cursor');
       this.saveState();
