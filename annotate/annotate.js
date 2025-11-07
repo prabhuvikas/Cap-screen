@@ -197,8 +197,7 @@ function setupEventListeners() {
     if (annotator) annotator.setColor(e.target.value);
   });
 
-  document.getElementById('lineWidth').addEventListener('input', (e) => {
-    document.getElementById('lineWidthValue').textContent = e.target.value;
+  document.getElementById('lineWidth').addEventListener('change', (e) => {
     if (annotator) annotator.setLineWidth(parseInt(e.target.value));
   });
 

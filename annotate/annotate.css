@@ -269,14 +269,15 @@ main {
   align-items: center;
   gap: 12px;
   justify-content: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
 }
 
 .tool-group {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 4px 8px;
+  flex-direction: row;
+  gap: 0;
+  padding: 0;
 }
 
 .tool-group-label {
@@ -334,6 +335,27 @@ main {
 .control-group input[type="range"] {
   width: 80px;
   accent-color: #1967d2;
+}
+
+.width-selector {
+  padding: 4px 8px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #3c4043;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s ease;
+  min-width: 65px;
+}
+
+.width-selector:hover {
+  border-color: #5f6368;
+}
+
+.width-selector:focus {
+  border-color: #1a73e8;
 }
 
 .tool-actions-horizontal {
