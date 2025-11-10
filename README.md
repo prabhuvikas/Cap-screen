@@ -58,13 +58,14 @@ A comprehensive Chrome extension for capturing, annotating, and reporting issues
   - Issue link on success
 
 - **Video Recording**
-  - **Tab Recording**: Record single tab with audio/video
-  - **Window/Screen Recording**: Record entire browser window, any application window, or entire screen
-  - User-friendly picker to choose what to capture
-  - On-screen recording controls with timer (for tab recording)
-  - Browser native controls (for window/screen recording)
-  - Keyboard shortcuts (Esc or Ctrl+Shift+S to stop)
-  - WebM format with VP9 codec
+  - Browser-native screen picker to choose what to record:
+    - Current tab
+    - Browser window
+    - Entire screen (all monitors)
+    - Any other application window
+  - Optional audio capture (system audio)
+  - Stop recording using browser's "Stop Sharing" button
+  - WebM format with VP9 codec at 1080p@30fps
   - Automatic attachment to issue reports
   - Preview video before submission
 
@@ -140,11 +141,11 @@ Configure what information to include in issue reports:
 
 3. **Capture Media**
    - **Screenshot**: Click "Capture Visible Area" or "Capture Full Page" to take a screenshot
-   - **Video - Tab Recording**: Click "📹 Record This Tab" to record only the current tab
-   - **Video - Window/Screen Recording**: Click "🖥️ Record Window/Screen" to choose what to capture:
+   - **Video**: Click "🎥 Start Video Recording" and browser will show a picker to choose what to capture:
+     - Current tab
      - Browser window
-     - Any application window
      - Entire screen (all monitors)
+     - Any other application window
 
 4. **Annotate Media** (For screenshots)
    - Use pen tool to draw freehand
@@ -155,15 +156,12 @@ Configure what information to include in issue reports:
    - Use undo/redo to refine annotations
    - Click "Continue to Report" when ready
 
-   **For Tab Video Recordings**:
-   - On-screen recording toolbar appears in top-right corner with live timer
-   - Press `Esc` or `Ctrl+Shift+S` to stop recording
-   - Video automatically opens in annotation page
-
-   **For Window/Screen Recordings**:
-   - Browser shows native screen picker - choose what to capture
-   - Use browser's native recording controls to stop (or press stop sharing button)
-   - Video automatically opens in annotation page when stopped
+   **For Video Recordings**:
+   - Browser shows native picker - choose what to capture (tab, window, or screen)
+   - Optionally check "Share audio" to include system audio
+   - Recording begins immediately after selection
+   - Stop by clicking browser's "Stop Sharing" button (usually in address bar or notification)
+   - Video automatically opens in annotation page for preview
 
 5. **Fill Issue Details**
    - **Project**: Select target Redmine project
@@ -279,23 +277,14 @@ chrome-bug-reporter/
 
 ### Video Recording Issues
 
-**Tab Recording**:
-- Ensure the extension has permission to capture the current tab
-- Try reloading the page before starting recording
-- Video recording may not work on certain system pages (chrome://, about:, etc.)
-- Press Esc or Ctrl+Shift+S to stop recording if the button doesn't respond
-
-**Window/Screen Recording**:
-- If picker dialog doesn't appear, check browser permissions for screen sharing
-- Make sure you grant permission when the browser asks for screen capture access
-- To stop recording, use the browser's "Stop Sharing" button in the address bar or notification
-- Window/screen recording includes audio if you select the "Share audio" checkbox
-- If recording doesn't start, try closing and reopening the extension popup
-
-**General**:
-- Check that the browser supports MediaRecorder API
-- Large recordings may take time to process - please wait for the annotation page to open
-- If recording fails to save, check available disk space and try again with shorter recording
+- **Picker doesn't appear**: Check browser permissions for screen sharing
+- **Permission denied**: Click "Start Video Recording" again and grant permission when browser asks
+- **Can't stop recording**: Click the browser's "Stop Sharing" button in the address bar or system notification area
+- **No audio**: Make sure to check the "Share audio" checkbox in the picker before starting
+- **Recording doesn't start**: Try closing and reopening the extension popup, then try again
+- **Annotation page doesn't open**: Large recordings may take time to process - please wait a few seconds
+- **Recording failed to save**: Check available disk space and try again with a shorter recording
+- **Browser support**: Requires modern browser with MediaRecorder and getDisplayMedia API support (Chrome 72+, Edge 79+)
 
 ## Development
 
