@@ -487,71 +487,31 @@ async function recordVideo() {
   try {
     console.log('[Annotate] Starting video recording...');
 
-    // Save current annotations before switching
+    // Save current annotations before recording
     await saveCurrentAnnotations();
 
-    // Get the tab ID to record
-    const tabId = currentTab.id;
+    console.log('[Annotate] Starting display capture (browser will show picker)');
 
-    if (!tabId) {
-      alert('Original tab not found. Please record from the popup.');
-      return;
-    }
-
-    // Check if the original tab still exists
-    let targetTab;
-    try {
-      targetTab = await chrome.tabs.get(tabId);
-    } catch (e) {
-      alert('Original tab has been closed. Please open the page again.');
-      return;
-    }
-
-    console.log('[Annotate] Starting recording on tab:', tabId);
-
-    // Inject the recording overlay script
-    try {
-      console.log('[Annotate] Injecting recording overlay script...');
-      await chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        files: ['content/recording-overlay.js']
-      });
-      console.log('[Annotate] Recording overlay script injected');
-    } catch (e) {
-      console.log('[Annotate] Recording overlay script already injected or error:', e.message);
-    }
-
-    // Start recording by sending message to background BEFORE closing window
+    // Start display capture - browser will show picker
     const response = await chrome.runtime.sendMessage({
-      action: 'startTabCapture',
-      tabId: tabId
+      action: 'startDisplayCapture',
+      tabId: currentTab?.id || null
     });
 
     if (!response || !response.success) {
       throw new Error(response?.error || 'Failed to start recording');
     }
 
-    // Tell content script to show the overlay UI
-    try {
-      console.log('[Annotate] Showing recording overlay...');
-      await chrome.tabs.sendMessage(tabId, {
-        action: 'showRecordingOverlay'
-      });
-      console.log('[Annotate] Recording overlay shown');
-    } catch (e) {
-      console.error('[Annotate] Failed to show overlay:', e);
-      throw new Error('Failed to show recording overlay. The page may not support this feature.');
-    }
+    console.log('[Annotate] Recording started successfully');
 
-    console.log('[Annotate] Switching to original tab for recording:', tabId);
+    // Show user feedback
+    alert('Recording started! Use the browser\'s "Stop Sharing" button when done. The annotation page will reopen automatically.');
 
-    // Switch to the original tab
-    await chrome.tabs.update(tabId, { active: true });
-
-    // Close this annotation tab temporarily
+    // Close this annotation tab - it will reopen when recording stops
     window.close();
 
     // Note: The annotation page will reopen automatically when recording stops
+    // because the background script opens it in handleRecordingComplete()
 
   } catch (error) {
     console.error('[Annotate] Error starting video recording:', error);
