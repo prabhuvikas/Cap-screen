@@ -86,6 +86,10 @@ async function startRecording(streamId) {
       }
     };
 
+    // Note: For tab recording, we use the traditional stopRecording() function
+    // because the overlay UI controls stopping. The onstop handler is set up
+    // in the stopRecording() function to maintain compatibility.
+
     // Start recording
     mediaRecorder.start();
     console.log('[Offscreen] MediaRecorder started');
@@ -137,13 +141,54 @@ async function startDisplayRecording() {
       }
     };
 
-    // Handle user stopping via browser UI
+    // Handle recording stop (works for both programmatic and browser UI stop)
+    mediaRecorder.onstop = async () => {
+      console.log('[Offscreen] MediaRecorder stopped, processing video...');
+
+      try {
+        // Create blob from recorded chunks
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        console.log('[Offscreen] Created blob, size:', blob.size);
+
+        // Convert blob to data URL
+        const videoDataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('Failed to convert recording to data URL'));
+          reader.readAsDataURL(blob);
+        });
+
+        console.log('[Offscreen] Converted to data URL, length:', videoDataUrl.length);
+
+        // Stop all tracks
+        stream.getTracks().forEach(track => {
+          console.log('[Offscreen] Stopping track:', track.kind);
+          track.stop();
+        });
+
+        // Notify background that recording is complete with video data
+        chrome.runtime.sendMessage({
+          action: 'recordingComplete',
+          videoDataUrl: videoDataUrl
+        });
+
+      } catch (error) {
+        console.error('[Offscreen] Error processing recording:', error);
+        // Notify background of error
+        chrome.runtime.sendMessage({
+          action: 'recordingError',
+          error: error.message
+        });
+      }
+    };
+
+    // Handle user stopping via browser UI (clicking "Stop sharing")
     stream.getVideoTracks()[0].onended = () => {
       console.log('[Offscreen] User stopped recording via browser UI');
-      // Notify background that recording was stopped
-      chrome.runtime.sendMessage({
-        action: 'recordingStoppedByUser'
-      });
+      // The MediaRecorder.onstop will handle the rest
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
     };
 
     // Start recording

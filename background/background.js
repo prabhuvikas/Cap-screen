@@ -130,10 +130,30 @@ async function handleStopTabCapture() {
     const videoDataUrl = response.videoDataUrl;
     console.log('[Background] Got video data URL, length:', videoDataUrl.length);
 
+    // Process the recording (save and open annotation page)
+    await handleRecordingComplete(videoDataUrl);
+
+    console.log('[Background] Recording stopped successfully');
+  } catch (error) {
+    console.error('[Background] Error in handleStopTabCapture:', error);
+    // Try to clean up offscreen document
+    try {
+      await closeOffscreenDocument();
+    } catch (e) {
+      console.error('[Background] Error closing offscreen document:', e);
+    }
+    throw error;
+  }
+}
+
+async function handleRecordingComplete(videoDataUrl) {
+  try {
+    console.log('[Background] Processing completed recording, video data length:', videoDataUrl.length);
+
     // Close offscreen document
     await closeOffscreenDocument();
 
-    // Save video to session storage (no screenshot)
+    // Save video to session storage
     await chrome.storage.session.set({
       videoRecording: videoDataUrl,
       hasVideoRecording: true,
@@ -141,7 +161,7 @@ async function handleStopTabCapture() {
     });
     console.log('[Background] Video saved to session storage');
 
-    // Notify content script that recording stopped (so it can remove overlay)
+    // Notify content script that recording stopped (so it can remove overlay if present)
     if (recordingTabId) {
       try {
         await chrome.tabs.sendMessage(recordingTabId, {
@@ -162,15 +182,8 @@ async function handleStopTabCapture() {
     console.log('[Background] Annotation page opened');
 
     recordingTabId = null;
-    console.log('[Background] Recording stopped successfully');
   } catch (error) {
-    console.error('[Background] Error in handleStopTabCapture:', error);
-    // Try to clean up offscreen document
-    try {
-      await closeOffscreenDocument();
-    } catch (e) {
-      console.error('[Background] Error closing offscreen document:', e);
-    }
+    console.error('[Background] Error in handleRecordingComplete:', error);
     throw error;
   }
 }
@@ -374,6 +387,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })
       .catch((error) => {
         console.error('[Background] Error stopping recording:', error);
+      });
+    return false; // Don't need to send response
+  }
+
+  if (request.action === 'recordingComplete') {
+    console.log('[Background] Recording complete, processing video data');
+    handleRecordingComplete(request.videoDataUrl)
+      .then(() => {
+        console.log('[Background] Recording processed successfully');
+      })
+      .catch((error) => {
+        console.error('[Background] Error processing recording:', error);
+      });
+    return false; // Don't need to send response
+  }
+
+  if (request.action === 'recordingError') {
+    console.error('[Background] Recording error:', request.error);
+    // Clean up offscreen document
+    closeOffscreenDocument()
+      .then(() => {
+        console.log('[Background] Cleaned up after recording error');
+      })
+      .catch((error) => {
+        console.error('[Background] Error cleaning up:', error);
       });
     return false; // Don't need to send response
   }
