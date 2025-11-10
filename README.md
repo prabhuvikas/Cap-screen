@@ -6,10 +6,16 @@ A comprehensive Chrome extension for capturing, annotating, and reporting issues
 
 ### Phase 1 - Core Features
 
-- **Screenshot Capture**
-  - Capture visible viewport
-  - Capture full page (scrolling)
-  - High-quality PNG screenshots
+- **Media Capture**
+  - **Quick screenshot** of current tab (instant, no picker)
+  - **Advanced screenshot** with browser-native picker to choose what to capture:
+    - Current tab
+    - Any other tab
+    - Browser window
+    - Entire screen (all monitors)
+    - Any other application window
+  - **Video recording** with browser-native picker (same options)
+  - High-quality PNG screenshots and WebM videos
 
 - **Annotation Tools**
   - Freehand drawing/pen tool
@@ -52,10 +58,22 @@ A comprehensive Chrome extension for capturing, annotating, and reporting issues
   - Assignee selection
   - Category selection
   - Version/milestone selection
-  - Automatic screenshot attachment
+  - Automatic media attachment (screenshots and videos)
   - Technical data JSON attachment
   - Direct issue creation
   - Issue link on success
+
+- **Video Recording**
+  - Browser-native screen picker to choose what to record:
+    - Current tab
+    - Browser window
+    - Entire screen (all monitors)
+    - Any other application window
+  - Optional audio capture (system audio)
+  - Stop recording using browser's "Stop Sharing" button
+  - WebM format with VP9 codec at 1080p@30fps
+  - Automatic attachment to issue reports
+  - Preview video before submission
 
 - **Privacy Controls**
   - Blackout/redaction tool to hide sensitive areas in screenshots
@@ -127,11 +145,22 @@ Configure what information to include in issue reports:
    - Click the Issue Reporter icon in Chrome toolbar, or
    - Use keyboard shortcut: `Ctrl+Shift+B` (Windows/Linux) or `Cmd+Shift+B` (Mac)
 
-3. **Capture Screenshot**
-   - Click "Capture Viewport" for visible area only, or
-   - Click "Capture Full Page" to capture entire page
+3. **Capture Media**
+   - **Screenshot - Quick**: Click "📸 Capture Current Tab" for instant screenshot of visible area
+   - **Screenshot - Advanced**: Click "🖥️ Choose What to Capture" and browser will show a picker:
+     - Current tab
+     - Any other tab
+     - Browser window
+     - Entire screen (all monitors)
+     - Any other application window
+   - **Video**: Click "🎥 Start Video Recording" and browser will show the same picker
 
-4. **Annotate Screenshot** (Optional)
+4. **Annotate Media**
+
+   **For Screenshots**:
+   - Browser shows native picker - choose what to capture (tab, window, or screen)
+   - Screenshot is taken immediately after selection
+   - Annotation page opens automatically
    - Use pen tool to draw freehand
    - Add shapes (rectangle, circle, arrow) to highlight issues
    - Use blackout tool to hide sensitive information (passwords, API keys, personal data)
@@ -139,6 +168,13 @@ Configure what information to include in issue reports:
    - Change colors and line width as needed
    - Use undo/redo to refine annotations
    - Click "Continue to Report" when ready
+
+   **For Video Recordings**:
+   - Browser shows native picker - choose what to capture (tab, window, or screen)
+   - Optionally check "Share audio" to include system audio
+   - Recording begins immediately after selection
+   - Stop by clicking browser's "Stop Sharing" button (usually in address bar or notification)
+   - Video automatically opens in annotation page for preview
 
 5. **Fill Issue Details**
    - **Project**: Select target Redmine project
@@ -158,12 +194,13 @@ Configure what information to include in issue reports:
    - Click "Submit Issue Report"
    - Review modal will appear with all data in tabs:
      - **Issue Details**: Your issue report details
-     - **Media**: Preview of annotated media
+     - **Media**: Preview of annotated screenshots and videos
      - **Page Info**: Browser and page information
      - **Network**: All captured network requests
      - **Console**: All captured console logs
    - Review all data carefully
    - Click "Confirm & Submit" to proceed or "Cancel" to go back
+   - All media (screenshots and videos) will be attached automatically
    - Issue link will be displayed on success
 
 ## File Structure
@@ -251,6 +288,25 @@ chrome-bug-reporter/
 - Check file size limits in Redmine configuration
 - Verify API key has upload permissions
 
+### Screenshot Capture Issues
+
+- **Picker doesn't appear**: Check browser permissions for screen sharing
+- **Permission denied**: Click "Capture Screenshot" again and grant permission when browser asks
+- **Screenshot is blank or black**: Some applications/windows may not allow capture due to security restrictions
+- **Screenshot quality**: Screenshots are captured at source resolution (up to 1920x1080 by default)
+- **Annotation page doesn't open**: Check for popup blockers or browser security settings
+
+### Video Recording Issues
+
+- **Picker doesn't appear**: Check browser permissions for screen sharing
+- **Permission denied**: Click "Start Video Recording" again and grant permission when browser asks
+- **Can't stop recording**: Click the browser's "Stop Sharing" button in the address bar or system notification area
+- **No audio**: Make sure to check the "Share audio" checkbox in the picker before starting
+- **Recording doesn't start**: Try closing and reopening the extension popup, then try again
+- **Annotation page doesn't open**: Large recordings may take time to process - please wait a few seconds
+- **Recording failed to save**: Check available disk space and try again with a shorter recording
+- **Browser support**: Requires modern browser with MediaRecorder and getDisplayMedia API support (Chrome 72+, Edge 79+)
+
 ## Development
 
 ### Building Custom Icons
@@ -289,7 +345,6 @@ To create custom icons, you can use either:
 - Report templates
 - Saved drafts
 - Bulk screenshot annotation
-- Video recording
 - Custom field mapping
 
 ## Contributing

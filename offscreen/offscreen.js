@@ -10,27 +10,27 @@ console.log('[Offscreen] Offscreen document loaded');
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Offscreen] Received message:', request.action);
 
-  if (request.action === 'startRecording') {
-    startRecording(request.streamId)
+  if (request.action === 'startDisplayRecording') {
+    startDisplayRecording()
       .then(() => {
-        console.log('[Offscreen] Recording started successfully');
+        console.log('[Offscreen] Display recording started successfully');
         sendResponse({ success: true });
       })
       .catch((error) => {
-        console.error('[Offscreen] Error starting recording:', error);
+        console.error('[Offscreen] Error starting display recording:', error);
         sendResponse({ success: false, error: error.message });
       });
     return true; // Keep channel open for async response
   }
 
-  if (request.action === 'stopRecording') {
-    stopRecording()
-      .then((videoDataUrl) => {
-        console.log('[Offscreen] Recording stopped, data URL length:', videoDataUrl.length);
-        sendResponse({ success: true, videoDataUrl });
+  if (request.action === 'captureDisplayScreenshot') {
+    captureDisplayScreenshot()
+      .then((screenshotDataUrl) => {
+        console.log('[Offscreen] Screenshot captured successfully');
+        sendResponse({ success: true, screenshotDataUrl });
       })
       .catch((error) => {
-        console.error('[Offscreen] Error stopping recording:', error);
+        console.error('[Offscreen] Error capturing screenshot:', error);
         sendResponse({ success: false, error: error.message });
       });
     return true; // Keep channel open for async response
@@ -39,22 +39,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return false;
 });
 
-async function startRecording(streamId) {
+async function startDisplayRecording() {
   try {
-    console.log('[Offscreen] Getting user media with stream ID:', streamId);
+    console.log('[Offscreen] Getting display media stream');
 
-    // Get the media stream using the stream ID from tabCapture
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
+    // Get display media stream - this will show a picker dialog
+    // User can choose: tab, window, or entire screen
+    const stream = await navigator.mediaDevices.getDisplayMedia({
       video: {
-        mandatory: {
-          chromeMediaSource: 'tab',
-          chromeMediaSourceId: streamId
-        }
-      }
+        displaySurface: 'monitor', // Prefer entire screen/window
+        cursor: 'always', // Always show cursor in recording
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30 }
+      },
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 44100
+      },
+      preferCurrentTab: false // Don't force current tab selection
     });
 
-    console.log('[Offscreen] Got media stream, creating MediaRecorder');
+    console.log('[Offscreen] Got display media stream, creating MediaRecorder');
 
     // Reset recorded chunks
     recordedChunks = [];
@@ -73,28 +80,9 @@ async function startRecording(streamId) {
       }
     };
 
-    // Start recording
-    mediaRecorder.start();
-    console.log('[Offscreen] MediaRecorder started');
-
-  } catch (error) {
-    console.error('[Offscreen] Error in startRecording:', error);
-    throw error;
-  }
-}
-
-async function stopRecording() {
-  return new Promise((resolve, reject) => {
-    if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-      reject(new Error('No active recording'));
-      return;
-    }
-
-    console.log('[Offscreen] Stopping MediaRecorder...');
-
-    // Handle the stop event
+    // Handle recording stop (works for both programmatic and browser UI stop)
     mediaRecorder.onstop = async () => {
-      console.log('[Offscreen] MediaRecorder stopped, processing chunks...');
+      console.log('[Offscreen] MediaRecorder stopped, processing video...');
 
       try {
         // Create blob from recorded chunks
@@ -102,34 +90,115 @@ async function stopRecording() {
         console.log('[Offscreen] Created blob, size:', blob.size);
 
         // Convert blob to data URL
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const videoDataUrl = reader.result;
-          console.log('[Offscreen] Converted to data URL, length:', videoDataUrl.length);
+        const videoDataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('Failed to convert recording to data URL'));
+          reader.readAsDataURL(blob);
+        });
 
-          // Stop all tracks
-          const tracks = mediaRecorder.stream.getTracks();
-          tracks.forEach(track => {
-            console.log('[Offscreen] Stopping track:', track.kind);
-            track.stop();
-          });
+        console.log('[Offscreen] Converted to data URL, length:', videoDataUrl.length);
 
-          resolve(videoDataUrl);
-        };
+        // Stop all tracks
+        stream.getTracks().forEach(track => {
+          console.log('[Offscreen] Stopping track:', track.kind);
+          track.stop();
+        });
 
-        reader.onerror = (error) => {
-          console.error('[Offscreen] FileReader error:', error);
-          reject(new Error('Failed to convert recording to data URL'));
-        };
+        // Notify background that recording is complete with video data
+        chrome.runtime.sendMessage({
+          action: 'recordingComplete',
+          videoDataUrl: videoDataUrl
+        });
 
-        reader.readAsDataURL(blob);
       } catch (error) {
         console.error('[Offscreen] Error processing recording:', error);
-        reject(error);
+        // Notify background of error
+        chrome.runtime.sendMessage({
+          action: 'recordingError',
+          error: error.message
+        });
       }
     };
 
-    // Stop the media recorder
-    mediaRecorder.stop();
-  });
+    // Handle user stopping via browser UI (clicking "Stop sharing")
+    stream.getVideoTracks()[0].onended = () => {
+      console.log('[Offscreen] User stopped recording via browser UI');
+      // The MediaRecorder.onstop will handle the rest
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+    };
+
+    // Start recording
+    mediaRecorder.start();
+    console.log('[Offscreen] MediaRecorder started for display media');
+
+  } catch (error) {
+    console.error('[Offscreen] Error in startDisplayRecording:', error);
+    throw error;
+  }
 }
+
+async function captureDisplayScreenshot() {
+  try {
+    console.log('[Offscreen] Getting display media for screenshot');
+
+    // Get display media stream - browser will show picker
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        displaySurface: 'monitor',
+        cursor: 'always',
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false, // No audio needed for screenshots
+      preferCurrentTab: false
+    });
+
+    console.log('[Offscreen] Got display media stream, capturing frame');
+
+    // Create video element to capture frame
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.autoplay = true;
+    video.muted = true;
+
+    // Wait for video to be ready
+    await new Promise((resolve) => {
+      video.onloadedmetadata = () => {
+        video.play();
+        resolve();
+      };
+    });
+
+    // Wait a bit for the first frame to render
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Create canvas and capture frame
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    console.log('[Offscreen] Frame captured, size:', canvas.width, 'x', canvas.height);
+
+    // Stop all tracks immediately
+    stream.getTracks().forEach(track => {
+      console.log('[Offscreen] Stopping track:', track.kind);
+      track.stop();
+    });
+
+    // Convert to data URL
+    const screenshotDataUrl = canvas.toDataURL('image/png', 1.0);
+    console.log('[Offscreen] Converted to data URL, length:', screenshotDataUrl.length);
+
+    return screenshotDataUrl;
+
+  } catch (error) {
+    console.error('[Offscreen] Error in captureDisplayScreenshot:', error);
+    throw error;
+  }
+}
+

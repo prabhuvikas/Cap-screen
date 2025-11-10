@@ -92,8 +92,8 @@ async function loadSettings() {
 // Setup event listeners
 function setupEventListeners() {
   // Screenshot capture
-  document.getElementById('captureViewport').addEventListener('click', () => captureScreenshot('viewport'));
-  document.getElementById('captureFullPage').addEventListener('click', () => captureScreenshot('fullpage'));
+  document.getElementById('captureCurrentTab').addEventListener('click', captureCurrentTab);
+  document.getElementById('captureScreenshot').addEventListener('click', captureScreenshot);
 
   // Video recording
   document.getElementById('startRecording').addEventListener('click', startVideoRecording);
@@ -154,31 +154,95 @@ function setupEventListeners() {
   });
 }
 
-// Capture screenshot
-async function captureScreenshot(type) {
-  const button = type === 'viewport' ? document.getElementById('captureViewport') : document.getElementById('captureFullPage');
+// Capture current tab screenshot quickly (no picker)
+async function captureCurrentTab() {
+  const button = document.getElementById('captureCurrentTab');
   const statusEl = document.getElementById('captureStatus');
 
   try {
     button.disabled = true;
-    showStatus('captureStatus', 'Capturing screenshot...', 'info');
+    showStatus('captureStatus', 'Capturing current tab...', 'info');
+    console.log('[Popup] Capturing current tab screenshot');
 
-    // Inject content script if needed
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId: currentTab.id },
-        files: ['content/content.js']
-      });
-    } catch (e) {
-      // Content script might already be injected
-      console.log('Content script injection skipped:', e.message);
-    }
-
-    // Capture the screenshot
-    screenshotDataUrl = await chrome.tabs.captureVisibleTab(null, {
+    // Use chrome.tabs.captureVisibleTab for quick capture
+    const screenshotData = await chrome.tabs.captureVisibleTab(null, {
       format: 'png',
       quality: 100
     });
+
+    if (!screenshotData) {
+      throw new Error('Failed to capture screenshot');
+    }
+
+    screenshotDataUrl = screenshotData;
+    showStatus('captureStatus', 'Screenshot captured successfully!', 'success');
+
+    // Save screenshot to session storage (use new multi-screenshot format)
+    const newScreenshot = {
+      id: Date.now().toString(36) + Math.random().toString(36).substring(2),
+      data: screenshotDataUrl,
+      annotations: null,
+      timestamp: Date.now(),
+      tabId: currentTab.id,
+      name: 'Screenshot 1'
+    };
+
+    await chrome.storage.session.set({
+      screenshots: [newScreenshot],
+      currentScreenshotId: newScreenshot.id,
+      tabId: currentTab.id,
+      // Keep old format for backward compatibility
+      screenshotData: screenshotDataUrl
+    });
+
+    // Open annotation page in new tab
+    const annotateTab = await chrome.tabs.create({
+      url: chrome.runtime.getURL('annotate/annotate.html'),
+      active: true
+    });
+
+    console.log('[Popup] Opened annotation tab:', annotateTab.id);
+
+    // Close popup after opening new tab
+    setTimeout(() => {
+      window.close();
+    }, 300);
+
+  } catch (error) {
+    console.error('Error capturing current tab screenshot:', error);
+    showStatus('captureStatus', `Error: ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// Capture screenshot (uses display media with browser picker)
+async function captureScreenshot() {
+  const button = document.getElementById('captureScreenshot');
+  const statusEl = document.getElementById('captureStatus');
+
+  try {
+    button.disabled = true;
+    showStatus('captureStatus', 'Starting screenshot capture...', 'info');
+    console.log('[Popup] Starting screenshot capture');
+
+    // Use display capture - browser will show picker
+    console.log('[Popup] Sending captureDisplayScreenshot message to background...');
+    const response = await chrome.runtime.sendMessage({
+      action: 'captureDisplayScreenshot'
+    });
+
+    console.log('[Popup] Response from background:', response);
+
+    if (!response) {
+      throw new Error('No response from background script');
+    }
+
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to capture screenshot');
+    }
+
+    screenshotDataUrl = response.screenshotDataUrl;
 
     if (!screenshotDataUrl) {
       throw new Error('Failed to capture screenshot');
@@ -225,7 +289,7 @@ async function captureScreenshot(type) {
   }
 }
 
-// Start video recording
+// Start video recording (uses display media with browser picker)
 async function startVideoRecording() {
   const startBtn = document.getElementById('startRecording');
   const statusEl = document.getElementById('recordingStatus');
@@ -233,24 +297,12 @@ async function startVideoRecording() {
   try {
     startBtn.disabled = true;
     showStatus('recordingStatus', 'Starting video recording...', 'info');
-    console.log('[Popup] Starting video recording for tab:', currentTab.id);
+    console.log('[Popup] Starting video recording');
 
-    // Inject the recording overlay script
-    try {
-      console.log('[Popup] Injecting recording overlay script...');
-      await chrome.scripting.executeScript({
-        target: { tabId: currentTab.id },
-        files: ['content/recording-overlay.js']
-      });
-      console.log('[Popup] Recording overlay script injected');
-    } catch (e) {
-      console.log('[Popup] Recording overlay script already injected or error:', e.message);
-    }
-
-    // Start tab capture in background
-    console.log('[Popup] Sending startTabCapture message to background...');
+    // Start display capture in background - browser will show picker
+    console.log('[Popup] Sending startDisplayCapture message to background...');
     const response = await chrome.runtime.sendMessage({
-      action: 'startTabCapture',
+      action: 'startDisplayCapture',
       tabId: currentTab.id
     });
 
@@ -264,33 +316,18 @@ async function startVideoRecording() {
       throw new Error(response.error || 'Failed to start recording');
     }
 
-    // Tell content script to show the overlay UI
-    try {
-      console.log('[Popup] Showing recording overlay...');
-      await chrome.tabs.sendMessage(currentTab.id, {
-        action: 'showRecordingOverlay'
-      });
-      console.log('[Popup] Recording overlay shown');
-    } catch (e) {
-      console.error('[Popup] Failed to show overlay:', e);
-      throw new Error('Failed to show recording overlay. The page may not support this feature.');
-    }
+    showStatus('recordingStatus', 'Recording started! Use browser\'s "Stop Sharing" button when done.', 'success');
 
-    // Close the popup - recording will continue in the background
-    console.log('[Popup] Closing popup...');
-    window.close();
+    // Close the popup after a short delay
+    setTimeout(() => {
+      window.close();
+    }, 1500);
 
   } catch (error) {
     console.error('[Popup] Error starting video recording:', error);
     showStatus('recordingStatus', `Error: ${error.message}`, 'error');
     startBtn.disabled = false;
   }
-}
-
-// Stop video recording (not used anymore - handled by overlay)
-async function stopVideoRecording() {
-  // This function is kept for compatibility but recording is now stopped via overlay
-  console.log('Stop recording called from popup (should use overlay instead)');
 }
 
 // Initialize annotation
