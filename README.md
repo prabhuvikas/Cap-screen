@@ -58,8 +58,11 @@ A comprehensive Chrome extension for capturing, annotating, and reporting issues
   - Issue link on success
 
 - **Video Recording**
-  - Record entire tab with audio/video
-  - On-screen recording controls with timer
+  - **Tab Recording**: Record single tab with audio/video
+  - **Window/Screen Recording**: Record entire browser window, any application window, or entire screen
+  - User-friendly picker to choose what to capture
+  - On-screen recording controls with timer (for tab recording)
+  - Browser native controls (for window/screen recording)
   - Keyboard shortcuts (Esc or Ctrl+Shift+S to stop)
   - WebM format with VP9 codec
   - Automatic attachment to issue reports
@@ -136,8 +139,12 @@ Configure what information to include in issue reports:
    - Use keyboard shortcut: `Ctrl+Shift+B` (Windows/Linux) or `Cmd+Shift+B` (Mac)
 
 3. **Capture Media**
-   - **Screenshot**: Click "Capture Visible Area" or "Capture Full Page" to take a screenshot, or
-   - **Video**: Click "Start Recording" to record screen activity demonstrating the issue
+   - **Screenshot**: Click "Capture Visible Area" or "Capture Full Page" to take a screenshot
+   - **Video - Tab Recording**: Click "📹 Record This Tab" to record only the current tab
+   - **Video - Window/Screen Recording**: Click "🖥️ Record Window/Screen" to choose what to capture:
+     - Browser window
+     - Any application window
+     - Entire screen (all monitors)
 
 4. **Annotate Media** (For screenshots)
    - Use pen tool to draw freehand
@@ -147,9 +154,16 @@ Configure what information to include in issue reports:
    - Change colors and line width as needed
    - Use undo/redo to refine annotations
    - Click "Continue to Report" when ready
-   - **For video recordings**: Use the on-screen recording toolbar with timer
-     - Press `Esc` or `Ctrl+Shift+S` to stop recording
-     - Video will automatically open in annotation page
+
+   **For Tab Video Recordings**:
+   - On-screen recording toolbar appears in top-right corner with live timer
+   - Press `Esc` or `Ctrl+Shift+S` to stop recording
+   - Video automatically opens in annotation page
+
+   **For Window/Screen Recordings**:
+   - Browser shows native screen picker - choose what to capture
+   - Use browser's native recording controls to stop (or press stop sharing button)
+   - Video automatically opens in annotation page when stopped
 
 5. **Fill Issue Details**
    - **Project**: Select target Redmine project
@@ -265,11 +279,23 @@ chrome-bug-reporter/
 
 ### Video Recording Issues
 
+**Tab Recording**:
 - Ensure the extension has permission to capture the current tab
 - Try reloading the page before starting recording
-- Check that the browser supports MediaRecorder API
 - Video recording may not work on certain system pages (chrome://, about:, etc.)
 - Press Esc or Ctrl+Shift+S to stop recording if the button doesn't respond
+
+**Window/Screen Recording**:
+- If picker dialog doesn't appear, check browser permissions for screen sharing
+- Make sure you grant permission when the browser asks for screen capture access
+- To stop recording, use the browser's "Stop Sharing" button in the address bar or notification
+- Window/screen recording includes audio if you select the "Share audio" checkbox
+- If recording doesn't start, try closing and reopening the extension popup
+
+**General**:
+- Check that the browser supports MediaRecorder API
+- Large recordings may take time to process - please wait for the annotation page to open
+- If recording fails to save, check available disk space and try again with shorter recording
 
 ## Development
 

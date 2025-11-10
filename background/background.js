@@ -84,6 +84,36 @@ async function handleStartTabCapture(tabId) {
   }
 }
 
+async function handleStartDisplayCapture() {
+  try {
+    console.log('[Background] Starting display capture (window/screen)');
+
+    // Setup offscreen document
+    await setupOffscreenDocument();
+
+    // Send message to offscreen document to start display recording
+    console.log('[Background] Sending startDisplayRecording message to offscreen document');
+    const response = await chrome.runtime.sendMessage({
+      action: 'startDisplayRecording'
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Failed to start display recording in offscreen document');
+    }
+
+    console.log('[Background] Display recording started in offscreen document');
+  } catch (error) {
+    console.error('[Background] Error in handleStartDisplayCapture:', error);
+    // Clean up offscreen document if there was an error
+    try {
+      await closeOffscreenDocument();
+    } catch (e) {
+      console.error('[Background] Error closing offscreen document:', e);
+    }
+    throw error;
+  }
+}
+
 async function handleStopTabCapture() {
   try {
     console.log('[Background] Stopping recording in offscreen document');
@@ -304,6 +334,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Keep channel open for async response
   }
 
+  if (request.action === 'startDisplayCapture') {
+    recordingTabId = request.tabId || null;
+
+    console.log('[Background] Starting display capture (window/screen)');
+
+    handleStartDisplayCapture()
+      .then(() => {
+        console.log('[Background] Display capture started successfully');
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        console.error('[Background] Error starting display capture:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+
+    return true; // Keep channel open for async response
+  }
+
   if (request.action === 'stopTabCapture') {
     handleStopTabCapture()
       .then(() => {
@@ -315,6 +363,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ success: false, error: error.message });
       });
     return true;
+  }
+
+  if (request.action === 'recordingStoppedByUser') {
+    console.log('[Background] Recording stopped by user via browser UI');
+    // Handle same as stopTabCapture
+    handleStopTabCapture()
+      .then(() => {
+        console.log('[Background] Recording stopped successfully after user action');
+      })
+      .catch((error) => {
+        console.error('[Background] Error stopping recording:', error);
+      });
+    return false; // Don't need to send response
   }
 
   return true; // Keep channel open for async response

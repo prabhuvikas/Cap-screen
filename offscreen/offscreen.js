@@ -23,6 +23,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Keep channel open for async response
   }
 
+  if (request.action === 'startDisplayRecording') {
+    startDisplayRecording()
+      .then(() => {
+        console.log('[Offscreen] Display recording started successfully');
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        console.error('[Offscreen] Error starting display recording:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // Keep channel open for async response
+  }
+
   if (request.action === 'stopRecording') {
     stopRecording()
       .then((videoDataUrl) => {
@@ -79,6 +92,66 @@ async function startRecording(streamId) {
 
   } catch (error) {
     console.error('[Offscreen] Error in startRecording:', error);
+    throw error;
+  }
+}
+
+async function startDisplayRecording() {
+  try {
+    console.log('[Offscreen] Getting display media stream');
+
+    // Get display media stream - this will show a picker dialog
+    // User can choose: tab, window, or entire screen
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        displaySurface: 'monitor', // Prefer entire screen/window
+        cursor: 'always', // Always show cursor in recording
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30 }
+      },
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 44100
+      },
+      preferCurrentTab: false // Don't force current tab selection
+    });
+
+    console.log('[Offscreen] Got display media stream, creating MediaRecorder');
+
+    // Reset recorded chunks
+    recordedChunks = [];
+
+    // Create MediaRecorder with the stream
+    mediaRecorder = new MediaRecorder(stream, {
+      mimeType: 'video/webm;codecs=vp9',
+      videoBitsPerSecond: 2500000
+    });
+
+    // Handle data available event
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        console.log('[Offscreen] Data chunk received, size:', event.data.size);
+        recordedChunks.push(event.data);
+      }
+    };
+
+    // Handle user stopping via browser UI
+    stream.getVideoTracks()[0].onended = () => {
+      console.log('[Offscreen] User stopped recording via browser UI');
+      // Notify background that recording was stopped
+      chrome.runtime.sendMessage({
+        action: 'recordingStoppedByUser'
+      });
+    };
+
+    // Start recording
+    mediaRecorder.start();
+    console.log('[Offscreen] MediaRecorder started for display media');
+
+  } catch (error) {
+    console.error('[Offscreen] Error in startDisplayRecording:', error);
     throw error;
   }
 }

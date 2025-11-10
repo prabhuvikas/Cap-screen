@@ -97,6 +97,7 @@ function setupEventListeners() {
 
   // Video recording
   document.getElementById('startRecording').addEventListener('click', startVideoRecording);
+  document.getElementById('startWindowRecording').addEventListener('click', startWindowRecording);
 
   // Annotation tools
   document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -282,6 +283,47 @@ async function startVideoRecording() {
 
   } catch (error) {
     console.error('[Popup] Error starting video recording:', error);
+    showStatus('recordingStatus', `Error: ${error.message}`, 'error');
+    startBtn.disabled = false;
+  }
+}
+
+// Start window/screen recording
+async function startWindowRecording() {
+  const startBtn = document.getElementById('startWindowRecording');
+  const statusEl = document.getElementById('recordingStatus');
+
+  try {
+    startBtn.disabled = true;
+    showStatus('recordingStatus', 'Starting window/screen recording...', 'info');
+    console.log('[Popup] Starting window/screen recording');
+
+    // Start display capture in background
+    console.log('[Popup] Sending startDisplayCapture message to background...');
+    const response = await chrome.runtime.sendMessage({
+      action: 'startDisplayCapture',
+      tabId: currentTab.id
+    });
+
+    console.log('[Popup] Response from background:', response);
+
+    if (!response) {
+      throw new Error('No response from background script');
+    }
+
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to start recording');
+    }
+
+    showStatus('recordingStatus', 'Recording started! Use browser controls or Esc to stop.', 'success');
+
+    // Close the popup after a short delay
+    setTimeout(() => {
+      window.close();
+    }, 1500);
+
+  } catch (error) {
+    console.error('[Popup] Error starting window/screen recording:', error);
     showStatus('recordingStatus', `Error: ${error.message}`, 'error');
     startBtn.disabled = false;
   }
