@@ -92,6 +92,7 @@ async function loadSettings() {
 // Setup event listeners
 function setupEventListeners() {
   // Screenshot capture
+  document.getElementById('captureCurrentTab').addEventListener('click', captureCurrentTab);
   document.getElementById('captureScreenshot').addEventListener('click', captureScreenshot);
 
   // Video recording
@@ -151,6 +152,68 @@ function setupEventListeners() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', (e) => switchTab(e.currentTarget.dataset.tab));
   });
+}
+
+// Capture current tab screenshot quickly (no picker)
+async function captureCurrentTab() {
+  const button = document.getElementById('captureCurrentTab');
+  const statusEl = document.getElementById('captureStatus');
+
+  try {
+    button.disabled = true;
+    showStatus('captureStatus', 'Capturing current tab...', 'info');
+    console.log('[Popup] Capturing current tab screenshot');
+
+    // Use chrome.tabs.captureVisibleTab for quick capture
+    const screenshotData = await chrome.tabs.captureVisibleTab(null, {
+      format: 'png',
+      quality: 100
+    });
+
+    if (!screenshotData) {
+      throw new Error('Failed to capture screenshot');
+    }
+
+    screenshotDataUrl = screenshotData;
+    showStatus('captureStatus', 'Screenshot captured successfully!', 'success');
+
+    // Save screenshot to session storage (use new multi-screenshot format)
+    const newScreenshot = {
+      id: Date.now().toString(36) + Math.random().toString(36).substring(2),
+      data: screenshotDataUrl,
+      annotations: null,
+      timestamp: Date.now(),
+      tabId: currentTab.id,
+      name: 'Screenshot 1'
+    };
+
+    await chrome.storage.session.set({
+      screenshots: [newScreenshot],
+      currentScreenshotId: newScreenshot.id,
+      tabId: currentTab.id,
+      // Keep old format for backward compatibility
+      screenshotData: screenshotDataUrl
+    });
+
+    // Open annotation page in new tab
+    const annotateTab = await chrome.tabs.create({
+      url: chrome.runtime.getURL('annotate/annotate.html'),
+      active: true
+    });
+
+    console.log('[Popup] Opened annotation tab:', annotateTab.id);
+
+    // Close popup after opening new tab
+    setTimeout(() => {
+      window.close();
+    }, 300);
+
+  } catch (error) {
+    console.error('Error capturing current tab screenshot:', error);
+    showStatus('captureStatus', `Error: ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
+  }
 }
 
 // Capture screenshot (uses display media with browser picker)

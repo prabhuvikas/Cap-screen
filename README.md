@@ -7,8 +7,10 @@ A comprehensive Chrome extension for capturing, annotating, and reporting issues
 ### Phase 1 - Core Features
 
 - **Media Capture**
-  - **Screenshot capture** with browser-native picker to choose what to capture:
+  - **Quick screenshot** of current tab (instant, no picker)
+  - **Advanced screenshot** with browser-native picker to choose what to capture:
     - Current tab
+    - Any other tab
     - Browser window
     - Entire screen (all monitors)
     - Any other application window
@@ -144,8 +146,10 @@ Configure what information to include in issue reports:
    - Use keyboard shortcut: `Ctrl+Shift+B` (Windows/Linux) or `Cmd+Shift+B` (Mac)
 
 3. **Capture Media**
-   - **Screenshot**: Click "📸 Capture Screenshot" and browser will show a picker to choose what to capture:
+   - **Screenshot - Quick**: Click "📸 Capture Current Tab" for instant screenshot of visible area
+   - **Screenshot - Advanced**: Click "🖥️ Choose What to Capture" and browser will show a picker:
      - Current tab
+     - Any other tab
      - Browser window
      - Entire screen (all monitors)
      - Any other application window
