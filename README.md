@@ -7,8 +7,12 @@ A comprehensive Chrome extension for capturing, annotating, and reporting issues
 ### Phase 1 - Core Features
 
 - **Media Capture**
-  - Screenshot capture (visible viewport or full page)
-  - Video recording with on-screen controls
+  - **Screenshot capture** with browser-native picker to choose what to capture:
+    - Current tab
+    - Browser window
+    - Entire screen (all monitors)
+    - Any other application window
+  - **Video recording** with browser-native picker (same options)
   - High-quality PNG screenshots and WebM videos
 
 - **Annotation Tools**
@@ -140,14 +144,19 @@ Configure what information to include in issue reports:
    - Use keyboard shortcut: `Ctrl+Shift+B` (Windows/Linux) or `Cmd+Shift+B` (Mac)
 
 3. **Capture Media**
-   - **Screenshot**: Click "Capture Visible Area" or "Capture Full Page" to take a screenshot
-   - **Video**: Click "🎥 Start Video Recording" and browser will show a picker to choose what to capture:
+   - **Screenshot**: Click "📸 Capture Screenshot" and browser will show a picker to choose what to capture:
      - Current tab
      - Browser window
      - Entire screen (all monitors)
      - Any other application window
+   - **Video**: Click "🎥 Start Video Recording" and browser will show the same picker
 
-4. **Annotate Media** (For screenshots)
+4. **Annotate Media**
+
+   **For Screenshots**:
+   - Browser shows native picker - choose what to capture (tab, window, or screen)
+   - Screenshot is taken immediately after selection
+   - Annotation page opens automatically
    - Use pen tool to draw freehand
    - Add shapes (rectangle, circle, arrow) to highlight issues
    - Use blackout tool to hide sensitive information (passwords, API keys, personal data)
@@ -274,6 +283,14 @@ chrome-bug-reporter/
 - Ensure "Attach Technical Data" checkbox is enabled
 - Check file size limits in Redmine configuration
 - Verify API key has upload permissions
+
+### Screenshot Capture Issues
+
+- **Picker doesn't appear**: Check browser permissions for screen sharing
+- **Permission denied**: Click "Capture Screenshot" again and grant permission when browser asks
+- **Screenshot is blank or black**: Some applications/windows may not allow capture due to security restrictions
+- **Screenshot quality**: Screenshots are captured at source resolution (up to 1920x1080 by default)
+- **Annotation page doesn't open**: Check for popup blockers or browser security settings
 
 ### Video Recording Issues
 

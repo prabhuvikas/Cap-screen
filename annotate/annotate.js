@@ -524,47 +524,27 @@ async function captureAnotherScreenshot() {
   try {
     console.log('[Annotate] Capturing another screenshot...');
 
-    // Save current annotations before switching
+    // Save current annotations before capturing
     await saveCurrentAnnotations();
 
-    // Get the tab ID to capture
-    const tabId = currentTab.id;
+    console.log('[Annotate] Starting display screenshot capture (browser will show picker)');
 
-    if (!tabId) {
-      alert('Original tab not found. Please capture from the popup.');
-      return;
-    }
-
-    // Check if the original tab still exists
-    let targetTab;
-    try {
-      targetTab = await chrome.tabs.get(tabId);
-    } catch (e) {
-      alert('Original tab has been closed. Please open the page again and capture a new screenshot.');
-      return;
-    }
-
-    console.log('[Annotate] Switching to original tab:', tabId);
-
-    // Switch to the original tab to capture it
-    await chrome.tabs.update(tabId, { active: true });
-
-    // Wait a bit for the tab to become visible
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    // Capture the screenshot from the original tab
-    const newScreenshotData = await chrome.tabs.captureVisibleTab(targetTab.windowId, {
-      format: 'png',
-      quality: 100
+    // Use display capture - browser will show picker
+    const response = await chrome.runtime.sendMessage({
+      action: 'captureDisplayScreenshot'
     });
 
-    // Switch back to the annotation tab
-    await chrome.tabs.update(annotationTabId, { active: true });
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Failed to capture screenshot');
+    }
+
+    const newScreenshotData = response.screenshotDataUrl;
 
     if (!newScreenshotData) {
-      alert('Failed to capture screenshot');
-      return;
+      throw new Error('Failed to capture screenshot');
     }
+
+    console.log('[Annotate] Screenshot captured successfully');
 
     // Create new screenshot object
     const newScreenshot = {
@@ -572,7 +552,7 @@ async function captureAnotherScreenshot() {
       data: newScreenshotData,
       annotations: null,
       timestamp: Date.now(),
-      tabId: tabId,
+      tabId: currentTab?.id || null,
       name: `Screenshot ${screenshots.length + 1}`
     };
 
@@ -584,7 +564,7 @@ async function captureAnotherScreenshot() {
     await chrome.storage.session.set({
       screenshots: screenshots,
       currentScreenshotId: currentScreenshotId,
-      tabId: tabId
+      tabId: currentTab?.id || null
     });
 
     console.log('[Annotate] New screenshot captured, total:', screenshots.length);

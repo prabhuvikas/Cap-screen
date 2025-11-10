@@ -92,8 +92,7 @@ async function loadSettings() {
 // Setup event listeners
 function setupEventListeners() {
   // Screenshot capture
-  document.getElementById('captureViewport').addEventListener('click', () => captureScreenshot('viewport'));
-  document.getElementById('captureFullPage').addEventListener('click', () => captureScreenshot('fullpage'));
+  document.getElementById('captureScreenshot').addEventListener('click', captureScreenshot);
 
   // Video recording
   document.getElementById('startRecording').addEventListener('click', startVideoRecording);
@@ -154,31 +153,33 @@ function setupEventListeners() {
   });
 }
 
-// Capture screenshot
-async function captureScreenshot(type) {
-  const button = type === 'viewport' ? document.getElementById('captureViewport') : document.getElementById('captureFullPage');
+// Capture screenshot (uses display media with browser picker)
+async function captureScreenshot() {
+  const button = document.getElementById('captureScreenshot');
   const statusEl = document.getElementById('captureStatus');
 
   try {
     button.disabled = true;
-    showStatus('captureStatus', 'Capturing screenshot...', 'info');
+    showStatus('captureStatus', 'Starting screenshot capture...', 'info');
+    console.log('[Popup] Starting screenshot capture');
 
-    // Inject content script if needed
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId: currentTab.id },
-        files: ['content/content.js']
-      });
-    } catch (e) {
-      // Content script might already be injected
-      console.log('Content script injection skipped:', e.message);
+    // Use display capture - browser will show picker
+    console.log('[Popup] Sending captureDisplayScreenshot message to background...');
+    const response = await chrome.runtime.sendMessage({
+      action: 'captureDisplayScreenshot'
+    });
+
+    console.log('[Popup] Response from background:', response);
+
+    if (!response) {
+      throw new Error('No response from background script');
     }
 
-    // Capture the screenshot
-    screenshotDataUrl = await chrome.tabs.captureVisibleTab(null, {
-      format: 'png',
-      quality: 100
-    });
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to capture screenshot');
+    }
+
+    screenshotDataUrl = response.screenshotDataUrl;
 
     if (!screenshotDataUrl) {
       throw new Error('Failed to capture screenshot');

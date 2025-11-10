@@ -23,6 +23,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Keep channel open for async response
   }
 
+  if (request.action === 'captureDisplayScreenshot') {
+    captureDisplayScreenshot()
+      .then((screenshotDataUrl) => {
+        console.log('[Offscreen] Screenshot captured successfully');
+        sendResponse({ success: true, screenshotDataUrl });
+      })
+      .catch((error) => {
+        console.error('[Offscreen] Error capturing screenshot:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // Keep channel open for async response
+  }
+
   return false;
 });
 
@@ -123,6 +136,68 @@ async function startDisplayRecording() {
 
   } catch (error) {
     console.error('[Offscreen] Error in startDisplayRecording:', error);
+    throw error;
+  }
+}
+
+async function captureDisplayScreenshot() {
+  try {
+    console.log('[Offscreen] Getting display media for screenshot');
+
+    // Get display media stream - browser will show picker
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        displaySurface: 'monitor',
+        cursor: 'always',
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false, // No audio needed for screenshots
+      preferCurrentTab: false
+    });
+
+    console.log('[Offscreen] Got display media stream, capturing frame');
+
+    // Create video element to capture frame
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.autoplay = true;
+    video.muted = true;
+
+    // Wait for video to be ready
+    await new Promise((resolve) => {
+      video.onloadedmetadata = () => {
+        video.play();
+        resolve();
+      };
+    });
+
+    // Wait a bit for the first frame to render
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Create canvas and capture frame
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    console.log('[Offscreen] Frame captured, size:', canvas.width, 'x', canvas.height);
+
+    // Stop all tracks immediately
+    stream.getTracks().forEach(track => {
+      console.log('[Offscreen] Stopping track:', track.kind);
+      track.stop();
+    });
+
+    // Convert to data URL
+    const screenshotDataUrl = canvas.toDataURL('image/png', 1.0);
+    console.log('[Offscreen] Converted to data URL, length:', screenshotDataUrl.length);
+
+    return screenshotDataUrl;
+
+  } catch (error) {
+    console.error('[Offscreen] Error in captureDisplayScreenshot:', error);
     throw error;
   }
 }

@@ -77,6 +77,43 @@ async function handleStartDisplayCapture() {
   }
 }
 
+async function handleCaptureDisplayScreenshot() {
+  try {
+    console.log('[Background] Capturing display screenshot');
+
+    // Setup offscreen document
+    await setupOffscreenDocument();
+
+    // Send message to offscreen document to capture screenshot
+    console.log('[Background] Sending captureDisplayScreenshot message to offscreen document');
+    const response = await chrome.runtime.sendMessage({
+      action: 'captureDisplayScreenshot'
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Failed to capture screenshot in offscreen document');
+    }
+
+    const screenshotDataUrl = response.screenshotDataUrl;
+    console.log('[Background] Got screenshot data URL, length:', screenshotDataUrl.length);
+
+    // Close offscreen document
+    await closeOffscreenDocument();
+
+    return screenshotDataUrl;
+
+  } catch (error) {
+    console.error('[Background] Error in handleCaptureDisplayScreenshot:', error);
+    // Clean up offscreen document if there was an error
+    try {
+      await closeOffscreenDocument();
+    } catch (e) {
+      console.error('[Background] Error closing offscreen document:', e);
+    }
+    throw error;
+  }
+}
+
 
 async function handleRecordingComplete(videoDataUrl) {
   try {
@@ -272,6 +309,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })
       .catch((error) => {
         console.error('[Background] Error starting display capture:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+
+    return true; // Keep channel open for async response
+  }
+
+  if (request.action === 'captureDisplayScreenshot') {
+    console.log('[Background] Capturing display screenshot');
+
+    handleCaptureDisplayScreenshot()
+      .then((screenshotDataUrl) => {
+        console.log('[Background] Screenshot captured successfully');
+        sendResponse({ success: true, screenshotDataUrl });
+      })
+      .catch((error) => {
+        console.error('[Background] Error capturing screenshot:', error);
         sendResponse({ success: false, error: error.message });
       });
 
