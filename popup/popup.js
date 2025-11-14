@@ -12,6 +12,8 @@ let mediaRecorder = null;
 let recordedChunks = [];
 let videoDataUrl = null;
 let isRecording = false;
+let selectedTabIds = []; // Track selected tabs for multi-tab capture
+let allTabs = []; // Store all tabs
 
 // Sanitize text to remove unicode/emoji characters that cause 500 errors
 // Redmine with standard UTF-8 (not utf8mb4) cannot handle 4-byte UTF-8 characters
@@ -152,6 +154,9 @@ function setupEventListeners() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', (e) => switchTab(e.currentTarget.dataset.tab));
   });
+
+  // Multi-tab capture
+  document.getElementById('captureFromOtherTabs').addEventListener('change', toggleTabSelector);
 }
 
 // Capture current tab screenshot quickly (no picker)
@@ -371,13 +376,140 @@ async function continueToReport() {
   await loadRedmineData();
 }
 
+// Toggle tab selector visibility
+async function toggleTabSelector() {
+  const checkbox = document.getElementById('captureFromOtherTabs');
+  const container = document.getElementById('tabSelectorContainer');
+
+  if (checkbox.checked) {
+    container.classList.remove('hidden');
+    await loadAllTabs();
+  } else {
+    container.classList.add('hidden');
+    selectedTabIds = [];
+  }
+}
+
+// Load and display all tabs
+async function loadAllTabs() {
+  const statusEl = document.getElementById('tabSelectorStatus');
+  const tabListEl = document.getElementById('tabList');
+
+  try {
+    statusEl.textContent = 'Loading tabs...';
+    statusEl.className = 'status-message info';
+
+    // Get all tabs
+    allTabs = await chrome.tabs.query({});
+
+    // Clear the list
+    tabListEl.innerHTML = '';
+
+    // Add each tab as a checkbox item
+    allTabs.forEach(tab => {
+      const tabItem = document.createElement('div');
+      tabItem.className = 'tab-item';
+      if (tab.id === currentTab.id) {
+        tabItem.classList.add('tab-item-current');
+      }
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = `tab-${tab.id}`;
+      checkbox.value = tab.id;
+      // Auto-select current tab
+      if (tab.id === currentTab.id) {
+        checkbox.checked = true;
+        selectedTabIds.push(tab.id);
+      }
+      checkbox.addEventListener('change', handleTabSelection);
+
+      const label = document.createElement('label');
+      label.htmlFor = `tab-${tab.id}`;
+      label.style.cssText = 'cursor: pointer; display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;';
+
+      const info = document.createElement('div');
+      info.className = 'tab-item-info';
+
+      const title = document.createElement('span');
+      title.className = 'tab-item-title';
+      title.textContent = tab.title || 'Untitled';
+
+      const url = document.createElement('span');
+      url.className = 'tab-item-url';
+      url.textContent = tab.url || '';
+
+      info.appendChild(title);
+      info.appendChild(url);
+      label.appendChild(info);
+
+      // Add current tab badge
+      if (tab.id === currentTab.id) {
+        const badge = document.createElement('span');
+        badge.className = 'tab-item-badge';
+        badge.textContent = 'Current';
+        label.appendChild(badge);
+      }
+
+      tabItem.appendChild(checkbox);
+      tabItem.appendChild(label);
+
+      tabListEl.appendChild(tabItem);
+    });
+
+    statusEl.textContent = `${allTabs.length} tabs available. Selected: ${selectedTabIds.length}`;
+    statusEl.className = 'status-message success';
+
+  } catch (error) {
+    console.error('Error loading tabs:', error);
+    statusEl.textContent = `Error loading tabs: ${error.message}`;
+    statusEl.className = 'status-message error';
+  }
+}
+
+// Handle tab selection
+function handleTabSelection(e) {
+  const tabId = parseInt(e.target.value);
+  const statusEl = document.getElementById('tabSelectorStatus');
+
+  if (e.target.checked) {
+    if (!selectedTabIds.includes(tabId)) {
+      selectedTabIds.push(tabId);
+    }
+  } else {
+    selectedTabIds = selectedTabIds.filter(id => id !== tabId);
+  }
+
+  statusEl.textContent = `Selected: ${selectedTabIds.length} tab(s)`;
+  statusEl.className = 'status-message info';
+}
+
 // Collect technical data
 async function collectTechnicalData() {
+  try {
+    // Check if multi-tab capture is enabled
+    const captureFromOtherTabsCheckbox = document.getElementById('captureFromOtherTabs');
+    const shouldCaptureMultipleTabs = captureFromOtherTabsCheckbox && captureFromOtherTabsCheckbox.checked;
+
+    if (shouldCaptureMultipleTabs && selectedTabIds.length > 0) {
+      // Collect from multiple tabs
+      await collectTechnicalDataFromMultipleTabs();
+    } else {
+      // Collect from current tab only (original behavior)
+      await collectTechnicalDataFromSingleTab(currentTab.id);
+    }
+  } catch (error) {
+    console.error('Error collecting technical data:', error);
+  }
+}
+
+// Collect technical data from a single tab
+async function collectTechnicalDataFromSingleTab(tabId) {
   try {
     // Ensure content script is injected
     try {
       await chrome.scripting.executeScript({
-        target: { tabId: currentTab.id },
+        target: { tabId: tabId },
         files: ['content/content.js']
       });
     } catch (e) {
@@ -386,7 +518,7 @@ async function collectTechnicalData() {
     }
 
     // Collect page information
-    const pageInfoResponse = await chrome.tabs.sendMessage(currentTab.id, {
+    const pageInfoResponse = await chrome.tabs.sendMessage(tabId, {
       action: 'collectPageInfo'
     });
 
@@ -398,7 +530,7 @@ async function collectTechnicalData() {
     if (settings.includeConsoleLogs) {
       const logsResponse = await chrome.runtime.sendMessage({
         action: 'getConsoleLogs',
-        tabId: currentTab.id
+        tabId: tabId
       });
 
       if (logsResponse && logsResponse.success) {
@@ -410,7 +542,7 @@ async function collectTechnicalData() {
     if (settings.includeNetworkRequests) {
       const networkResponse = await chrome.runtime.sendMessage({
         action: 'getNetworkRequests',
-        tabId: currentTab.id
+        tabId: tabId
       });
 
       if (networkResponse && networkResponse.success) {
@@ -420,7 +552,7 @@ async function collectTechnicalData() {
 
     // Collect storage data
     if (settings.includeLocalStorage || settings.includeCookies) {
-      const storageResponse = await chrome.tabs.sendMessage(currentTab.id, {
+      const storageResponse = await chrome.tabs.sendMessage(tabId, {
         action: 'collectStorageData'
       });
 
@@ -429,7 +561,127 @@ async function collectTechnicalData() {
       }
     }
   } catch (error) {
-    console.error('Error collecting technical data:', error);
+    console.error(`Error collecting technical data from tab ${tabId}:`, error);
+  }
+}
+
+// Collect technical data from multiple tabs
+async function collectTechnicalDataFromMultipleTabs() {
+  try {
+    console.log('[Multi-Tab] Collecting data from', selectedTabIds.length, 'tabs');
+
+    // Reset aggregate data structures
+    networkRequests = [];
+    consoleLogs = [];
+    const pageInfoArray = [];
+
+    // Process each selected tab
+    for (const tabId of selectedTabIds) {
+      try {
+        // Get tab details
+        const tab = allTabs.find(t => t.id === tabId);
+        const tabTitle = tab ? tab.title : 'Unknown';
+        const tabUrl = tab ? tab.url : 'Unknown';
+
+        console.log(`[Multi-Tab] Processing tab ${tabId}: ${tabTitle}`);
+
+        // Skip chrome:// and other internal URLs
+        if (tabUrl.startsWith('chrome://') || tabUrl.startsWith('chrome-extension://')) {
+          console.log(`[Multi-Tab] Skipping internal URL: ${tabUrl}`);
+          continue;
+        }
+
+        // Inject content script into this tab
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            files: ['content/content.js']
+          });
+          console.log(`[Multi-Tab] Content script injected into tab ${tabId}`);
+        } catch (e) {
+          console.log(`[Multi-Tab] Content script injection skipped for tab ${tabId}:`, e.message);
+        }
+
+        // Give content script a moment to initialize
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Collect page information
+        try {
+          const pageInfoResponse = await chrome.tabs.sendMessage(tabId, {
+            action: 'collectPageInfo'
+          });
+
+          if (pageInfoResponse && pageInfoResponse.success) {
+            const tabPageInfo = pageInfoResponse.data;
+            tabPageInfo._tabId = tabId;
+            tabPageInfo._tabTitle = tabTitle;
+            pageInfoArray.push(tabPageInfo);
+          }
+        } catch (e) {
+          console.log(`[Multi-Tab] Could not collect page info from tab ${tabId}:`, e.message);
+        }
+
+        // Collect console logs from this tab
+        if (settings.includeConsoleLogs) {
+          try {
+            const logsResponse = await chrome.runtime.sendMessage({
+              action: 'getConsoleLogs',
+              tabId: tabId
+            });
+
+            if (logsResponse && logsResponse.success && logsResponse.data.length > 0) {
+              // Add tab information to each log entry
+              const tabLogs = logsResponse.data.map(log => ({
+                ...log,
+                _tabId: tabId,
+                _tabTitle: tabTitle,
+                _tabUrl: tabUrl
+              }));
+              consoleLogs.push(...tabLogs);
+              console.log(`[Multi-Tab] Collected ${tabLogs.length} console logs from tab ${tabId}`);
+            }
+          } catch (e) {
+            console.log(`[Multi-Tab] Could not collect console logs from tab ${tabId}:`, e.message);
+          }
+        }
+
+        // Collect network requests from this tab
+        if (settings.includeNetworkRequests) {
+          try {
+            const networkResponse = await chrome.runtime.sendMessage({
+              action: 'getNetworkRequests',
+              tabId: tabId
+            });
+
+            if (networkResponse && networkResponse.success && networkResponse.data.length > 0) {
+              // Add tab information to each network request
+              const tabRequests = networkResponse.data.map(req => ({
+                ...req,
+                _tabId: tabId,
+                _tabTitle: tabTitle,
+                _tabUrl: tabUrl
+              }));
+              networkRequests.push(...tabRequests);
+              console.log(`[Multi-Tab] Collected ${tabRequests.length} network requests from tab ${tabId}`);
+            }
+          } catch (e) {
+            console.log(`[Multi-Tab] Could not collect network requests from tab ${tabId}:`, e.message);
+          }
+        }
+
+      } catch (error) {
+        console.error(`[Multi-Tab] Error processing tab ${tabId}:`, error);
+      }
+    }
+
+    // Store aggregated page info (use current tab's info as primary, but include all)
+    pageInfo = pageInfoArray.find(p => p._tabId === currentTab.id) || pageInfoArray[0] || {};
+    pageInfo._allTabs = pageInfoArray;
+
+    console.log(`[Multi-Tab] Collection complete. Network: ${networkRequests.length}, Console: ${consoleLogs.length}, Pages: ${pageInfoArray.length}`);
+
+  } catch (error) {
+    console.error('[Multi-Tab] Error collecting data from multiple tabs:', error);
   }
 }
 
@@ -765,6 +1017,16 @@ function buildDescription() {
     description += '- Video recording of the issue is attached.\n';
   }
 
+  // Check if multi-tab capture was used
+  const isMultiTabCapture = networkRequests.some(req => req._tabId) || consoleLogs.some(log => log._tabId);
+  if (isMultiTabCapture) {
+    const uniqueTabIds = new Set([
+      ...networkRequests.filter(req => req._tabId).map(req => req._tabId),
+      ...consoleLogs.filter(log => log._tabId).map(log => log._tabId)
+    ]);
+    description += `\n**Note:** Data captured from ${uniqueTabIds.size} tab(s).\n`;
+  }
+
   if (settings.includeNetworkRequests && networkRequests.length > 0) {
     description += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
   }
@@ -890,6 +1152,17 @@ function buildHARFile() {
           entry._resourceType = req.type;
         }
 
+        // Add tab information if available (multi-tab capture)
+        if (req._tabId) {
+          entry._tabId = req._tabId;
+        }
+        if (req._tabTitle) {
+          entry._tabTitle = req._tabTitle;
+        }
+        if (req._tabUrl) {
+          entry._tabUrl = req._tabUrl;
+        }
+
         return entry;
       })
     }
@@ -940,6 +1213,15 @@ function buildConsoleLogsFile() {
   consoleLogs.forEach((log, index) => {
     logsContent += `[${index + 1}] ${log.timestamp || 'Unknown time'}\n`;
     logsContent += `Type: ${(log.type || 'log').toUpperCase()}\n`;
+
+    // Add tab information if available (multi-tab capture)
+    if (log._tabTitle) {
+      logsContent += `Tab: ${log._tabTitle}\n`;
+    }
+    if (log._tabUrl) {
+      logsContent += `Tab URL: ${log._tabUrl}\n`;
+    }
+
     logsContent += `URL: ${log.url || 'N/A'}\n`;
     logsContent += `Message: ${log.message || ''}\n`;
 
@@ -1260,6 +1542,7 @@ async function populateReviewModal() {
               <span class="data-item-badge">#${index + 1}</span>
               <span class="data-item-method">${req.method || 'GET'}</span>
               <span class="data-item-type">${req.type || 'other'}</span>
+              ${req._tabTitle ? `<span class="data-item-badge" style="background-color: #e3f2fd; color: #1976d2; margin-left: 4px;">📑 ${truncateUrl(req._tabTitle, 30)}</span>` : ''}
             </div>
             <span class="data-item-status ${statusClass}">
               ${statusIcon} ${req.failed ? 'Failed' : (req.statusCode || 'Pending')}
@@ -1267,6 +1550,7 @@ async function populateReviewModal() {
           </div>
           <div class="data-item-url" title="${req.url}">${truncateUrl(req.url, 100)}</div>
           <div class="data-item-details">
+            ${req._tabUrl ? `<span>🌐 Tab: ${truncateUrl(req._tabUrl, 50)}</span>` : ''}
             ${req.ip ? `<span>📍 IP: ${req.ip}</span>` : ''}
             ${req.fromCache ? '<span>💾 Cached</span>' : ''}
             ${req.error ? `<span style="color: #f44336;">❌ Error: ${req.error}</span>` : ''}
@@ -1319,13 +1603,15 @@ async function populateReviewModal() {
         const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'N/A';
 
         item.innerHTML = `
-          <div class="console-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <div class="console-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
             <span class="data-item-badge">#${index + 1}</span>
             <span style="color: ${typeColor}; font-weight: bold;">${typeIcon} ${log.type.toUpperCase()}</span>
             <span class="console-timestamp" style="color: #999; font-size: 11px;">${timestamp}</span>
+            ${log._tabTitle ? `<span class="data-item-badge" style="background-color: #e3f2fd; color: #1976d2;">📑 ${truncateUrl(log._tabTitle, 25)}</span>` : ''}
           </div>
           <div class="console-message" style="margin-left: 24px; word-break: break-word;">${escapeHtml(log.message || '')}</div>
-          ${log.url ? `<div class="console-url" style="margin-left: 24px; font-size: 11px; color: #666; margin-top: 4px;">📍 ${log.url}</div>` : ''}
+          ${log._tabUrl ? `<div class="console-url" style="margin-left: 24px; font-size: 11px; color: #666; margin-top: 4px;">🌐 Tab: ${truncateUrl(log._tabUrl, 60)}</div>` : ''}
+          ${log.url && !log._tabUrl ? `<div class="console-url" style="margin-left: 24px; font-size: 11px; color: #666; margin-top: 4px;">📍 ${log.url}</div>` : ''}
           ${log.stack ? `
             <details style="margin-left: 24px; margin-top: 8px;">
               <summary style="cursor: pointer; color: #2196F3; font-size: 11px;">View Stack Trace</summary>
