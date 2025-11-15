@@ -7,6 +7,45 @@ let recordedChunks = [];
 let recordingStream = null;
 let recordingTabId = null;
 
+// Load persisted network requests from storage on startup
+async function loadNetworkRequestsFromStorage() {
+  try {
+    const result = await chrome.storage.session.get('networkRequests');
+    if (result.networkRequests) {
+      networkRequests = result.networkRequests;
+      const tabCount = Object.keys(networkRequests).length;
+      const totalRequests = Object.values(networkRequests).reduce((sum, tab) => sum + tab.requests.length, 0);
+      console.log(`[Background] Loaded ${totalRequests} network requests from ${tabCount} tabs from storage`);
+    }
+  } catch (error) {
+    console.error('[Background] Error loading network requests from storage:', error);
+  }
+}
+
+// Save network requests to storage (debounced)
+let saveTimeout = null;
+async function saveNetworkRequestsToStorage() {
+  // Clear existing timeout
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+  }
+
+  // Debounce: save after 1 second of inactivity
+  saveTimeout = setTimeout(async () => {
+    try {
+      await chrome.storage.session.set({ networkRequests });
+      const tabCount = Object.keys(networkRequests).length;
+      const totalRequests = Object.values(networkRequests).reduce((sum, tab) => sum + tab.requests.length, 0);
+      console.log(`[Background] Saved ${totalRequests} network requests from ${tabCount} tabs to storage`);
+    } catch (error) {
+      console.error('[Background] Error saving network requests to storage:', error);
+    }
+  }, 1000);
+}
+
+// Initialize on service worker startup
+loadNetworkRequestsFromStorage();
+
 // Offscreen document management for recording
 async function setupOffscreenDocument() {
   const offscreenUrl = chrome.runtime.getURL('offscreen/offscreen.html');
@@ -160,15 +199,24 @@ async function handleRecordingComplete(videoDataUrl) {
 // Clean up old data periodically
 setInterval(() => {
   const now = Date.now();
+  let cleaned = false;
+
   for (const tabId in networkRequests) {
     if (networkRequests[tabId].timestamp < now - 3600000) { // 1 hour old
       delete networkRequests[tabId];
+      cleaned = true;
     }
   }
   for (const tabId in consoleLogs) {
     if (consoleLogs[tabId].timestamp < now - 3600000) {
       delete consoleLogs[tabId];
     }
+  }
+
+  // Save to storage if we cleaned anything
+  if (cleaned) {
+    console.log('[Background] Cleaned old network request data');
+    saveNetworkRequestsToStorage();
   }
 }, 300000); // Clean every 5 minutes
 
@@ -194,6 +242,9 @@ chrome.webRequest.onBeforeRequest.addListener(
 
     networkRequests[details.tabId].requests.push(request);
 
+    // Save to storage (debounced)
+    saveNetworkRequestsToStorage();
+
     // Log periodically to avoid spam
     if (networkRequests[details.tabId].requests.length % 50 === 0) {
       console.log(`[Background] Tab ${details.tabId} now has ${networkRequests[details.tabId].requests.length} network requests`);
@@ -216,6 +267,9 @@ chrome.webRequest.onCompleted.addListener(
       request.responseHeaders = details.responseHeaders;
       request.fromCache = details.fromCache;
       request.ip = details.ip;
+
+      // Save to storage (debounced)
+      saveNetworkRequestsToStorage();
     }
   },
   { urls: ["<all_urls>"] },
@@ -233,6 +287,9 @@ chrome.webRequest.onErrorOccurred.addListener(
     if (request) {
       request.error = details.error;
       request.failed = true;
+
+      // Save to storage (debounced)
+      saveNetworkRequestsToStorage();
     }
   },
   { urls: ["<all_urls>"] }
@@ -257,6 +314,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const tabId = request.tabId;
     if (networkRequests[tabId]) {
       networkRequests[tabId].requests = [];
+      // Save to storage after clearing
+      saveNetworkRequestsToStorage();
     }
     sendResponse({ success: true });
   }
