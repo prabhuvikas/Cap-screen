@@ -180,6 +180,7 @@ chrome.webRequest.onBeforeRequest.addListener(
         requests: [],
         timestamp: Date.now()
       };
+      console.log(`[Background] Started tracking network requests for tab ${details.tabId}`);
     }
 
     const request = {
@@ -192,6 +193,11 @@ chrome.webRequest.onBeforeRequest.addListener(
     };
 
     networkRequests[details.tabId].requests.push(request);
+
+    // Log periodically to avoid spam
+    if (networkRequests[details.tabId].requests.length % 50 === 0) {
+      console.log(`[Background] Tab ${details.tabId} now has ${networkRequests[details.tabId].requests.length} network requests`);
+    }
   },
   { urls: ["<all_urls>"] },
   ["requestBody"]
@@ -237,6 +243,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getNetworkRequests') {
     const tabId = request.tabId;
     const data = networkRequests[tabId] || { requests: [], timestamp: Date.now() };
+    console.log(`[Background] getNetworkRequests for tab ${tabId}: ${data.requests.length} requests found`);
+
+    // Log all tabs that have network requests
+    const allTabs = Object.keys(networkRequests);
+    console.log(`[Background] Currently tracking network requests for ${allTabs.length} tabs:`,
+      allTabs.map(tid => `${tid}(${networkRequests[tid].requests.length})`).join(', '));
+
     sendResponse({ success: true, data: data.requests });
   }
 
@@ -264,6 +277,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const tabId = request.tabId;
     const data = consoleLogs[tabId] || { logs: [], timestamp: Date.now() };
     sendResponse({ success: true, data: data.logs });
+  }
+
+  if (request.action === 'getAllNetworkRequestCounts') {
+    // Return summary of all tabs with network request counts
+    const summary = {};
+    Object.keys(networkRequests).forEach(tabId => {
+      summary[tabId] = networkRequests[tabId].requests.length;
+    });
+    console.log('[Background] getAllNetworkRequestCounts:', summary);
+    sendResponse({ success: true, data: summary });
   }
 
   if (request.action === 'captureScreenshot') {
