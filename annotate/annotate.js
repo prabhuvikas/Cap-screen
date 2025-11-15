@@ -1000,9 +1000,8 @@ async function collectTechnicalDataFromSingleTab(tabId) {
     // Collect console logs
     if (settings.includeConsoleLogs) {
       try {
-        const logsResponse = await chrome.runtime.sendMessage({
-          action: 'getConsoleLogs',
-          tabId: tabId
+        const logsResponse = await chrome.tabs.sendMessage(tabId, {
+          action: 'getConsoleLogs'
         });
 
         if (logsResponse && logsResponse.success) {
@@ -1109,9 +1108,8 @@ async function collectTechnicalDataFromMultipleTabs() {
         // Collect console logs from this tab
         if (settings.includeConsoleLogs) {
           try {
-            const logsResponse = await chrome.runtime.sendMessage({
-              action: 'getConsoleLogs',
-              tabId: tabId
+            const logsResponse = await chrome.tabs.sendMessage(tabId, {
+              action: 'getConsoleLogs'
             });
 
             if (logsResponse && logsResponse.success && logsResponse.data.length > 0) {
@@ -1123,7 +1121,7 @@ async function collectTechnicalDataFromMultipleTabs() {
                 _tabUrl: tabUrl
               }));
               consoleLogs.push(...tabLogs);
-              console.log(`[Multi-Tab] Collected ${tabLogs.length} console logs from tab ${tabId}`);
+              console.log(`[Multi-Tab] ✓ Collected ${tabLogs.length} console logs from tab ${tabId}: ${tabTitle}`);
             }
           } catch (e) {
             console.log(`[Multi-Tab] Could not collect console logs from tab ${tabId}:`, e.message);
