@@ -925,9 +925,11 @@ async function loadAllTabs() {
       if (requestCount > 0) {
         countBadge.textContent = `${requestCount} requests`;
         countBadge.style.backgroundColor = '#4CAF50';
+        countBadge.style.color = '#ffffff';
       } else {
         countBadge.textContent = 'No data';
         countBadge.style.backgroundColor = '#999';
+        countBadge.style.color = '#ffffff';
         countBadge.title = 'This tab has no network requests captured. Try refreshing the tab.';
       }
       label.appendChild(countBadge);
@@ -2111,6 +2113,38 @@ async function populateReviewModal() {
     if (networkCount === 0) {
       networkContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No network requests captured</p>';
     } else {
+      // Check if this is multi-tab capture
+      const isMultiTabCapture = networkRequests.some(req => req._tabId);
+
+      if (isMultiTabCapture) {
+        // Group requests by tab to show which HAR files will be created
+        const requestsByTab = {};
+        networkRequests.forEach(req => {
+          const tabId = req._tabId || 'unknown';
+          if (!requestsByTab[tabId]) {
+            requestsByTab[tabId] = [];
+          }
+          requestsByTab[tabId].push(req);
+        });
+
+        // Show attachment info for each tab
+        const attachmentInfo = document.createElement('div');
+        attachmentInfo.style.cssText = 'margin-bottom: 16px; padding: 12px; background: #e8f5e9; border-left: 4px solid #4CAF50; border-radius: 4px;';
+
+        let filesHtml = '<p style="color: #2e7d32; font-weight: 600; margin-bottom: 8px;">📎 Separate HAR files will be created:</p><ul style="margin: 0; padding-left: 20px;">';
+
+        for (const [tabId, requests] of Object.entries(requestsByTab)) {
+          const tabTitle = requests[0]._tabTitle || 'Unknown Tab';
+          const sanitizedTabName = tabTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase().substring(0, 50);
+          const filename = `network-requests-${sanitizedTabName}-*.har`;
+          filesHtml += `<li style="color: #2e7d32; margin: 4px 0;"><strong>${filename}</strong> (${requests.length} requests from "${tabTitle}")</li>`;
+        }
+
+        filesHtml += '</ul>';
+        attachmentInfo.innerHTML = filesHtml;
+        networkContainer.appendChild(attachmentInfo);
+      }
+
       networkRequests.slice(0, 50).forEach((req, index) => {
         const item = document.createElement('div');
         item.className = 'data-item network-item';
@@ -2161,6 +2195,38 @@ async function populateReviewModal() {
     if (consoleCount === 0) {
       consoleContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No console logs captured</p>';
     } else {
+      // Check if this is multi-tab capture
+      const isMultiTabCapture = consoleLogs.some(log => log._tabId);
+
+      if (isMultiTabCapture) {
+        // Group logs by tab to show which console log files will be created
+        const logsByTab = {};
+        consoleLogs.forEach(log => {
+          const tabId = log._tabId || 'unknown';
+          if (!logsByTab[tabId]) {
+            logsByTab[tabId] = [];
+          }
+          logsByTab[tabId].push(log);
+        });
+
+        // Show attachment info for each tab
+        const attachmentInfo = document.createElement('div');
+        attachmentInfo.style.cssText = 'margin-bottom: 16px; padding: 12px; background: #e3f2fd; border-left: 4px solid #2196F3; border-radius: 4px;';
+
+        let filesHtml = '<p style="color: #1565c0; font-weight: 600; margin-bottom: 8px;">📎 Separate console log files will be created:</p><ul style="margin: 0; padding-left: 20px;">';
+
+        for (const [tabId, logs] of Object.entries(logsByTab)) {
+          const tabTitle = logs[0]._tabTitle || 'Unknown Tab';
+          const sanitizedTabName = tabTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase().substring(0, 50);
+          const filename = `console-logs-${sanitizedTabName}-*.txt`;
+          filesHtml += `<li style="color: #1565c0; margin: 4px 0;"><strong>${filename}</strong> (${logs.length} logs from "${tabTitle}")</li>`;
+        }
+
+        filesHtml += '</ul>';
+        attachmentInfo.innerHTML = filesHtml;
+        consoleContainer.appendChild(attachmentInfo);
+      }
+
       consoleLogs.slice(0, 50).forEach((log, index) => {
         const item = document.createElement('div');
         item.className = `console-item ${log.type}`;

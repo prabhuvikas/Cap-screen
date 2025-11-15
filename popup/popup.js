@@ -464,9 +464,11 @@ async function loadAllTabs() {
       if (requestCount > 0) {
         countBadge.textContent = `${requestCount} requests`;
         countBadge.style.backgroundColor = '#4CAF50';
+        countBadge.style.color = '#ffffff';
       } else {
         countBadge.textContent = 'No data';
         countBadge.style.backgroundColor = '#999';
+        countBadge.style.color = '#ffffff';
         countBadge.title = 'This tab has no network requests captured. Try refreshing the tab.';
       }
       label.appendChild(countBadge);
