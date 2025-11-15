@@ -1414,44 +1414,122 @@ async function actuallySubmitBugReport() {
       });
     }
 
-    // Add HAR file if network requests are available
+    // Add HAR files - separate file per tab if multi-tab capture was used
     if (settings.includeNetworkRequests && networkRequests.length > 0) {
-      const harData = buildHARFile();
-      const sanitizedHar = sanitizeText(harData);
-      const harBlob = new Blob([sanitizedHar], { type: 'application/json' });
-      const harReader = new FileReader();
+      const isMultiTabCapture = networkRequests.some(req => req._tabId);
 
-      await new Promise((resolve) => {
-        harReader.onloadend = () => {
-          attachments.push({
-            data: harReader.result,
-            filename: `network-requests-${Date.now()}.har`,
-            type: 'application/json'
+      if (isMultiTabCapture) {
+        // Group requests by tab
+        const requestsByTab = {};
+        networkRequests.forEach(req => {
+          const tabId = req._tabId || 'unknown';
+          if (!requestsByTab[tabId]) {
+            requestsByTab[tabId] = [];
+          }
+          requestsByTab[tabId].push(req);
+        });
+
+        // Create separate HAR file for each tab
+        for (const [tabId, requests] of Object.entries(requestsByTab)) {
+          const tabTitle = requests[0]._tabTitle || 'Unknown Tab';
+          const sanitizedTabName = tabTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase().substring(0, 50);
+
+          const harData = buildHARFile(requests);
+          const sanitizedHar = sanitizeText(harData);
+          const harBlob = new Blob([sanitizedHar], { type: 'application/json' });
+          const harReader = new FileReader();
+
+          await new Promise((resolve) => {
+            harReader.onloadend = () => {
+              attachments.push({
+                data: harReader.result,
+                filename: `network-requests-${sanitizedTabName}-${Date.now()}.har`,
+                type: 'application/json'
+              });
+              console.log(`[Annotate] Added HAR file for tab: ${tabTitle} (${requests.length} requests)`);
+              resolve();
+            };
+            harReader.readAsDataURL(harBlob);
           });
-          resolve();
-        };
-        harReader.readAsDataURL(harBlob);
-      });
+        }
+      } else {
+        // Single HAR file for single tab capture
+        const harData = buildHARFile(networkRequests);
+        const sanitizedHar = sanitizeText(harData);
+        const harBlob = new Blob([sanitizedHar], { type: 'application/json' });
+        const harReader = new FileReader();
+
+        await new Promise((resolve) => {
+          harReader.onloadend = () => {
+            attachments.push({
+              data: harReader.result,
+              filename: `network-requests-${Date.now()}.har`,
+              type: 'application/json'
+            });
+            resolve();
+          };
+          harReader.readAsDataURL(harBlob);
+        });
+      }
     }
 
-    // Add console logs file if available
+    // Add console logs files - separate file per tab if multi-tab capture was used
     if (settings.includeConsoleLogs && consoleLogs.length > 0) {
-      const consoleLogsData = buildConsoleLogsFile();
-      const sanitizedLogs = sanitizeText(consoleLogsData);
-      const logsBlob = new Blob([sanitizedLogs], { type: 'text/plain' });
-      const logsReader = new FileReader();
+      const isMultiTabCapture = consoleLogs.some(log => log._tabId);
 
-      await new Promise((resolve) => {
-        logsReader.onloadend = () => {
-          attachments.push({
-            data: logsReader.result,
-            filename: `console-logs-${Date.now()}.txt`,
-            type: 'text/plain'
+      if (isMultiTabCapture) {
+        // Group logs by tab
+        const logsByTab = {};
+        consoleLogs.forEach(log => {
+          const tabId = log._tabId || 'unknown';
+          if (!logsByTab[tabId]) {
+            logsByTab[tabId] = [];
+          }
+          logsByTab[tabId].push(log);
+        });
+
+        // Create separate console logs file for each tab
+        for (const [tabId, logs] of Object.entries(logsByTab)) {
+          const tabTitle = logs[0]._tabTitle || 'Unknown Tab';
+          const sanitizedTabName = tabTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase().substring(0, 50);
+
+          const consoleLogsData = buildConsoleLogsFile(logs);
+          const sanitizedLogs = sanitizeText(consoleLogsData);
+          const logsBlob = new Blob([sanitizedLogs], { type: 'text/plain' });
+          const logsReader = new FileReader();
+
+          await new Promise((resolve) => {
+            logsReader.onloadend = () => {
+              attachments.push({
+                data: logsReader.result,
+                filename: `console-logs-${sanitizedTabName}-${Date.now()}.txt`,
+                type: 'text/plain'
+              });
+              console.log(`[Annotate] Added console logs file for tab: ${tabTitle} (${logs.length} logs)`);
+              resolve();
+            };
+            logsReader.readAsDataURL(logsBlob);
           });
-          resolve();
-        };
-        logsReader.readAsDataURL(logsBlob);
-      });
+        }
+      } else {
+        // Single console logs file for single tab capture
+        const consoleLogsData = buildConsoleLogsFile(consoleLogs);
+        const sanitizedLogs = sanitizeText(consoleLogsData);
+        const logsBlob = new Blob([sanitizedLogs], { type: 'text/plain' });
+        const logsReader = new FileReader();
+
+        await new Promise((resolve) => {
+          logsReader.onloadend = () => {
+            attachments.push({
+              data: logsReader.result,
+              filename: `console-logs-${Date.now()}.txt`,
+              type: 'text/plain'
+            });
+            resolve();
+          };
+          logsReader.readAsDataURL(logsBlob);
+        });
+      }
     }
 
     // Add user-uploaded documents
@@ -1617,7 +1695,10 @@ function buildTechnicalData() {
 }
 
 // Build HAR file
-function buildHARFile() {
+function buildHARFile(requests = null) {
+  // Use provided requests or fall back to global networkRequests
+  const requestsToProcess = requests || networkRequests;
+
   const harLog = {
     log: {
       version: '1.2',
@@ -1640,7 +1721,7 @@ function buildHARFile() {
           }
         }
       ],
-      entries: networkRequests.map(req => {
+      entries: requestsToProcess.map(req => {
         const entry = {
           pageref: 'page_1',
           startedDateTime: new Date(req.timestamp).toISOString(),
@@ -1744,18 +1825,21 @@ function getContentType(headers) {
 }
 
 // Build console logs file
-function buildConsoleLogsFile() {
-  if (!consoleLogs || consoleLogs.length === 0) {
+function buildConsoleLogsFile(logs = null) {
+  // Use provided logs or fall back to global consoleLogs
+  const logsToProcess = logs || consoleLogs;
+
+  if (!logsToProcess || logsToProcess.length === 0) {
     return 'No console logs captured.';
   }
 
   let logsContent = '='.repeat(80) + '\n';
   logsContent += 'CONSOLE LOGS\n';
   logsContent += `Captured: ${new Date().toISOString()}\n`;
-  logsContent += `Total Logs: ${consoleLogs.length}\n`;
+  logsContent += `Total Logs: ${logsToProcess.length}\n`;
   logsContent += '='.repeat(80) + '\n\n';
 
-  consoleLogs.forEach((log, index) => {
+  logsToProcess.forEach((log, index) => {
     logsContent += `[${index + 1}] ${log.timestamp || 'Unknown time'}\n`;
     logsContent += `Type: ${(log.type || 'log').toUpperCase()}\n`;
 
