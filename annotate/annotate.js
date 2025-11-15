@@ -1543,6 +1543,16 @@ function buildDescription() {
     description += '- Video recording of the issue is attached.\n';
   }
 
+  // Check if multi-tab capture was used
+  const isMultiTabCapture = networkRequests.some(req => req._tabId) || consoleLogs.some(log => log._tabId);
+  if (isMultiTabCapture) {
+    const uniqueTabIds = new Set([
+      ...networkRequests.filter(req => req._tabId).map(req => req._tabId),
+      ...consoleLogs.filter(log => log._tabId).map(log => log._tabId)
+    ]);
+    description += `\n**Note:** Data captured from ${uniqueTabIds.size} tab(s).\n`;
+  }
+
   if (settings.includeNetworkRequests && networkRequests.length > 0) {
     description += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
   }
@@ -1687,6 +1697,17 @@ function buildHARFile() {
           entry._resourceType = req.type;
         }
 
+        // Add tab information if available (multi-tab capture)
+        if (req._tabId) {
+          entry._tabId = req._tabId;
+        }
+        if (req._tabTitle) {
+          entry._tabTitle = req._tabTitle;
+        }
+        if (req._tabUrl) {
+          entry._tabUrl = req._tabUrl;
+        }
+
         return entry;
       })
     }
@@ -1737,6 +1758,15 @@ function buildConsoleLogsFile() {
   consoleLogs.forEach((log, index) => {
     logsContent += `[${index + 1}] ${log.timestamp || 'Unknown time'}\n`;
     logsContent += `Type: ${(log.type || 'log').toUpperCase()}\n`;
+
+    // Add tab information if available (multi-tab capture)
+    if (log._tabTitle) {
+      logsContent += `Tab: ${log._tabTitle}\n`;
+    }
+    if (log._tabUrl) {
+      logsContent += `Tab URL: ${log._tabUrl}\n`;
+    }
+
     logsContent += `URL: ${log.url || 'N/A'}\n`;
     logsContent += `Message: ${log.message || ''}\n`;
 
@@ -1985,6 +2015,7 @@ async function populateReviewModal() {
               <span class="data-item-badge">#${index + 1}</span>
               <span class="data-item-method">${req.method || 'GET'}</span>
               <span class="data-item-type">${req.type || 'other'}</span>
+              ${req._tabTitle ? `<span class="data-item-badge" style="background-color: #e3f2fd; color: #1976d2; margin-left: 4px;">📑 ${truncateUrl(req._tabTitle, 30)}</span>` : ''}
             </div>
             <span class="data-item-status ${statusClass}">
               ${statusIcon} ${req.failed ? 'Failed' : (req.statusCode || 'Pending')}
@@ -1992,6 +2023,7 @@ async function populateReviewModal() {
           </div>
           <div class="data-item-url" title="${req.url}">${truncateUrl(req.url, 100)}</div>
           <div class="data-item-details">
+            ${req._tabUrl ? `<span>🌐 Tab: ${truncateUrl(req._tabUrl, 50)}</span>` : ''}
             ${req.ip ? `<span>📍 IP: ${req.ip}</span>` : ''}
             ${req.fromCache ? '<span>💾 Cached</span>' : ''}
             ${req.error ? `<span style="color: #f44336;">❌ Error: ${req.error}</span>` : ''}
@@ -2043,13 +2075,15 @@ async function populateReviewModal() {
         const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'N/A';
 
         item.innerHTML = `
-          <div class="console-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <div class="console-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
             <span class="data-item-badge">#${index + 1}</span>
             <span style="color: ${typeColor}; font-weight: bold;">${typeIcon} ${log.type.toUpperCase()}</span>
             <span class="console-timestamp" style="color: #999; font-size: 11px;">${timestamp}</span>
+            ${log._tabTitle ? `<span class="data-item-badge" style="background-color: #e3f2fd; color: #1976d2;">📑 ${truncateUrl(log._tabTitle, 25)}</span>` : ''}
           </div>
           <div class="console-message" style="margin-left: 24px; word-break: break-word;">${escapeHtml(log.message || '')}</div>
-          ${log.url ? `<div class="console-url" style="margin-left: 24px; font-size: 11px; color: #666; margin-top: 4px;">📍 ${log.url}</div>` : ''}
+          ${log._tabUrl ? `<div class="console-url" style="margin-left: 24px; font-size: 11px; color: #666; margin-top: 4px;">🌐 Tab: ${truncateUrl(log._tabUrl, 60)}</div>` : ''}
+          ${log.url && !log._tabUrl ? `<div class="console-url" style="margin-left: 24px; font-size: 11px; color: #666; margin-top: 4px;">📍 ${log.url}</div>` : ''}
           ${log.stack ? `
             <details style="margin-left: 24px; margin-top: 8px;">
               <summary style="cursor: pointer; color: #2196F3; font-size: 11px;">View Stack Trace</summary>
