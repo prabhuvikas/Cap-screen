@@ -653,19 +653,25 @@ async function collectTechnicalDataFromMultipleTabs() {
               tabId: tabId
             });
 
-            if (networkResponse && networkResponse.success && networkResponse.data.length > 0) {
-              // Add tab information to each network request
-              const tabRequests = networkResponse.data.map(req => ({
-                ...req,
-                _tabId: tabId,
-                _tabTitle: tabTitle,
-                _tabUrl: tabUrl
-              }));
-              networkRequests.push(...tabRequests);
-              console.log(`[Multi-Tab] Collected ${tabRequests.length} network requests from tab ${tabId}`);
+            if (networkResponse && networkResponse.success) {
+              if (networkResponse.data.length > 0) {
+                // Add tab information to each network request
+                const tabRequests = networkResponse.data.map(req => ({
+                  ...req,
+                  _tabId: tabId,
+                  _tabTitle: tabTitle,
+                  _tabUrl: tabUrl
+                }));
+                networkRequests.push(...tabRequests);
+                console.log(`[Multi-Tab] ✓ Collected ${tabRequests.length} network requests from tab ${tabId}: ${tabTitle}`);
+              } else {
+                console.warn(`[Multi-Tab] ⚠ No network requests found for tab ${tabId}: ${tabTitle}`);
+                console.warn(`[Multi-Tab]   This tab may be idle or hasn't made requests since extension started.`);
+                console.warn(`[Multi-Tab]   Tip: Refresh the tab to capture new network activity.`);
+              }
             }
           } catch (e) {
-            console.log(`[Multi-Tab] Could not collect network requests from tab ${tabId}:`, e.message);
+            console.error(`[Multi-Tab] ✗ Could not collect network requests from tab ${tabId}:`, e.message);
           }
         }
 
