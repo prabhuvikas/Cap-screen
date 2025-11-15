@@ -402,6 +402,12 @@ async function loadAllTabs() {
     // Get all tabs
     allTabs = await chrome.tabs.query({});
 
+    // Get network request counts for all tabs
+    const networkCounts = await chrome.runtime.sendMessage({
+      action: 'getAllNetworkRequestCounts'
+    });
+    const requestCounts = networkCounts?.data || {};
+
     // Clear the list
     tabListEl.innerHTML = '';
 
@@ -451,13 +457,28 @@ async function loadAllTabs() {
         label.appendChild(badge);
       }
 
+      // Add network request count badge
+      const requestCount = requestCounts[tab.id] || 0;
+      const countBadge = document.createElement('span');
+      countBadge.className = 'tab-item-badge';
+      if (requestCount > 0) {
+        countBadge.textContent = `${requestCount} requests`;
+        countBadge.style.backgroundColor = '#4CAF50';
+      } else {
+        countBadge.textContent = 'No data';
+        countBadge.style.backgroundColor = '#999';
+        countBadge.title = 'This tab has no network requests captured. Try refreshing the tab.';
+      }
+      label.appendChild(countBadge);
+
       tabItem.appendChild(checkbox);
       tabItem.appendChild(label);
 
       tabListEl.appendChild(tabItem);
     });
 
-    statusEl.textContent = `${allTabs.length} tabs available. Selected: ${selectedTabIds.length}`;
+    const tabsWithData = Object.keys(requestCounts).length;
+    statusEl.textContent = `${allTabs.length} tabs available, ${tabsWithData} with network data. Selected: ${selectedTabIds.length}`;
     statusEl.className = 'status-message success';
 
   } catch (error) {
