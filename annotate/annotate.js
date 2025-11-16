@@ -15,6 +15,7 @@ let accumulatedFiles = []; // Store accumulated files for additional documents
 let videoDataUrl = null; // Store video recording if available
 let selectedTabIds = []; // Track selected tabs for multi-tab capture
 let allTabs = []; // Store all tabs
+let recordingTimeframe = null; // Store recording timeframe {tabId, startTime, endTime, duration}
 
 // Sanitize text to remove unicode/emoji characters that cause 500 errors
 function sanitizeText(text) {
@@ -69,7 +70,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     redmineAPI = new RedmineAPI(settings.redmineUrl, settings.apiKey);
 
     // Load screenshot data and video recording from session storage
-    const result = await chrome.storage.session.get(['screenshots', 'screenshotData', 'tabId', 'currentScreenshotId', 'videoRecording', 'hasVideoRecording']);
+    const result = await chrome.storage.session.get(['screenshots', 'screenshotData', 'tabId', 'currentScreenshotId', 'videoRecording', 'hasVideoRecording', 'recordingTimeframe']);
 
     // Check if we have the new multi-screenshot format or old single screenshot
     if (result.screenshots && result.screenshots.length > 0) {
@@ -123,8 +124,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (result.hasVideoRecording && result.videoRecording) {
       videoDataUrl = result.videoRecording;
       console.log('[Annotate] Video recording loaded successfully');
+
+      // Load recording timeframe for filtering network requests and console logs
+      if (result.recordingTimeframe) {
+        recordingTimeframe = result.recordingTimeframe;
+        console.log('[Annotate] Recording timeframe loaded:', {
+          tabId: recordingTimeframe.tabId,
+          start: new Date(recordingTimeframe.startTime).toISOString(),
+          end: new Date(recordingTimeframe.endTime).toISOString(),
+          duration: `${(recordingTimeframe.duration / 1000).toFixed(2)}s`
+        });
+      }
+
       // Clear from session storage after loading
-      await chrome.storage.session.remove(['videoRecording', 'hasVideoRecording']);
+      await chrome.storage.session.remove(['videoRecording', 'hasVideoRecording', 'recordingTimeframe']);
 
       // Add video to media items
       const videoItem = {
@@ -1066,6 +1079,31 @@ async function collectTechnicalDataFromSingleTab(tabId) {
       } catch (e) {
         console.warn('[Annotate] Could not collect storage data:', e.message);
       }
+    }
+
+    // Filter data based on recording timeframe if available
+    if (recordingTimeframe && recordingTimeframe.tabId === tabId) {
+      console.log('[Annotate] Filtering network requests and console logs to recording timeframe');
+
+      const originalNetworkCount = networkRequests.length;
+      const originalConsoleCount = consoleLogs.length;
+
+      // Filter network requests to those that occurred during recording
+      networkRequests = networkRequests.filter(req => {
+        return req.timestamp >= recordingTimeframe.startTime &&
+               req.timestamp <= recordingTimeframe.endTime;
+      });
+
+      // Filter console logs to those that occurred during recording
+      consoleLogs = consoleLogs.filter(log => {
+        const logTime = new Date(log.timestamp).getTime();
+        return logTime >= recordingTimeframe.startTime &&
+               logTime <= recordingTimeframe.endTime;
+      });
+
+      console.log(`[Annotate] Filtered network requests: ${originalNetworkCount} -> ${networkRequests.length}`);
+      console.log(`[Annotate] Filtered console logs: ${originalConsoleCount} -> ${consoleLogs.length}`);
+      console.log(`[Annotate] Timeframe: ${new Date(recordingTimeframe.startTime).toISOString()} to ${new Date(recordingTimeframe.endTime).toISOString()}`);
     }
   } catch (error) {
     console.error(`[Annotate] Error collecting technical data from tab ${tabId}:`, error);
@@ -2110,8 +2148,29 @@ async function populateReviewModal() {
     const networkContainer = document.getElementById('reviewNetwork');
     networkContainer.innerHTML = '';
 
+    // Show recording timeframe indicator if filtering was applied
+    if (recordingTimeframe) {
+      const timeframeInfo = document.createElement('div');
+      timeframeInfo.style.cssText = 'margin-bottom: 16px; padding: 12px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px;';
+      const duration = (recordingTimeframe.duration / 1000).toFixed(2);
+      timeframeInfo.innerHTML = `
+        <p style="color: #e65100; font-weight: 600; margin: 0 0 8px 0;">⏱️ Filtered to Video Recording Timeframe</p>
+        <p style="color: #e65100; font-size: 12px; margin: 0;">Only network requests and console logs that occurred during the ${duration}s video recording are included.</p>
+        <p style="color: #e65100; font-size: 11px; margin: 4px 0 0 0;">
+          Start: ${new Date(recordingTimeframe.startTime).toLocaleString()} |
+          End: ${new Date(recordingTimeframe.endTime).toLocaleString()}
+        </p>
+      `;
+      networkContainer.appendChild(timeframeInfo);
+    }
+
     if (networkCount === 0) {
-      networkContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No network requests captured</p>';
+      const noDataMsg = document.createElement('p');
+      noDataMsg.style.cssText = 'color: #666; font-size: 12px;';
+      noDataMsg.textContent = recordingTimeframe
+        ? 'No network requests captured during the recording timeframe'
+        : 'No network requests captured';
+      networkContainer.appendChild(noDataMsg);
     } else {
       // Check if this is multi-tab capture
       const isMultiTabCapture = networkRequests.some(req => req._tabId);
@@ -2192,8 +2251,29 @@ async function populateReviewModal() {
     const consoleContainer = document.getElementById('reviewConsole');
     consoleContainer.innerHTML = '';
 
+    // Show recording timeframe indicator if filtering was applied
+    if (recordingTimeframe) {
+      const timeframeInfo = document.createElement('div');
+      timeframeInfo.style.cssText = 'margin-bottom: 16px; padding: 12px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px;';
+      const duration = (recordingTimeframe.duration / 1000).toFixed(2);
+      timeframeInfo.innerHTML = `
+        <p style="color: #e65100; font-weight: 600; margin: 0 0 8px 0;">⏱️ Filtered to Video Recording Timeframe</p>
+        <p style="color: #e65100; font-size: 12px; margin: 0;">Only console logs that occurred during the ${duration}s video recording are included.</p>
+        <p style="color: #e65100; font-size: 11px; margin: 4px 0 0 0;">
+          Start: ${new Date(recordingTimeframe.startTime).toLocaleString()} |
+          End: ${new Date(recordingTimeframe.endTime).toLocaleString()}
+        </p>
+      `;
+      consoleContainer.appendChild(timeframeInfo);
+    }
+
     if (consoleCount === 0) {
-      consoleContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No console logs captured</p>';
+      const noDataMsg = document.createElement('p');
+      noDataMsg.style.cssText = 'color: #666; font-size: 12px;';
+      noDataMsg.textContent = recordingTimeframe
+        ? 'No console logs captured during the recording timeframe'
+        : 'No console logs captured';
+      consoleContainer.appendChild(noDataMsg);
     } else {
       // Check if this is multi-tab capture
       const isMultiTabCapture = consoleLogs.some(log => log._tabId);

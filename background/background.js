@@ -6,6 +6,8 @@ let mediaRecorder = null;
 let recordedChunks = [];
 let recordingStream = null;
 let recordingTabId = null;
+let recordingStartTime = null;
+let recordingEndTime = null;
 
 // Load persisted network requests from storage on startup
 async function loadNetworkRequestsFromStorage() {
@@ -158,16 +160,32 @@ async function handleRecordingComplete(videoDataUrl) {
   try {
     console.log('[Background] Processing completed recording, video data length:', videoDataUrl.length);
 
+    // Set recording end time
+    recordingEndTime = Date.now();
+    const duration = recordingEndTime - recordingStartTime;
+    console.log(`[Background] Recording duration: ${(duration / 1000).toFixed(2)} seconds`);
+
     // Close offscreen document
     await closeOffscreenDocument();
 
-    // Save video to session storage
+    // Save video and recording timeframe to session storage
     await chrome.storage.session.set({
       videoRecording: videoDataUrl,
       hasVideoRecording: true,
+      tabId: recordingTabId,
+      recordingTimeframe: {
+        tabId: recordingTabId,
+        startTime: recordingStartTime,
+        endTime: recordingEndTime,
+        duration: duration
+      }
+    });
+    console.log('[Background] Video and recording timeframe saved to session storage');
+    console.log('[Background] Timeframe:', {
+      start: new Date(recordingStartTime).toISOString(),
+      end: new Date(recordingEndTime).toISOString(),
       tabId: recordingTabId
     });
-    console.log('[Background] Video saved to session storage');
 
     // Notify content script that recording stopped (so it can remove overlay if present)
     if (recordingTabId) {
@@ -189,7 +207,10 @@ async function handleRecordingComplete(videoDataUrl) {
     });
     console.log('[Background] Annotation page opened');
 
+    // Reset recording state
     recordingTabId = null;
+    recordingStartTime = null;
+    recordingEndTime = null;
   } catch (error) {
     console.error('[Background] Error in handleRecordingComplete:', error);
     throw error;
@@ -381,8 +402,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'startDisplayCapture') {
     recordingTabId = request.tabId || null;
+    recordingStartTime = Date.now();
 
-    console.log('[Background] Starting display capture');
+    console.log('[Background] Starting display capture for tab', recordingTabId, 'at', new Date(recordingStartTime).toISOString());
 
     handleStartDisplayCapture()
       .then(() => {
@@ -391,6 +413,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })
       .catch((error) => {
         console.error('[Background] Error starting display capture:', error);
+        recordingStartTime = null; // Reset on error
         sendResponse({ success: false, error: error.message });
       });
 
