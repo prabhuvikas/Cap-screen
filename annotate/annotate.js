@@ -125,30 +125,38 @@ document.addEventListener('DOMContentLoaded', async () => {
       videoDataUrl = result.videoRecording;
       console.log('[Annotate] Video recording loaded successfully');
 
-      // Load recording timeframe for filtering network requests and console logs
+      // Load recording timeframe for this video
+      let videoTimeframe = null;
       if (result.recordingTimeframe) {
-        recordingTimeframe = result.recordingTimeframe;
+        videoTimeframe = result.recordingTimeframe;
         console.log('[Annotate] Recording timeframe loaded:', {
-          tabId: recordingTimeframe.tabId,
-          start: new Date(recordingTimeframe.startTime).toISOString(),
-          end: new Date(recordingTimeframe.endTime).toISOString(),
-          duration: `${(recordingTimeframe.duration / 1000).toFixed(2)}s`
+          tabId: videoTimeframe.tabId,
+          start: new Date(videoTimeframe.startTime).toISOString(),
+          end: new Date(videoTimeframe.endTime).toISOString(),
+          duration: `${(videoTimeframe.duration / 1000).toFixed(2)}s`
         });
       }
 
       // Clear from session storage after loading
       await chrome.storage.session.remove(['videoRecording', 'hasVideoRecording', 'recordingTimeframe']);
 
-      // Add video to media items
+      // Count existing videos to number this one
+      const existingVideos = screenshots.filter(s => s.type === 'video');
+      const videoNumber = existingVideos.length + 1;
+
+      // Add video to media items WITH its recording timeframe
       const videoItem = {
         id: 'video-' + Date.now().toString(36),
         type: 'video',
         data: videoDataUrl,
         timestamp: Date.now(),
-        name: 'Video Recording 1'
+        name: `Video Recording ${videoNumber}`,
+        recordingTimeframe: videoTimeframe // Attach timeframe to this specific video
       };
       screenshots.push(videoItem);
       currentScreenshotId = videoItem.id;
+
+      console.log(`[Annotate] Added video ${videoNumber} with timeframe attached`);
 
       // Save updated media list
       await chrome.storage.session.set({
@@ -1081,30 +1089,8 @@ async function collectTechnicalDataFromSingleTab(tabId) {
       }
     }
 
-    // Filter data based on recording timeframe if available
-    if (recordingTimeframe && recordingTimeframe.tabId === tabId) {
-      console.log('[Annotate] Filtering network requests and console logs to recording timeframe');
-
-      const originalNetworkCount = networkRequests.length;
-      const originalConsoleCount = consoleLogs.length;
-
-      // Filter network requests to those that occurred during recording
-      networkRequests = networkRequests.filter(req => {
-        return req.timestamp >= recordingTimeframe.startTime &&
-               req.timestamp <= recordingTimeframe.endTime;
-      });
-
-      // Filter console logs to those that occurred during recording
-      consoleLogs = consoleLogs.filter(log => {
-        const logTime = new Date(log.timestamp).getTime();
-        return logTime >= recordingTimeframe.startTime &&
-               logTime <= recordingTimeframe.endTime;
-      });
-
-      console.log(`[Annotate] Filtered network requests: ${originalNetworkCount} -> ${networkRequests.length}`);
-      console.log(`[Annotate] Filtered console logs: ${originalConsoleCount} -> ${consoleLogs.length}`);
-      console.log(`[Annotate] Timeframe: ${new Date(recordingTimeframe.startTime).toISOString()} to ${new Date(recordingTimeframe.endTime).toISOString()}`);
-    }
+    // Note: We collect ALL network requests and console logs here
+    // Filtering by video recording timeframe happens later when building attachments
   } catch (error) {
     console.error(`[Annotate] Error collecting technical data from tab ${tabId}:`, error);
   }
@@ -1479,11 +1465,52 @@ async function actuallySubmitBugReport() {
       });
     }
 
-    // Add HAR files - separate file per tab if multi-tab capture was used
+    // Add HAR files - separate file per video recording if videos have timeframes
     if (settings.includeNetworkRequests && networkRequests.length > 0) {
-      const isMultiTabCapture = networkRequests.some(req => req._tabId);
+      // Check if we have videos with recording timeframes
+      const videosWithTimeframes = screenshots.filter(s => s.type === 'video' && s.recordingTimeframe);
 
-      if (isMultiTabCapture) {
+      if (videosWithTimeframes.length > 0) {
+        console.log(`[Annotate] Creating separate HAR files for ${videosWithTimeframes.length} video recording(s)`);
+
+        // Create separate HAR file for each video recording
+        for (const video of videosWithTimeframes) {
+          const timeframe = video.recordingTimeframe;
+
+          // Filter network requests to this video's timeframe
+          const filteredRequests = networkRequests.filter(req => {
+            return req.timestamp >= timeframe.startTime &&
+                   req.timestamp <= timeframe.endTime;
+          });
+
+          if (filteredRequests.length > 0) {
+            const videoName = video.name.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+            const harData = buildHARFile(filteredRequests);
+            const sanitizedHar = sanitizeText(harData);
+            const harBlob = new Blob([sanitizedHar], { type: 'application/json' });
+            const harReader = new FileReader();
+
+            await new Promise((resolve) => {
+              harReader.onloadend = () => {
+                attachments.push({
+                  data: harReader.result,
+                  filename: `network-requests-${videoName}-${Date.now()}.har`,
+                  type: 'application/json'
+                });
+                console.log(`[Annotate] Added HAR file for ${video.name}: ${filteredRequests.length} requests`);
+                resolve();
+              };
+              harReader.readAsDataURL(harBlob);
+            });
+          } else {
+            console.log(`[Annotate] No network requests found in timeframe for ${video.name}`);
+          }
+        }
+      } else {
+        // No video timeframes - use original logic for multi-tab or single-tab capture
+        const isMultiTabCapture = networkRequests.some(req => req._tabId);
+
+        if (isMultiTabCapture) {
         // Group requests by tab
         const requestsByTab = {};
         networkRequests.forEach(req => {
@@ -1535,14 +1562,57 @@ async function actuallySubmitBugReport() {
           };
           harReader.readAsDataURL(harBlob);
         });
+        }
       }
     }
 
-    // Add console logs files - separate file per tab if multi-tab capture was used
+    // Add console logs files - separate file per video recording if videos have timeframes
     if (settings.includeConsoleLogs && consoleLogs.length > 0) {
-      const isMultiTabCapture = consoleLogs.some(log => log._tabId);
+      // Check if we have videos with recording timeframes
+      const videosWithTimeframes = screenshots.filter(s => s.type === 'video' && s.recordingTimeframe);
 
-      if (isMultiTabCapture) {
+      if (videosWithTimeframes.length > 0) {
+        console.log(`[Annotate] Creating separate console log files for ${videosWithTimeframes.length} video recording(s)`);
+
+        // Create separate console log file for each video recording
+        for (const video of videosWithTimeframes) {
+          const timeframe = video.recordingTimeframe;
+
+          // Filter console logs to this video's timeframe
+          const filteredLogs = consoleLogs.filter(log => {
+            const logTime = new Date(log.timestamp).getTime();
+            return logTime >= timeframe.startTime &&
+                   logTime <= timeframe.endTime;
+          });
+
+          if (filteredLogs.length > 0) {
+            const videoName = video.name.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+            const consoleLogsData = buildConsoleLogsFile(filteredLogs);
+            const sanitizedLogs = sanitizeText(consoleLogsData);
+            const logsBlob = new Blob([sanitizedLogs], { type: 'text/plain' });
+            const logsReader = new FileReader();
+
+            await new Promise((resolve) => {
+              logsReader.onloadend = () => {
+                attachments.push({
+                  data: logsReader.result,
+                  filename: `console-logs-${videoName}-${Date.now()}.txt`,
+                  type: 'text/plain'
+                });
+                console.log(`[Annotate] Added console logs file for ${video.name}: ${filteredLogs.length} logs`);
+                resolve();
+              };
+              logsReader.readAsDataURL(logsBlob);
+            });
+          } else {
+            console.log(`[Annotate] No console logs found in timeframe for ${video.name}`);
+          }
+        }
+      } else {
+        // No video timeframes - use original logic for multi-tab or single-tab capture
+        const isMultiTabCapture = consoleLogs.some(log => log._tabId);
+
+        if (isMultiTabCapture) {
         // Group logs by tab
         const logsByTab = {};
         consoleLogs.forEach(log => {
@@ -1594,6 +1664,7 @@ async function actuallySubmitBugReport() {
           };
           logsReader.readAsDataURL(logsBlob);
         });
+        }
       }
     }
 
@@ -2148,27 +2219,36 @@ async function populateReviewModal() {
     const networkContainer = document.getElementById('reviewNetwork');
     networkContainer.innerHTML = '';
 
-    // Show recording timeframe indicator if filtering was applied
-    if (recordingTimeframe) {
+    // Show recording timeframe indicator if we have videos with timeframes
+    const videosWithTimeframes = screenshots.filter(s => s.type === 'video' && s.recordingTimeframe);
+    if (videosWithTimeframes.length > 0) {
       const timeframeInfo = document.createElement('div');
       timeframeInfo.style.cssText = 'margin-bottom: 16px; padding: 12px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px;';
-      const duration = (recordingTimeframe.duration / 1000).toFixed(2);
-      timeframeInfo.innerHTML = `
-        <p style="color: #e65100; font-weight: 600; margin: 0 0 8px 0;">⏱️ Filtered to Video Recording Timeframe</p>
-        <p style="color: #e65100; font-size: 12px; margin: 0;">Only network requests and console logs that occurred during the ${duration}s video recording are included.</p>
-        <p style="color: #e65100; font-size: 11px; margin: 4px 0 0 0;">
-          Start: ${new Date(recordingTimeframe.startTime).toLocaleString()} |
-          End: ${new Date(recordingTimeframe.endTime).toLocaleString()}
-        </p>
-      `;
+
+      let infoHtml = '<p style="color: #e65100; font-weight: 600; margin: 0 0 8px 0;">⏱️ Video Recording Timeframes</p>';
+      infoHtml += '<p style="color: #e65100; font-size: 12px; margin: 0;">Separate HAR files created for each video recording:</p>';
+      infoHtml += '<ul style="margin: 8px 0 0 20px; padding: 0;">';
+
+      videosWithTimeframes.forEach(video => {
+        const duration = (video.recordingTimeframe.duration / 1000).toFixed(2);
+        const videoName = video.name.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        infoHtml += `
+          <li style="color: #e65100; font-size: 11px; margin: 4px 0;">
+            <strong>network-requests-${videoName}-*.har</strong> (${duration}s recording)
+          </li>
+        `;
+      });
+
+      infoHtml += '</ul>';
+      timeframeInfo.innerHTML = infoHtml;
       networkContainer.appendChild(timeframeInfo);
     }
 
     if (networkCount === 0) {
       const noDataMsg = document.createElement('p');
       noDataMsg.style.cssText = 'color: #666; font-size: 12px;';
-      noDataMsg.textContent = recordingTimeframe
-        ? 'No network requests captured during the recording timeframe'
+      noDataMsg.textContent = videosWithTimeframes.length > 0
+        ? 'No network requests captured during any recording timeframe'
         : 'No network requests captured';
       networkContainer.appendChild(noDataMsg);
     } else {
@@ -2251,27 +2331,35 @@ async function populateReviewModal() {
     const consoleContainer = document.getElementById('reviewConsole');
     consoleContainer.innerHTML = '';
 
-    // Show recording timeframe indicator if filtering was applied
-    if (recordingTimeframe) {
+    // Show recording timeframe indicator if we have videos with timeframes
+    if (videosWithTimeframes.length > 0) {
       const timeframeInfo = document.createElement('div');
       timeframeInfo.style.cssText = 'margin-bottom: 16px; padding: 12px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px;';
-      const duration = (recordingTimeframe.duration / 1000).toFixed(2);
-      timeframeInfo.innerHTML = `
-        <p style="color: #e65100; font-weight: 600; margin: 0 0 8px 0;">⏱️ Filtered to Video Recording Timeframe</p>
-        <p style="color: #e65100; font-size: 12px; margin: 0;">Only console logs that occurred during the ${duration}s video recording are included.</p>
-        <p style="color: #e65100; font-size: 11px; margin: 4px 0 0 0;">
-          Start: ${new Date(recordingTimeframe.startTime).toLocaleString()} |
-          End: ${new Date(recordingTimeframe.endTime).toLocaleString()}
-        </p>
-      `;
+
+      let infoHtml = '<p style="color: #e65100; font-weight: 600; margin: 0 0 8px 0;">⏱️ Video Recording Timeframes</p>';
+      infoHtml += '<p style="color: #e65100; font-size: 12px; margin: 0;">Separate console log files created for each video recording:</p>';
+      infoHtml += '<ul style="margin: 8px 0 0 20px; padding: 0;">';
+
+      videosWithTimeframes.forEach(video => {
+        const duration = (video.recordingTimeframe.duration / 1000).toFixed(2);
+        const videoName = video.name.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        infoHtml += `
+          <li style="color: #e65100; font-size: 11px; margin: 4px 0;">
+            <strong>console-logs-${videoName}-*.txt</strong> (${duration}s recording)
+          </li>
+        `;
+      });
+
+      infoHtml += '</ul>';
+      timeframeInfo.innerHTML = infoHtml;
       consoleContainer.appendChild(timeframeInfo);
     }
 
     if (consoleCount === 0) {
       const noDataMsg = document.createElement('p');
       noDataMsg.style.cssText = 'color: #666; font-size: 12px;';
-      noDataMsg.textContent = recordingTimeframe
-        ? 'No console logs captured during the recording timeframe'
+      noDataMsg.textContent = videosWithTimeframes.length > 0
+        ? 'No console logs captured during any recording timeframe'
         : 'No console logs captured';
       consoleContainer.appendChild(noDataMsg);
     } else {
