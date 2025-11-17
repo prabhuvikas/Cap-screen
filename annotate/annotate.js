@@ -2204,7 +2204,11 @@ async function populateReviewModal() {
         <h4>📋 Raw JSON Data</h4>
         <details>
           <summary style="cursor: pointer; color: #2196F3; margin-bottom: 8px;">Click to view raw JSON</summary>
-          <pre class="code-block" style="margin-top: 8px;">${JSON.stringify(pageInfo, null, 2)}</pre>
+          <pre class="code-block" style="margin-top: 8px;">${JSON.stringify(pageInfo, (key, value) => {
+            // Skip _allTabs to avoid circular reference
+            if (key === '_allTabs') return undefined;
+            return value;
+          }, 2)}</pre>
         </details>
       </div>
     `;
