@@ -6,6 +6,47 @@ let mediaRecorder = null;
 let recordedChunks = [];
 let recordingStream = null;
 let recordingTabId = null;
+let recordingStartTime = null;
+let recordingEndTime = null;
+
+// Load persisted network requests from storage on startup
+async function loadNetworkRequestsFromStorage() {
+  try {
+    const result = await chrome.storage.session.get('networkRequests');
+    if (result.networkRequests) {
+      networkRequests = result.networkRequests;
+      const tabCount = Object.keys(networkRequests).length;
+      const totalRequests = Object.values(networkRequests).reduce((sum, tab) => sum + tab.requests.length, 0);
+      console.log(`[Background] Loaded ${totalRequests} network requests from ${tabCount} tabs from storage`);
+    }
+  } catch (error) {
+    console.error('[Background] Error loading network requests from storage:', error);
+  }
+}
+
+// Save network requests to storage (debounced)
+let saveTimeout = null;
+async function saveNetworkRequestsToStorage() {
+  // Clear existing timeout
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+  }
+
+  // Debounce: save after 1 second of inactivity
+  saveTimeout = setTimeout(async () => {
+    try {
+      await chrome.storage.session.set({ networkRequests });
+      const tabCount = Object.keys(networkRequests).length;
+      const totalRequests = Object.values(networkRequests).reduce((sum, tab) => sum + tab.requests.length, 0);
+      console.log(`[Background] Saved ${totalRequests} network requests from ${tabCount} tabs to storage`);
+    } catch (error) {
+      console.error('[Background] Error saving network requests to storage:', error);
+    }
+  }, 1000);
+}
+
+// Initialize on service worker startup
+loadNetworkRequestsFromStorage();
 
 // Offscreen document management for recording
 async function setupOffscreenDocument() {
@@ -119,16 +160,32 @@ async function handleRecordingComplete(videoDataUrl) {
   try {
     console.log('[Background] Processing completed recording, video data length:', videoDataUrl.length);
 
+    // Set recording end time
+    recordingEndTime = Date.now();
+    const duration = recordingEndTime - recordingStartTime;
+    console.log(`[Background] Recording duration: ${(duration / 1000).toFixed(2)} seconds`);
+
     // Close offscreen document
     await closeOffscreenDocument();
 
-    // Save video to session storage
+    // Save video and recording timeframe to session storage
     await chrome.storage.session.set({
       videoRecording: videoDataUrl,
       hasVideoRecording: true,
+      tabId: recordingTabId,
+      recordingTimeframe: {
+        tabId: recordingTabId,
+        startTime: recordingStartTime,
+        endTime: recordingEndTime,
+        duration: duration
+      }
+    });
+    console.log('[Background] Video and recording timeframe saved to session storage');
+    console.log('[Background] Timeframe:', {
+      start: new Date(recordingStartTime).toISOString(),
+      end: new Date(recordingEndTime).toISOString(),
       tabId: recordingTabId
     });
-    console.log('[Background] Video saved to session storage');
 
     // Notify content script that recording stopped (so it can remove overlay if present)
     if (recordingTabId) {
@@ -150,7 +207,10 @@ async function handleRecordingComplete(videoDataUrl) {
     });
     console.log('[Background] Annotation page opened');
 
+    // Reset recording state
     recordingTabId = null;
+    recordingStartTime = null;
+    recordingEndTime = null;
   } catch (error) {
     console.error('[Background] Error in handleRecordingComplete:', error);
     throw error;
@@ -160,15 +220,24 @@ async function handleRecordingComplete(videoDataUrl) {
 // Clean up old data periodically
 setInterval(() => {
   const now = Date.now();
+  let cleaned = false;
+
   for (const tabId in networkRequests) {
     if (networkRequests[tabId].timestamp < now - 3600000) { // 1 hour old
       delete networkRequests[tabId];
+      cleaned = true;
     }
   }
   for (const tabId in consoleLogs) {
     if (consoleLogs[tabId].timestamp < now - 3600000) {
       delete consoleLogs[tabId];
     }
+  }
+
+  // Save to storage if we cleaned anything
+  if (cleaned) {
+    console.log('[Background] Cleaned old network request data');
+    saveNetworkRequestsToStorage();
   }
 }, 300000); // Clean every 5 minutes
 
@@ -180,6 +249,7 @@ chrome.webRequest.onBeforeRequest.addListener(
         requests: [],
         timestamp: Date.now()
       };
+      console.log(`[Background] Started tracking network requests for tab ${details.tabId}`);
     }
 
     const request = {
@@ -192,6 +262,14 @@ chrome.webRequest.onBeforeRequest.addListener(
     };
 
     networkRequests[details.tabId].requests.push(request);
+
+    // Save to storage (debounced)
+    saveNetworkRequestsToStorage();
+
+    // Log periodically to avoid spam
+    if (networkRequests[details.tabId].requests.length % 50 === 0) {
+      console.log(`[Background] Tab ${details.tabId} now has ${networkRequests[details.tabId].requests.length} network requests`);
+    }
   },
   { urls: ["<all_urls>"] },
   ["requestBody"]
@@ -210,6 +288,9 @@ chrome.webRequest.onCompleted.addListener(
       request.responseHeaders = details.responseHeaders;
       request.fromCache = details.fromCache;
       request.ip = details.ip;
+
+      // Save to storage (debounced)
+      saveNetworkRequestsToStorage();
     }
   },
   { urls: ["<all_urls>"] },
@@ -227,6 +308,9 @@ chrome.webRequest.onErrorOccurred.addListener(
     if (request) {
       request.error = details.error;
       request.failed = true;
+
+      // Save to storage (debounced)
+      saveNetworkRequestsToStorage();
     }
   },
   { urls: ["<all_urls>"] }
@@ -237,6 +321,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getNetworkRequests') {
     const tabId = request.tabId;
     const data = networkRequests[tabId] || { requests: [], timestamp: Date.now() };
+    console.log(`[Background] getNetworkRequests for tab ${tabId}: ${data.requests.length} requests found`);
+
+    // Log all tabs that have network requests
+    const allTabs = Object.keys(networkRequests);
+    console.log(`[Background] Currently tracking network requests for ${allTabs.length} tabs:`,
+      allTabs.map(tid => `${tid}(${networkRequests[tid].requests.length})`).join(', '));
+
     sendResponse({ success: true, data: data.requests });
   }
 
@@ -244,6 +335,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const tabId = request.tabId;
     if (networkRequests[tabId]) {
       networkRequests[tabId].requests = [];
+      // Save to storage after clearing
+      saveNetworkRequestsToStorage();
     }
     sendResponse({ success: true });
   }
@@ -264,6 +357,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const tabId = request.tabId;
     const data = consoleLogs[tabId] || { logs: [], timestamp: Date.now() };
     sendResponse({ success: true, data: data.logs });
+  }
+
+  if (request.action === 'getAllNetworkRequestCounts') {
+    // Return summary of all tabs with network request counts
+    const summary = {};
+    Object.keys(networkRequests).forEach(tabId => {
+      summary[tabId] = networkRequests[tabId].requests.length;
+    });
+    console.log('[Background] getAllNetworkRequestCounts:', summary);
+    sendResponse({ success: true, data: summary });
   }
 
   if (request.action === 'captureScreenshot') {
@@ -299,8 +402,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'startDisplayCapture') {
     recordingTabId = request.tabId || null;
+    recordingStartTime = Date.now();
 
-    console.log('[Background] Starting display capture');
+    console.log('[Background] Starting display capture for tab', recordingTabId, 'at', new Date(recordingStartTime).toISOString());
 
     handleStartDisplayCapture()
       .then(() => {
@@ -309,6 +413,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })
       .catch((error) => {
         console.error('[Background] Error starting display capture:', error);
+        recordingStartTime = null; // Reset on error
         sendResponse({ success: false, error: error.message });
       });
 

@@ -275,6 +275,21 @@
                   </label>
                 </div>
 
+                <!-- Tab Selector for Multi-Tab Capture -->
+                <div class="form-group full-width" id="tabSelectorGroup">
+                  <label>
+                    <input type="checkbox" id="captureFromOtherTabs">
+                    <span>Capture HAR & console logs from other tabs</span>
+                  </label>
+                  <div id="tabSelectorContainer" class="tab-selector hidden" style="margin-top: 10px; margin-left: 24px;">
+                    <p class="tab-selector-hint" style="font-size: 12px; color: #666; margin-bottom: 8px;">
+                      Select tabs to include network requests and console logs:
+                    </p>
+                    <div id="tabList" class="tab-list"></div>
+                    <div id="tabSelectorStatus" class="status-message" style="margin-top: 8px; font-size: 11px;"></div>
+                  </div>
+                </div>
+
                 <div class="form-group full-width">
                   <label for="additionalDocuments">Additional Documents</label>
                   <input type="file" id="additionalDocuments" multiple

@@ -18,18 +18,48 @@ const originalConsole = {
 // Override console methods to capture logs
 ['log', 'warn', 'error', 'info'].forEach(method => {
   console[method] = function(...args) {
-    consoleLogs.push({
-      type: method,
-      message: args.map(arg => {
+    // Extract stack trace if any argument is an Error object
+    let stackTrace = null;
+    const message = args.map(arg => {
+      if (arg instanceof Error) {
+        // Capture stack trace from Error object
+        if (arg.stack) {
+          stackTrace = arg.stack;
+        }
+        // Return error message and name
+        return `${arg.name}: ${arg.message}`;
+      } else {
         try {
           return typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg);
         } catch (e) {
           return String(arg);
         }
-      }).join(' '),
+      }
+    }).join(' ');
+
+    const logEntry = {
+      type: method,
+      message: message,
       timestamp: new Date().toISOString(),
       url: window.location.href
-    });
+    };
+
+    // Add stack trace if available
+    if (stackTrace) {
+      logEntry.stack = stackTrace;
+    } else if (method === 'error' || method === 'warn') {
+      // Generate stack trace for error/warn calls even without Error object
+      try {
+        const stack = new Error().stack;
+        // Remove the first few lines (this wrapper function)
+        const stackLines = stack.split('\n');
+        logEntry.stack = stackLines.slice(2).join('\n');
+      } catch (e) {
+        // Stack trace generation failed, ignore
+      }
+    }
+
+    consoleLogs.push(logEntry);
 
     // Call original console method
     originalConsole[method].apply(console, args);
@@ -57,12 +87,23 @@ window.addEventListener('error', (event) => {
 
 // Capture unhandled promise rejections
 window.addEventListener('unhandledrejection', (event) => {
-  consoleLogs.push({
+  const logEntry = {
     type: 'error',
-    message: `Unhandled Promise Rejection: ${event.reason}`,
     timestamp: new Date().toISOString(),
     url: window.location.href
-  });
+  };
+
+  // Check if rejection reason is an Error object
+  if (event.reason instanceof Error) {
+    logEntry.message = `Unhandled Promise Rejection: ${event.reason.name}: ${event.reason.message}`;
+    if (event.reason.stack) {
+      logEntry.stack = event.reason.stack;
+    }
+  } else {
+    logEntry.message = `Unhandled Promise Rejection: ${event.reason}`;
+  }
+
+  consoleLogs.push(logEntry);
 });
 
 // Helper function to detect browser name
