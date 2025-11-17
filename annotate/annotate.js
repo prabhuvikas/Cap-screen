@@ -2223,29 +2223,48 @@ async function populateReviewModal() {
     const networkContainer = document.getElementById('reviewNetwork');
     networkContainer.innerHTML = '';
 
-    // Show recording timeframe indicator if we have videos with timeframes
+    // Show recording timeframe indicator if we have videos with timeframes and network requests
     const videosWithTimeframes = screenshots.filter(s => s.type === 'video' && s.recordingTimeframe);
-    if (videosWithTimeframes.length > 0) {
-      const timeframeInfo = document.createElement('div');
-      timeframeInfo.style.cssText = 'margin-bottom: 16px; padding: 12px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px;';
-
-      let infoHtml = '<p style="color: #e65100; font-weight: 600; margin: 0 0 8px 0;">⏱️ Video Recording Timeframes</p>';
-      infoHtml += '<p style="color: #e65100; font-size: 12px; margin: 0;">Separate HAR files created for each video recording:</p>';
-      infoHtml += '<ul style="margin: 8px 0 0 20px; padding: 0;">';
-
-      videosWithTimeframes.forEach(video => {
-        const duration = (video.recordingTimeframe.duration / 1000).toFixed(2);
-        const videoName = video.name.replace(/[^a-z0-9]/gi, '-').toLowerCase();
-        infoHtml += `
-          <li style="color: #e65100; font-size: 11px; margin: 4px 0;">
-            <strong>network-requests-${videoName}-*.har</strong> (${duration}s recording)
-          </li>
-        `;
+    if (videosWithTimeframes.length > 0 && networkCount > 0) {
+      // Filter videos to only those with network requests in their timeframe
+      const videosWithRequests = videosWithTimeframes.filter(video => {
+        const timeframe = video.recordingTimeframe;
+        return networkRequests.some(req => {
+          return req.timestamp >= timeframe.startTime &&
+                 req.timestamp <= timeframe.endTime;
+        });
       });
 
-      infoHtml += '</ul>';
-      timeframeInfo.innerHTML = infoHtml;
-      networkContainer.appendChild(timeframeInfo);
+      if (videosWithRequests.length > 0) {
+        const timeframeInfo = document.createElement('div');
+        timeframeInfo.style.cssText = 'margin-bottom: 16px; padding: 12px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px;';
+
+        let infoHtml = '<p style="color: #e65100; font-weight: 600; margin: 0 0 8px 0;">⏱️ Video Recording Timeframes</p>';
+        infoHtml += '<p style="color: #e65100; font-size: 12px; margin: 0;">Separate HAR files will be created for each video recording:</p>';
+        infoHtml += '<ul style="margin: 8px 0 0 20px; padding: 0;">';
+
+        videosWithRequests.forEach(video => {
+          const timeframe = video.recordingTimeframe;
+          const duration = (timeframe.duration / 1000).toFixed(2);
+          const videoName = video.name.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+
+          // Count requests in this video's timeframe
+          const requestsInTimeframe = networkRequests.filter(req => {
+            return req.timestamp >= timeframe.startTime &&
+                   req.timestamp <= timeframe.endTime;
+          }).length;
+
+          infoHtml += `
+            <li style="color: #e65100; font-size: 11px; margin: 4px 0;">
+              <strong>network-requests-${videoName}-*.har</strong> (${requestsInTimeframe} requests from ${duration}s recording)
+            </li>
+          `;
+        });
+
+        infoHtml += '</ul>';
+        timeframeInfo.innerHTML = infoHtml;
+        networkContainer.appendChild(timeframeInfo);
+      }
     }
 
     if (networkCount === 0) {
@@ -2335,28 +2354,47 @@ async function populateReviewModal() {
     const consoleContainer = document.getElementById('reviewConsole');
     consoleContainer.innerHTML = '';
 
-    // Show recording timeframe indicator if we have videos with timeframes
-    if (videosWithTimeframes.length > 0) {
-      const timeframeInfo = document.createElement('div');
-      timeframeInfo.style.cssText = 'margin-bottom: 16px; padding: 12px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px;';
-
-      let infoHtml = '<p style="color: #e65100; font-weight: 600; margin: 0 0 8px 0;">⏱️ Video Recording Timeframes</p>';
-      infoHtml += '<p style="color: #e65100; font-size: 12px; margin: 0;">Separate console log files created for each video recording:</p>';
-      infoHtml += '<ul style="margin: 8px 0 0 20px; padding: 0;">';
-
-      videosWithTimeframes.forEach(video => {
-        const duration = (video.recordingTimeframe.duration / 1000).toFixed(2);
-        const videoName = video.name.replace(/[^a-z0-9]/gi, '-').toLowerCase();
-        infoHtml += `
-          <li style="color: #e65100; font-size: 11px; margin: 4px 0;">
-            <strong>console-logs-${videoName}-*.txt</strong> (${duration}s recording)
-          </li>
-        `;
+    // Show recording timeframe indicator if we have videos with timeframes and console logs
+    if (videosWithTimeframes.length > 0 && consoleCount > 0) {
+      // Filter videos to only those with console logs in their timeframe
+      const videosWithLogs = videosWithTimeframes.filter(video => {
+        const timeframe = video.recordingTimeframe;
+        return consoleLogs.some(log => {
+          const logTime = new Date(log.timestamp).getTime();
+          return logTime >= timeframe.startTime && logTime <= timeframe.endTime;
+        });
       });
 
-      infoHtml += '</ul>';
-      timeframeInfo.innerHTML = infoHtml;
-      consoleContainer.appendChild(timeframeInfo);
+      if (videosWithLogs.length > 0) {
+        const timeframeInfo = document.createElement('div');
+        timeframeInfo.style.cssText = 'margin-bottom: 16px; padding: 12px; background: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px;';
+
+        let infoHtml = '<p style="color: #e65100; font-weight: 600; margin: 0 0 8px 0;">⏱️ Video Recording Timeframes</p>';
+        infoHtml += '<p style="color: #e65100; font-size: 12px; margin: 0;">Separate console log files will be created for each video recording:</p>';
+        infoHtml += '<ul style="margin: 8px 0 0 20px; padding: 0;">';
+
+        videosWithLogs.forEach(video => {
+          const timeframe = video.recordingTimeframe;
+          const duration = (timeframe.duration / 1000).toFixed(2);
+          const videoName = video.name.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+
+          // Count logs in this video's timeframe
+          const logsInTimeframe = consoleLogs.filter(log => {
+            const logTime = new Date(log.timestamp).getTime();
+            return logTime >= timeframe.startTime && logTime <= timeframe.endTime;
+          }).length;
+
+          infoHtml += `
+            <li style="color: #e65100; font-size: 11px; margin: 4px 0;">
+              <strong>console-logs-${videoName}-*.txt</strong> (${logsInTimeframe} logs from ${duration}s recording)
+            </li>
+          `;
+        });
+
+        infoHtml += '</ul>';
+        timeframeInfo.innerHTML = infoHtml;
+        consoleContainer.appendChild(timeframeInfo);
+      }
     }
 
     if (consoleCount === 0) {
