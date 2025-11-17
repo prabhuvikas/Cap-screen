@@ -7,7 +7,8 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 400;
   line-height: 1.6;
   color: #3c4043;
   background: #f8f9fa;
@@ -30,15 +31,18 @@ body {
 }
 
 .help-header h1 {
-  font-size: 32px;
-  font-weight: 600;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 48px;
+  font-weight: 800;
   margin-bottom: 10px;
+  letter-spacing: -0.03em;
 }
 
 .help-header .subtitle {
-  font-size: 16px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 18px;
   opacity: 0.9;
-  font-weight: 400;
+  font-weight: 300;
 }
 
 /* Navigation */
@@ -56,14 +60,17 @@ body {
 }
 
 .nav-link {
+  font-family: 'IBM Plex Sans', sans-serif;
   padding: 15px 20px;
   text-decoration: none;
   color: #5f6368;
-  font-weight: 500;
-  font-size: 14px;
+  font-weight: 600;
+  font-size: 13px;
   border-bottom: 3px solid transparent;
   transition: all 0.2s;
   white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .nav-link:hover {
@@ -82,19 +89,23 @@ body {
 }
 
 .help-section h2 {
-  font-size: 28px;
-  font-weight: 600;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 36px;
+  font-weight: 800;
   color: #202124;
   margin-bottom: 20px;
   padding-bottom: 10px;
   border-bottom: 3px solid #1a73e8;
+  letter-spacing: -0.03em;
 }
 
 .help-section > p {
+  font-family: 'IBM Plex Sans', sans-serif;
   font-size: 16px;
   color: #5f6368;
   margin-bottom: 30px;
   line-height: 1.7;
+  font-weight: 300;
 }
 
 /* Step Cards */
@@ -109,6 +120,7 @@ body {
 }
 
 .step-number {
+  font-family: 'Space Grotesk', sans-serif;
   flex-shrink: 0;
   width: 50px;
   height: 50px;
@@ -119,14 +131,16 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .step-content h3 {
-  font-size: 20px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 22px;
   color: #202124;
   margin-bottom: 10px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .step-content p {
@@ -155,17 +169,21 @@ body {
 }
 
 .feature-card h3 {
-  font-size: 20px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 22px;
   color: #202124;
   margin-bottom: 15px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .feature-card h4 {
-  font-size: 16px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 18px;
   color: #202124;
   margin: 20px 0 10px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .feature-card ol,
@@ -208,10 +226,12 @@ body {
 }
 
 .tool-card h4 {
-  font-size: 16px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 18px;
   color: #202124;
   margin-bottom: 8px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .tool-card p {
@@ -263,10 +283,12 @@ body {
 }
 
 .shortcuts-category h3 {
-  font-size: 18px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 20px;
   color: #202124;
   margin-bottom: 15px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .shortcuts-table {
@@ -300,8 +322,9 @@ body {
 kbd {
   display: inline-block;
   padding: 3px 8px;
-  font-family: 'Courier New', monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
+  font-weight: 500;
   color: #202124;
   background: #ffffff;
   border: 1px solid #dadce0;
@@ -321,10 +344,12 @@ kbd {
 }
 
 .tip-card h4 {
-  font-size: 18px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 20px;
   color: #202124;
   margin-bottom: 10px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .tip-card p {
@@ -352,10 +377,12 @@ kbd {
 }
 
 .faq-item h4 {
-  font-size: 16px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 18px;
   color: #1a73e8;
   margin-bottom: 10px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .faq-item p {
@@ -391,7 +418,9 @@ kbd {
 }
 
 .help-footer .version {
-  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 400;
   color: #9aa0a6;
 }
 
