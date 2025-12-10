@@ -160,6 +160,23 @@ async function handleRecordingComplete(videoDataUrl) {
   try {
     console.log('[Background] Processing completed recording, video data length:', videoDataUrl.length);
 
+    // Restore recording state from storage if service worker was restarted
+    if (!recordingStartTime || !recordingTabId) {
+      console.log('[Background] Recording state lost, restoring from storage...');
+      const state = await chrome.storage.session.get(['recordingStartTime', 'recordingTabId']);
+      if (state.recordingStartTime) {
+        recordingStartTime = state.recordingStartTime;
+        recordingTabId = state.recordingTabId;
+        console.log('[Background] Recording state restored:', {
+          startTime: new Date(recordingStartTime).toISOString(),
+          tabId: recordingTabId
+        });
+      } else {
+        console.warn('[Background] No recording state found in storage, using current time');
+        recordingStartTime = Date.now(); // Fallback to current time
+      }
+    }
+
     // Set recording end time
     recordingEndTime = Date.now();
     const duration = recordingEndTime - recordingStartTime;
@@ -207,10 +224,12 @@ async function handleRecordingComplete(videoDataUrl) {
     });
     console.log('[Background] Annotation page opened');
 
-    // Reset recording state
+    // Reset recording state in memory and storage
     recordingTabId = null;
     recordingStartTime = null;
     recordingEndTime = null;
+    await chrome.storage.session.remove(['isRecording', 'recordingStartTime', 'recordingTabId']);
+    console.log('[Background] Recording state cleared');
   } catch (error) {
     console.error('[Background] Error in handleRecordingComplete:', error);
     throw error;
@@ -406,6 +425,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     console.log('[Background] Starting display capture for tab', recordingTabId, 'at', new Date(recordingStartTime).toISOString());
 
+    // Persist recording state to storage (in case service worker terminates during recording)
+    chrome.storage.session.set({
+      isRecording: true,
+      recordingStartTime: recordingStartTime,
+      recordingTabId: recordingTabId
+    }).catch(err => console.error('[Background] Error persisting recording state:', err));
+
     handleStartDisplayCapture()
       .then(() => {
         console.log('[Background] Display capture started successfully');
@@ -414,6 +440,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch((error) => {
         console.error('[Background] Error starting display capture:', error);
         recordingStartTime = null; // Reset on error
+        // Clear recording state from storage
+        chrome.storage.session.remove(['isRecording', 'recordingStartTime', 'recordingTabId'])
+          .catch(err => console.error('[Background] Error clearing recording state:', err));
         sendResponse({ success: false, error: error.message });
       });
 
