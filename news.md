@@ -5,6 +5,8 @@
 
 ---
 
+---
+
 ## What is Cred Issue Reporter?
 
 Cred Issue Reporter is a powerful Chrome extension that streamlines the bug reporting process by enabling you to capture, annotate, and submit detailed issue reports directly to Redmine - all without leaving your browser.
@@ -21,12 +23,12 @@ Cred Issue Reporter is a powerful Chrome extension that streamlines the bug repo
 
 ## Key Features
 
-### 📸 Flexible Media Capture
+### Flexible Media Capture
 - **Quick Screenshot**: Instant capture of current tab
 - **Advanced Screenshot**: Choose what to capture (tab, window, entire screen, other applications)
 - **Video Recording**: Record screen activity with optional audio to demonstrate complex issues
 
-### ✏️ Powerful Annotation Tools
+### Powerful Annotation Tools
 - Freehand drawing/pen tool
 - Shapes (rectangle, circle, arrow) to highlight areas
 - Blackout tool to hide sensitive information
@@ -34,7 +36,7 @@ Cred Issue Reporter is a powerful Chrome extension that streamlines the bug repo
 - Customizable colors and line widths
 - Undo/redo support
 
-### 🔧 Automatic Technical Data Collection
+### Automatic Technical Data Collection
 - Current URL and page title
 - Browser and platform information
 - Viewport and screen resolution
@@ -43,7 +45,7 @@ Cred Issue Reporter is a powerful Chrome extension that streamlines the bug repo
 - Performance metrics
 - Timestamps
 
-### 🔒 Privacy Controls
+### Privacy Controls
 - Toggle network request collection on/off
 - Toggle console log collection on/off
 - Toggle localStorage and cookie collection
@@ -51,7 +53,7 @@ Cred Issue Reporter is a powerful Chrome extension that streamlines the bug repo
 - Pre-submission review modal with tab-based interface
 - Complete transparency - see exactly what data will be sent
 
-### 🎯 Direct Redmine Integration
+### Direct Redmine Integration
 - Select project, tracker, priority, assignee
 - Add categories and target versions
 - All media automatically attached
@@ -64,7 +66,7 @@ Cred Issue Reporter is a powerful Chrome extension that streamlines the bug repo
 
 ### Step 1: Download the Extension
 
-Download the extension package: **[Cap-screen.zip](Cap-screen.zip)**
+Download the extension package: **[Cap-screen.zip](https://drive.google.com/file/d/1THJl2k5pf9NTVrRESVFL5wVGhlJ3sKaG/view?usp=sharing)**
 
 ### Step 2: Install in Chrome
 
@@ -79,7 +81,7 @@ Download the extension package: **[Cap-screen.zip](Cap-screen.zip)**
 ### Step 3: Configure Redmine Integration
 
 1. Click the **Cred Issue Reporter** icon in your Chrome toolbar
-2. Click the **⚙️ settings icon** or navigate to extension options
+2. Click the **settings icon** or navigate to extension options
 3. Enter your **Redmine server URL** (`https://support.credenceanalytics.com/`)
 4. Enter your **Redmine API key**
    - To find your API key: Log in to Redmine → **My account** → **API access key** (on the right side)
@@ -101,9 +103,9 @@ Download the extension package: **[Cap-screen.zip](Cap-screen.zip)**
    - Use keyboard shortcut: `Ctrl+Shift+B` (Windows) or `Cmd+Shift+B` (Mac)
 
 3. **Capture media**
-   - **📸 Quick Capture**: Click "Capture Current Tab" for instant screenshot
-   - **🖥️ Advanced Capture**: Click "Choose What to Capture" to select tab/window/screen
-   - **🎥 Video**: Click "Start Video Recording" to record screen activity
+   - **Quick Capture**: Click "Capture Current Tab" for instant screenshot
+   - **Advanced Capture**: Click "Choose What to Capture" to select tab/window/screen
+   - **Video**: Click "Start Video Recording" to record screen activity
 
 4. **Annotate** (for screenshots)
    - Use pen tool to draw and highlight
@@ -203,7 +205,7 @@ We're actively improving Cred Issue Reporter! Share your ideas and suggestions t
 
 ## Get Started Today!
 
-Download **Cap-screen.zip**, follow the installation steps above, and start creating detailed, professional bug reports in seconds!
+Download **[Cap-screen.zip](https://drive.google.com/file/d/1THJl2k5pf9NTVrRESVFL5wVGhlJ3sKaG/view?usp=sharing)**, follow the installation steps above, and start creating detailed, professional bug reports in seconds!
 
 **Questions?** Reach out to the development team or IT support.
 
