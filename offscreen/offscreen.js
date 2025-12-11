@@ -87,7 +87,7 @@ async function startDisplayRecording() {
       try {
         // Create blob from recorded chunks
         const blob = new Blob(recordedChunks, { type: 'video/webm' });
-        console.log('[Offscreen] Created blob, size:', blob.size);
+        console.log('[Offscreen] Created blob, size:', blob.size, 'bytes (', (blob.size / 1024 / 1024).toFixed(2), 'MB)');
 
         // Convert blob to data URL
         const videoDataUrl = await new Promise((resolve, reject) => {
@@ -97,7 +97,7 @@ async function startDisplayRecording() {
           reader.readAsDataURL(blob);
         });
 
-        console.log('[Offscreen] Converted to data URL, length:', videoDataUrl.length);
+        console.log('[Offscreen] Converted to data URL, length:', videoDataUrl.length, 'chars (', (videoDataUrl.length / 1024 / 1024).toFixed(2), 'MB)');
 
         // Stop all tracks
         stream.getTracks().forEach(track => {
@@ -105,11 +105,35 @@ async function startDisplayRecording() {
           track.stop();
         });
 
-        // Notify background that recording is complete with video data
-        chrome.runtime.sendMessage({
-          action: 'recordingComplete',
-          videoDataUrl: videoDataUrl
-        });
+        // For large videos (>5MB), use IndexedDB instead of chrome.runtime.sendMessage
+        // chrome.runtime.sendMessage has size limits (~4MB) and chrome.storage.session has quota limits (~10MB)
+        const videoSizeMB = videoDataUrl.length / 1024 / 1024;
+
+        if (videoSizeMB > 5) {
+          console.log('[Offscreen] Large video detected (', videoSizeMB.toFixed(2), 'MB), using IndexedDB storage');
+
+          // Save to IndexedDB
+          await videoStorage.saveVideo(videoDataUrl, {
+            size: blob.size,
+            duration: blob.duration || 0,
+            type: 'video/webm'
+          });
+
+          // Notify background that recording is complete (without video data)
+          chrome.runtime.sendMessage({
+            action: 'recordingComplete',
+            largeVideo: true,
+            videoSizeMB: videoSizeMB
+          });
+        } else {
+          console.log('[Offscreen] Small video (', videoSizeMB.toFixed(2), 'MB), sending via message');
+
+          // For small videos, send directly via message (faster)
+          chrome.runtime.sendMessage({
+            action: 'recordingComplete',
+            videoDataUrl: videoDataUrl
+          });
+        }
 
       } catch (error) {
         console.error('[Offscreen] Error processing recording:', error);
@@ -130,9 +154,10 @@ async function startDisplayRecording() {
       }
     };
 
-    // Start recording
-    mediaRecorder.start();
-    console.log('[Offscreen] MediaRecorder started for display media');
+    // Start recording with timeslice to prevent memory issues with long recordings
+    // Collect data every 10 seconds instead of waiting until the end
+    mediaRecorder.start(10000);
+    console.log('[Offscreen] MediaRecorder started for display media with 10s timeslice');
 
   } catch (error) {
     console.error('[Offscreen] Error in startDisplayRecording:', error);

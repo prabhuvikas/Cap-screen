@@ -70,7 +70,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     redmineAPI = new RedmineAPI(settings.redmineUrl, settings.apiKey);
 
     // Load screenshot data and video recording from session storage
-    const result = await chrome.storage.session.get(['screenshots', 'screenshotData', 'tabId', 'currentScreenshotId', 'videoRecording', 'hasVideoRecording', 'recordingTimeframe']);
+    const result = await chrome.storage.session.get(['screenshots', 'screenshotData', 'tabId', 'currentScreenshotId', 'videoRecording', 'hasVideoRecording', 'videoInIndexedDB', 'videoSizeMB', 'recordingTimeframe']);
 
     // Check if we have the new multi-screenshot format or old single screenshot
     if (result.screenshots && result.screenshots.length > 0) {
@@ -121,9 +121,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('[Annotate] Media data loaded successfully');
 
     // Load video recording if available
-    if (result.hasVideoRecording && result.videoRecording) {
-      videoDataUrl = result.videoRecording;
-      console.log('[Annotate] Video recording loaded successfully');
+    if (result.hasVideoRecording) {
+      // Check if video is in IndexedDB (for large videos) or session storage (for small videos)
+      if (result.videoInIndexedDB) {
+        console.log('[Annotate] Loading large video from IndexedDB (', result.videoSizeMB.toFixed(2), 'MB)...');
+        try {
+          const videoData = await videoStorage.getVideo();
+          if (videoData && videoData.dataUrl) {
+            videoDataUrl = videoData.dataUrl;
+            console.log('[Annotate] Large video loaded successfully from IndexedDB');
+            // Clean up IndexedDB after loading
+            await videoStorage.deleteVideo();
+          } else {
+            console.error('[Annotate] No video found in IndexedDB');
+            showError('Video recording not found in storage. Please try recording again.');
+            return;
+          }
+        } catch (error) {
+          console.error('[Annotate] Error loading video from IndexedDB:', error);
+          showError('Failed to load video recording: ' + error.message);
+          return;
+        }
+      } else if (result.videoRecording) {
+        videoDataUrl = result.videoRecording;
+        console.log('[Annotate] Small video loaded successfully from session storage');
+      } else {
+        console.error('[Annotate] Video recording flag set but no video data found');
+        showError('Video recording not found in storage. Please try recording again.');
+        return;
+      }
 
       // Load recording timeframe for this video
       let videoTimeframe = null;
@@ -138,7 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       // Clear from session storage after loading
-      await chrome.storage.session.remove(['videoRecording', 'hasVideoRecording', 'recordingTimeframe']);
+      await chrome.storage.session.remove(['videoRecording', 'hasVideoRecording', 'videoInIndexedDB', 'videoSizeMB', 'recordingTimeframe']);
 
       // Count existing videos to number this one
       const existingVideos = screenshots.filter(s => s.type === 'video');
