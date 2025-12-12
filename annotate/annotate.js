@@ -352,6 +352,7 @@ function setupEventListeners() {
   document.getElementById('issueSelect').addEventListener('change', onIssueSelectChange);
   document.getElementById('loadIssuesBtn').addEventListener('click', loadRecentIssues);
   document.getElementById('clearIssueSelection').addEventListener('click', clearIssueSelection);
+  document.getElementById('projectFilterSelect').addEventListener('change', onProjectFilterChange);
 
   // Additional Documents
   document.getElementById('additionalDocuments').addEventListener('change', updateSelectedFilesList);
@@ -1270,6 +1271,10 @@ async function loadRedmineData() {
     const projectSelect = document.getElementById('project');
     projectSelect.innerHTML = '<option value="">-- Select Project --</option>';
 
+    // Also populate project filter for issue search
+    const projectFilterSelect = document.getElementById('projectFilterSelect');
+    projectFilterSelect.innerHTML = '<option value="">-- All Projects --</option>';
+
     projects.forEach(project => {
       const option = document.createElement('option');
       option.value = project.id;
@@ -1278,6 +1283,12 @@ async function loadRedmineData() {
         option.selected = true;
       }
       projectSelect.appendChild(option);
+
+      // Add to filter dropdown as well
+      const filterOption = document.createElement('option');
+      filterOption.value = project.id;
+      filterOption.textContent = project.name;
+      projectFilterSelect.appendChild(filterOption);
     });
 
     // Load trackers
@@ -1385,6 +1396,20 @@ async function submitBugReport(e) {
 
   try {
     console.log('[Annotate] Preparing bug report submission...');
+
+    // Additional validation for update mode
+    if (currentIssueMode === 'update') {
+      if (!selectedIssue) {
+        alert('Please select an issue to update.');
+        return;
+      }
+
+      const noteText = document.getElementById('noteText').value.trim();
+      if (!noteText) {
+        alert('Please enter a note/comment to add to the issue.');
+        return;
+      }
+    }
 
     // Populate review modal with all data
     await populateReviewModal();
@@ -2861,12 +2886,30 @@ function onIssueModeChange(e) {
   const submitBtn = document.getElementById('submitBtn');
   const submitBtnText = submitBtn.querySelector('.btn-text');
 
+  // Get all required fields in create mode
+  const projectField = document.getElementById('project');
+  const trackerField = document.getElementById('tracker');
+  const subjectField = document.getElementById('subject');
+  const priorityField = document.getElementById('priority');
+  const assigneeField = document.getElementById('assignee');
+  const noteField = document.getElementById('noteText');
+
   if (currentIssueMode === 'update') {
     // Show update mode UI
     existingIssueSection.classList.remove('hidden');
     noteFieldSection.classList.remove('hidden');
     createIssueFields.classList.add('hidden');
     submitBtnText.textContent = 'Add Note to Issue';
+
+    // Disable validation on create-mode required fields
+    projectField.removeAttribute('required');
+    trackerField.removeAttribute('required');
+    subjectField.removeAttribute('required');
+    priorityField.removeAttribute('required');
+    assigneeField.removeAttribute('required');
+
+    // Enable validation on note field
+    noteField.setAttribute('required', 'required');
 
     // Clear any previous selection
     clearIssueSelection();
@@ -2876,6 +2919,16 @@ function onIssueModeChange(e) {
     noteFieldSection.classList.add('hidden');
     createIssueFields.classList.remove('hidden');
     submitBtnText.textContent = 'Submit Issue Report';
+
+    // Enable validation on create-mode required fields
+    projectField.setAttribute('required', 'required');
+    trackerField.setAttribute('required', 'required');
+    subjectField.setAttribute('required', 'required');
+    priorityField.setAttribute('required', 'required');
+    assigneeField.setAttribute('required', 'required');
+
+    // Disable validation on note field
+    noteField.removeAttribute('required');
 
     // Clear issue selection
     selectedIssue = null;
@@ -2982,6 +3035,20 @@ async function onIssueSelectChange(e) {
   }
 }
 
+// Handle project filter change
+function onProjectFilterChange() {
+  // Clear the issue dropdown when filter changes
+  const issueSelect = document.getElementById('issueSelect');
+  issueSelect.innerHTML = '<option value="">-- Select Issue --</option>';
+
+  // Clear status message
+  const statusEl = document.getElementById('issueSearchStatus');
+  statusEl.textContent = '';
+  statusEl.className = 'status-message';
+
+  console.log('[Annotate] Project filter changed, issue list cleared');
+}
+
 // Load recent open issues
 async function loadRecentIssues() {
   const statusEl = document.getElementById('issueSearchStatus');
@@ -2992,8 +3059,8 @@ async function loadRecentIssues() {
     statusEl.textContent = 'Loading recent issues...';
     statusEl.className = 'status-message info';
 
-    // Get selected project if any
-    const projectId = document.getElementById('project').value;
+    // Get selected project from filter dropdown
+    const projectId = document.getElementById('projectFilterSelect').value;
     const filters = {
       status_id: 'open',
       limit: 100,

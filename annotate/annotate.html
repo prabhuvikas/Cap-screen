@@ -229,6 +229,16 @@
                 </div>
 
                 <div class="form-group" style="margin-top: 12px;">
+                  <label for="projectFilterSelect">Filter by Project (Optional)</label>
+                  <select id="projectFilterSelect">
+                    <option value="">-- All Projects --</option>
+                  </select>
+                  <small style="display: block; margin-top: 4px; color: #666;">
+                    Select a project to filter recent issues
+                  </small>
+                </div>
+
+                <div class="form-group" style="margin-top: 12px;">
                   <label for="issueSelect">Or Select from Recent Issues</label>
                   <select id="issueSelect">
                     <option value="">-- Select Issue --</option>
@@ -329,7 +339,10 @@
                   <label for="actualBehavior">Actual Behavior</label>
                   <textarea id="actualBehavior" rows="3" placeholder="What actually happened?"></textarea>
                 </div>
+              </div>
 
+              <!-- Common Fields (visible in both create and update modes) -->
+              <div class="form-grid" id="commonFields">
                 <div class="form-group full-width checkbox-group">
                   <label>
                     <input type="checkbox" id="attachTechnicalData" checked>
