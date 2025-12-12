@@ -16,6 +16,8 @@ let videoDataUrl = null; // Store video recording if available
 let selectedTabIds = []; // Track selected tabs for multi-tab capture
 let allTabs = []; // Store all tabs
 let recordingTimeframe = null; // Store recording timeframe {tabId, startTime, endTime, duration}
+let selectedIssue = null; // Store selected issue for update mode
+let currentIssueMode = 'create'; // Track current mode: 'create' or 'update'
 
 // Sanitize text to remove unicode/emoji characters that cause 500 errors
 function sanitizeText(text) {
@@ -339,6 +341,17 @@ function setupEventListeners() {
   // Form
   document.getElementById('project').addEventListener('change', onProjectChange);
   document.getElementById('bugReportForm').addEventListener('submit', submitBugReport);
+
+  // Issue Mode Toggle
+  document.querySelectorAll('input[name="issueMode"]').forEach(radio => {
+    radio.addEventListener('change', onIssueModeChange);
+  });
+
+  // Issue Search and Selection
+  document.getElementById('issueSearchInput').addEventListener('input', debounce(onIssueSearch, 500));
+  document.getElementById('issueSelect').addEventListener('change', onIssueSelectChange);
+  document.getElementById('loadIssuesBtn').addEventListener('click', loadRecentIssues);
+  document.getElementById('clearIssueSelection').addEventListener('click', clearIssueSelection);
 
   // Additional Documents
   document.getElementById('additionalDocuments').addEventListener('change', updateSelectedFilesList);
@@ -1722,12 +1735,32 @@ async function actuallySubmitBugReport() {
       }
     }
 
-    console.log('[Annotate] Creating issue with', attachments.length, 'attachments...');
+    let issue;
 
-    // Create issue with attachments
-    const issue = await redmineAPI.createIssueWithAttachments(formData, attachments);
+    if (currentIssueMode === 'update') {
+      // Update existing issue with note and attachments
+      if (!selectedIssue) {
+        throw new Error('No issue selected. Please select an issue to update.');
+      }
 
-    console.log('[Annotate] Issue created successfully:', issue);
+      const noteText = document.getElementById('noteText').value.trim();
+      if (!noteText) {
+        throw new Error('Please enter a note/comment to add to the issue.');
+      }
+
+      console.log('[Annotate] Updating issue #' + selectedIssue.id + ' with note and', attachments.length, 'attachments...');
+
+      issue = await redmineAPI.updateIssue(selectedIssue.id, { notes: noteText }, attachments);
+
+      console.log('[Annotate] Issue #' + issue.id + ' updated successfully with note');
+    } else {
+      // Create new issue with attachments
+      console.log('[Annotate] Creating issue with', attachments.length, 'attachments...');
+
+      issue = await redmineAPI.createIssueWithAttachments(formData, attachments);
+
+      console.log('[Annotate] Issue created successfully:', issue);
+    }
 
     // Close review modal
     closeReviewModal();
@@ -2032,11 +2065,22 @@ function showSuccessScreen(issue) {
 
   const issueLink = document.getElementById('issueLink');
   const issueUrl = `${settings.redmineUrl}/issues/${issue.id}`;
+  const successMessage = document.querySelector('#successSection h2');
 
-  issueLink.innerHTML = `
-    <strong>Issue #${issue.id}</strong><br>
-    <a href="${issueUrl}" target="_blank">${issueUrl}</a>
-  `;
+  // Update success message based on mode
+  if (currentIssueMode === 'update') {
+    successMessage.textContent = 'Note Added!';
+    issueLink.innerHTML = `
+      <strong>Note added to Issue #${issue.id}</strong><br>
+      <a href="${issueUrl}" target="_blank">${issueUrl}</a>
+    `;
+  } else {
+    successMessage.textContent = 'Issue Submitted!';
+    issueLink.innerHTML = `
+      <strong>Issue #${issue.id}</strong><br>
+      <a href="${issueUrl}" target="_blank">${issueUrl}</a>
+    `;
+  }
 }
 
 // Populate review modal
@@ -2044,49 +2088,94 @@ async function populateReviewModal() {
   try {
     console.log('[Annotate] Populating review modal...');
 
-    const projectSelect = document.getElementById('project');
-    const trackerSelect = document.getElementById('tracker');
-    const prioritySelect = document.getElementById('priority');
-    const assigneeSelect = document.getElementById('assignee');
+    // Update modal title based on mode
+    const modalTitle = document.querySelector('#reviewModal h2');
+    if (currentIssueMode === 'update') {
+      modalTitle.textContent = 'Review Note Before Adding to Issue';
+    } else {
+      modalTitle.textContent = 'Review Issue Before Submitting';
+    }
 
-    // Form Data Tab - Populate editable fields
-    const reviewProjectSelect = document.getElementById('reviewProjectSelect');
-    reviewProjectSelect.innerHTML = '';
-    Array.from(projectSelect.options).forEach(option => {
-      const newOption = option.cloneNode(true);
-      reviewProjectSelect.appendChild(newOption);
-    });
-    reviewProjectSelect.value = projectSelect.value;
+    if (currentIssueMode === 'update') {
+      // Update mode - show issue details and note
+      const reviewProjectSelect = document.getElementById('reviewProjectSelect');
+      const reviewTrackerSelect = document.getElementById('reviewTrackerSelect');
+      const reviewSubjectInput = document.getElementById('reviewSubjectInput');
+      const reviewPrioritySelect = document.getElementById('reviewPrioritySelect');
+      const reviewAssigneeSelect = document.getElementById('reviewAssigneeSelect');
+      const reviewDescriptionText = document.getElementById('reviewDescriptionText');
 
-    const reviewTrackerSelect = document.getElementById('reviewTrackerSelect');
-    reviewTrackerSelect.innerHTML = '';
-    Array.from(trackerSelect.options).forEach(option => {
-      const newOption = option.cloneNode(true);
-      reviewTrackerSelect.appendChild(newOption);
-    });
-    reviewTrackerSelect.value = trackerSelect.value;
+      // Hide/disable create-mode fields
+      reviewProjectSelect.disabled = true;
+      reviewTrackerSelect.disabled = true;
+      reviewSubjectInput.disabled = true;
+      reviewPrioritySelect.disabled = true;
+      reviewAssigneeSelect.disabled = true;
 
-    const reviewSubjectInput = document.getElementById('reviewSubjectInput');
-    reviewSubjectInput.value = document.getElementById('subject').value || '';
+      // Show selected issue details
+      if (selectedIssue) {
+        reviewProjectSelect.innerHTML = `<option>${selectedIssue.project?.name || 'N/A'}</option>`;
+        reviewTrackerSelect.innerHTML = `<option>${selectedIssue.tracker?.name || 'N/A'}</option>`;
+        reviewSubjectInput.value = selectedIssue.subject || '';
+        reviewPrioritySelect.innerHTML = `<option>${selectedIssue.priority?.name || 'N/A'}</option>`;
+        reviewAssigneeSelect.innerHTML = `<option>${selectedIssue.assigned_to?.name || 'Unassigned'}</option>`;
+      }
 
-    const reviewPrioritySelect = document.getElementById('reviewPrioritySelect');
-    reviewPrioritySelect.innerHTML = '';
-    Array.from(prioritySelect.options).forEach(option => {
-      const newOption = option.cloneNode(true);
-      reviewPrioritySelect.appendChild(newOption);
-    });
-    reviewPrioritySelect.value = prioritySelect.value;
+      // Show note text as description
+      const noteText = document.getElementById('noteText').value;
+      reviewDescriptionText.value = noteText;
+      reviewDescriptionText.placeholder = 'Note/Comment to be added...';
+    } else {
+      // Create mode - populate editable fields
+      const projectSelect = document.getElementById('project');
+      const trackerSelect = document.getElementById('tracker');
+      const prioritySelect = document.getElementById('priority');
+      const assigneeSelect = document.getElementById('assignee');
 
-    const reviewAssigneeSelect = document.getElementById('reviewAssigneeSelect');
-    reviewAssigneeSelect.innerHTML = '';
-    Array.from(assigneeSelect.options).forEach(option => {
-      const newOption = option.cloneNode(true);
-      reviewAssigneeSelect.appendChild(newOption);
-    });
-    reviewAssigneeSelect.value = assigneeSelect.value;
+      const reviewProjectSelect = document.getElementById('reviewProjectSelect');
+      reviewProjectSelect.disabled = false;
+      reviewProjectSelect.innerHTML = '';
+      Array.from(projectSelect.options).forEach(option => {
+        const newOption = option.cloneNode(true);
+        reviewProjectSelect.appendChild(newOption);
+      });
+      reviewProjectSelect.value = projectSelect.value;
 
-    const reviewDescriptionText = document.getElementById('reviewDescriptionText');
-    reviewDescriptionText.value = buildDescription();
+      const reviewTrackerSelect = document.getElementById('reviewTrackerSelect');
+      reviewTrackerSelect.disabled = false;
+      reviewTrackerSelect.innerHTML = '';
+      Array.from(trackerSelect.options).forEach(option => {
+        const newOption = option.cloneNode(true);
+        reviewTrackerSelect.appendChild(newOption);
+      });
+      reviewTrackerSelect.value = trackerSelect.value;
+
+      const reviewSubjectInput = document.getElementById('reviewSubjectInput');
+      reviewSubjectInput.disabled = false;
+      reviewSubjectInput.value = document.getElementById('subject').value || '';
+
+      const reviewPrioritySelect = document.getElementById('reviewPrioritySelect');
+      reviewPrioritySelect.disabled = false;
+      reviewPrioritySelect.innerHTML = '';
+      Array.from(prioritySelect.options).forEach(option => {
+        const newOption = option.cloneNode(true);
+        reviewPrioritySelect.appendChild(newOption);
+      });
+      reviewPrioritySelect.value = prioritySelect.value;
+
+      const reviewAssigneeSelect = document.getElementById('reviewAssigneeSelect');
+      reviewAssigneeSelect.disabled = false;
+      reviewAssigneeSelect.innerHTML = '';
+      Array.from(assigneeSelect.options).forEach(option => {
+        const newOption = option.cloneNode(true);
+        reviewAssigneeSelect.appendChild(newOption);
+      });
+      reviewAssigneeSelect.value = assigneeSelect.value;
+
+      const reviewDescriptionText = document.getElementById('reviewDescriptionText');
+      reviewDescriptionText.value = buildDescription();
+      reviewDescriptionText.placeholder = 'Issue description...';
+    }
 
     // Media Tab - Show all media items (screenshots and videos)
     const mediaTabContent = document.getElementById('mediaTab').querySelector('.review-section');
@@ -2758,6 +2847,229 @@ function formatFileSize(bytes) {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
+
+// ========== Issue Mode Toggle and Selection Functions ==========
+
+// Handle issue mode change (create vs update)
+function onIssueModeChange(e) {
+  currentIssueMode = e.target.value;
+  console.log('[Annotate] Issue mode changed to:', currentIssueMode);
+
+  const existingIssueSection = document.getElementById('existingIssueSection');
+  const noteFieldSection = document.getElementById('noteFieldSection');
+  const createIssueFields = document.getElementById('createIssueFields');
+  const submitBtn = document.getElementById('submitBtn');
+  const submitBtnText = submitBtn.querySelector('.btn-text');
+
+  if (currentIssueMode === 'update') {
+    // Show update mode UI
+    existingIssueSection.classList.remove('hidden');
+    noteFieldSection.classList.remove('hidden');
+    createIssueFields.classList.add('hidden');
+    submitBtnText.textContent = 'Add Note to Issue';
+
+    // Clear any previous selection
+    clearIssueSelection();
+  } else {
+    // Show create mode UI
+    existingIssueSection.classList.add('hidden');
+    noteFieldSection.classList.add('hidden');
+    createIssueFields.classList.remove('hidden');
+    submitBtnText.textContent = 'Submit Issue Report';
+
+    // Clear issue selection
+    selectedIssue = null;
+    clearIssueSelection();
+  }
+}
+
+// Debounce helper function
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Handle issue search input
+async function onIssueSearch(e) {
+  const searchTerm = e.target.value.trim();
+  const statusEl = document.getElementById('issueSearchStatus');
+
+  if (!searchTerm) {
+    statusEl.textContent = '';
+    statusEl.className = 'status-message';
+    return;
+  }
+
+  try {
+    statusEl.textContent = 'Searching...';
+    statusEl.className = 'status-message info';
+
+    // Check if search term is numeric (issue number)
+    const isNumeric = /^\d+$/.test(searchTerm);
+
+    if (isNumeric) {
+      // Search by issue number
+      const issue = await redmineAPI.getIssue(searchTerm, ['attachments']);
+      displaySelectedIssue(issue);
+      statusEl.textContent = `Found issue #${issue.id}`;
+      statusEl.className = 'status-message success';
+    } else {
+      // Search by subject
+      const result = await redmineAPI.getIssues({
+        subject: searchTerm,
+        status_id: 'open',
+        limit: 20
+      });
+
+      if (result.issues.length === 0) {
+        statusEl.textContent = 'No issues found';
+        statusEl.className = 'status-message warning';
+      } else {
+        // Populate the dropdown with results
+        const issueSelect = document.getElementById('issueSelect');
+        issueSelect.innerHTML = '<option value="">-- Select Issue --</option>';
+
+        result.issues.forEach(issue => {
+          const option = document.createElement('option');
+          option.value = issue.id;
+          option.textContent = `#${issue.id}: ${issue.subject}`;
+          issueSelect.appendChild(option);
+        });
+
+        statusEl.textContent = `Found ${result.issues.length} issue(s)`;
+        statusEl.className = 'status-message success';
+      }
+    }
+  } catch (error) {
+    console.error('[Annotate] Error searching for issue:', error);
+    statusEl.textContent = `Error: ${error.message}`;
+    statusEl.className = 'status-message error';
+  }
+}
+
+// Handle issue select dropdown change
+async function onIssueSelectChange(e) {
+  const issueId = e.target.value;
+
+  if (!issueId) {
+    selectedIssue = null;
+    document.getElementById('selectedIssuePreview').classList.add('hidden');
+    return;
+  }
+
+  const statusEl = document.getElementById('issueSearchStatus');
+
+  try {
+    statusEl.textContent = `Loading issue #${issueId}...`;
+    statusEl.className = 'status-message info';
+
+    const issue = await redmineAPI.getIssue(issueId, ['attachments']);
+    displaySelectedIssue(issue);
+
+    statusEl.textContent = `Issue #${issueId} loaded`;
+    statusEl.className = 'status-message success';
+  } catch (error) {
+    console.error('[Annotate] Error loading issue:', error);
+    statusEl.textContent = `Error: ${error.message}`;
+    statusEl.className = 'status-message error';
+  }
+}
+
+// Load recent open issues
+async function loadRecentIssues() {
+  const statusEl = document.getElementById('issueSearchStatus');
+  const loadBtn = document.getElementById('loadIssuesBtn');
+
+  try {
+    loadBtn.disabled = true;
+    statusEl.textContent = 'Loading recent issues...';
+    statusEl.className = 'status-message info';
+
+    // Get selected project if any
+    const projectId = document.getElementById('project').value;
+    const filters = {
+      status_id: 'open',
+      limit: 100,
+      sort: 'updated_on:desc'
+    };
+
+    if (projectId) {
+      filters.project_id = projectId;
+    }
+
+    const result = await redmineAPI.getIssues(filters);
+
+    if (result.issues.length === 0) {
+      statusEl.textContent = 'No open issues found';
+      statusEl.className = 'status-message warning';
+      return;
+    }
+
+    // Populate the dropdown
+    const issueSelect = document.getElementById('issueSelect');
+    issueSelect.innerHTML = '<option value="">-- Select Issue --</option>';
+
+    result.issues.forEach(issue => {
+      const option = document.createElement('option');
+      option.value = issue.id;
+      option.textContent = `#${issue.id}: ${issue.subject} (${issue.status?.name || 'Unknown'})`;
+      issueSelect.appendChild(option);
+    });
+
+    statusEl.textContent = `Loaded ${result.issues.length} issue(s)`;
+    statusEl.className = 'status-message success';
+  } catch (error) {
+    console.error('[Annotate] Error loading recent issues:', error);
+    statusEl.textContent = `Error: ${error.message}`;
+    statusEl.className = 'status-message error';
+  } finally {
+    loadBtn.disabled = false;
+  }
+}
+
+// Display selected issue in preview
+function displaySelectedIssue(issue) {
+  selectedIssue = issue;
+
+  const preview = document.getElementById('selectedIssuePreview');
+  const title = document.getElementById('selectedIssueTitle');
+  const details = document.getElementById('selectedIssueDetails');
+
+  title.textContent = `#${issue.id}: ${issue.subject}`;
+
+  const detailParts = [];
+  if (issue.project) detailParts.push(`Project: ${issue.project.name}`);
+  if (issue.status) detailParts.push(`Status: ${issue.status.name}`);
+  if (issue.assigned_to) detailParts.push(`Assigned to: ${issue.assigned_to.name}`);
+  if (issue.priority) detailParts.push(`Priority: ${issue.priority.name}`);
+
+  details.textContent = detailParts.join(' | ');
+
+  preview.classList.remove('hidden');
+
+  // Clear search input and dropdown
+  document.getElementById('issueSearchInput').value = '';
+  document.getElementById('issueSelect').value = '';
+}
+
+// Clear issue selection
+function clearIssueSelection() {
+  selectedIssue = null;
+  document.getElementById('selectedIssuePreview').classList.add('hidden');
+  document.getElementById('issueSearchInput').value = '';
+  document.getElementById('issueSelect').value = '';
+  document.getElementById('issueSearchStatus').textContent = '';
+  document.getElementById('issueSearchStatus').className = 'status-message';
+}
+
+// ========== End of Issue Mode Functions ==========
 
 // Close review modal
 function closeReviewModal() {
