@@ -203,7 +203,76 @@
         <div class="report-wrapper">
           <div class="form-container">
             <form id="bugReportForm">
-              <div class="form-grid">
+              <!-- Issue Mode Toggle -->
+              <div class="mode-toggle" style="margin-bottom: 24px; padding: 16px; background: #f5f5f5; border-radius: 8px;">
+                <label style="font-weight: 600; margin-bottom: 12px; display: block; color: #333;">Report Mode</label>
+                <div style="display: flex; gap: 24px;">
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="issueMode" id="issueModeCreate" value="create" checked>
+                    <span>Create New Issue</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="radio" name="issueMode" id="issueModeUpdate" value="update">
+                    <span>Add to Existing Issue</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Existing Issue Section (hidden by default) -->
+              <div id="existingIssueSection" class="hidden" style="margin-bottom: 24px; padding: 16px; background: #e3f2fd; border-radius: 8px;">
+                <div class="form-group">
+                  <label for="issueSearchInput">Search Issue by Number or Subject</label>
+                  <input type="text" id="issueSearchInput" placeholder="Enter issue # (e.g., 1234) or search by subject">
+                  <small style="display: block; margin-top: 4px; color: #666;">
+                    Type an issue number or keywords to search
+                  </small>
+                </div>
+
+                <div class="form-group" style="margin-top: 12px;">
+                  <label for="projectFilterSelect">Filter by Project (Optional)</label>
+                  <select id="projectFilterSelect">
+                    <option value="">-- All Projects --</option>
+                  </select>
+                  <small style="display: block; margin-top: 4px; color: #666;">
+                    Select a project to filter recent issues
+                  </small>
+                </div>
+
+                <div class="form-group" style="margin-top: 12px;">
+                  <label for="issueSelect">Or Select from Recent Issues</label>
+                  <select id="issueSelect">
+                    <option value="">-- Select Issue --</option>
+                  </select>
+                  <button type="button" id="loadIssuesBtn" class="btn btn-secondary btn-small" style="margin-top: 8px;">
+                    Load Recent Issues
+                  </button>
+                </div>
+
+                <div id="selectedIssuePreview" class="hidden" style="margin-top: 16px; padding: 12px; background: #fff; border: 1px solid #2196F3; border-radius: 4px;">
+                  <div style="display: flex; justify-content: space-between; align-items: start;">
+                    <div>
+                      <h4 id="selectedIssueTitle" style="margin: 0 0 8px 0; color: #333;"></h4>
+                      <p id="selectedIssueDetails" style="margin: 0; font-size: 12px; color: #666;"></p>
+                    </div>
+                    <button type="button" id="clearIssueSelection" class="btn btn-secondary btn-small">Clear</button>
+                  </div>
+                </div>
+
+                <div id="issueSearchStatus" class="status-message" style="margin-top: 8px;"></div>
+              </div>
+
+              <!-- Note Field (shown only in update mode) -->
+              <div id="noteFieldSection" class="hidden" style="margin-bottom: 24px;">
+                <div class="form-group full-width">
+                  <label for="noteText">Note / Comment *</label>
+                  <textarea id="noteText" rows="5" placeholder="Add a note or comment to the issue..."></textarea>
+                  <small style="display: block; margin-top: 4px; color: #666;">
+                    This comment will be added to the selected issue along with attachments
+                  </small>
+                </div>
+              </div>
+
+              <div class="form-grid" id="createIssueFields">
                 <div class="form-group">
                   <label for="project">Project *</label>
                   <select id="project" required>
@@ -270,7 +339,10 @@
                   <label for="actualBehavior">Actual Behavior</label>
                   <textarea id="actualBehavior" rows="3" placeholder="What actually happened?"></textarea>
                 </div>
+              </div>
 
+              <!-- Common Fields (visible in both create and update modes) -->
+              <div class="form-grid" id="commonFields">
                 <div class="form-group full-width checkbox-group">
                   <label>
                     <input type="checkbox" id="attachTechnicalData" checked>
@@ -467,6 +539,7 @@
 
   <script src="../lib/utils.js"></script>
   <script src="../lib/redmine-api.js"></script>
+  <script src="../lib/video-storage.js"></script>
   <script src="../content/annotator.js"></script>
   <script src="annotate.js"></script>
 </body>

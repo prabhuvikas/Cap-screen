@@ -156,9 +156,13 @@ async function handleCaptureDisplayScreenshot() {
 }
 
 
-async function handleRecordingComplete(videoDataUrl) {
+async function handleRecordingComplete(videoDataUrl, largeVideo = false, videoSizeMB = 0) {
   try {
-    console.log('[Background] Processing completed recording, video data length:', videoDataUrl.length);
+    if (largeVideo) {
+      console.log('[Background] Processing completed recording (large video stored in IndexedDB, size:', videoSizeMB.toFixed(2), 'MB)');
+    } else {
+      console.log('[Background] Processing completed recording, video data length:', videoDataUrl.length);
+    }
 
     // Restore recording state from storage if service worker was restarted
     if (!recordingStartTime || !recordingTabId) {
@@ -185,9 +189,8 @@ async function handleRecordingComplete(videoDataUrl) {
     // Close offscreen document
     await closeOffscreenDocument();
 
-    // Save video and recording timeframe to session storage
-    await chrome.storage.session.set({
-      videoRecording: videoDataUrl,
+    // Prepare session storage data
+    const sessionData = {
       hasVideoRecording: true,
       tabId: recordingTabId,
       recordingTimeframe: {
@@ -196,8 +199,21 @@ async function handleRecordingComplete(videoDataUrl) {
         endTime: recordingEndTime,
         duration: duration
       }
-    });
-    console.log('[Background] Video and recording timeframe saved to session storage');
+    };
+
+    // For small videos, store in session storage; for large videos, flag to load from IndexedDB
+    if (largeVideo) {
+      sessionData.videoInIndexedDB = true;
+      sessionData.videoSizeMB = videoSizeMB;
+      console.log('[Background] Large video flagged for IndexedDB retrieval');
+    } else {
+      sessionData.videoRecording = videoDataUrl;
+      console.log('[Background] Small video stored in session storage');
+    }
+
+    // Save to session storage
+    await chrome.storage.session.set(sessionData);
+    console.log('[Background] Recording metadata saved to session storage');
     console.log('[Background] Timeframe:', {
       start: new Date(recordingStartTime).toISOString(),
       end: new Date(recordingEndTime).toISOString(),
@@ -466,8 +482,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'recordingComplete') {
-    console.log('[Background] Recording complete, processing video data');
-    handleRecordingComplete(request.videoDataUrl)
+    if (request.largeVideo) {
+      console.log('[Background] Recording complete, large video in IndexedDB (', request.videoSizeMB.toFixed(2), 'MB)');
+    } else {
+      console.log('[Background] Recording complete, processing video data');
+    }
+    handleRecordingComplete(request.videoDataUrl, request.largeVideo, request.videoSizeMB)
       .then(() => {
         console.log('[Background] Recording processed successfully');
       })
