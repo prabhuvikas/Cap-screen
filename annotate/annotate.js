@@ -102,13 +102,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentTab = { id: result.tabId };
 
       // Save in new format
-      await chrome.storage.session.set({
-        screenshots: screenshots,
-        currentScreenshotId: currentScreenshotId,
-        tabId: result.tabId
-      });
-
-      console.log('[Annotate] Converted single screenshot to multi-screenshot format');
+      try {
+        await chrome.storage.session.set({
+          screenshots: screenshots,
+          currentScreenshotId: currentScreenshotId,
+          tabId: result.tabId
+        });
+        console.log('[Annotate] Converted single screenshot to multi-screenshot format');
+      } catch (error) {
+        console.error('[Annotate] Error saving converted screenshot:', error);
+        // Continue anyway - we have the data in memory
+      }
     } else if (!result.hasVideoRecording) {
       // No screenshots and no video - error
       showError('No media found. Please capture a screenshot or record a video first.');
@@ -626,14 +630,45 @@ async function captureAnotherScreenshot() {
     screenshots.push(newScreenshot);
     currentScreenshotId = newScreenshot.id;
 
-    // Save to storage
-    await chrome.storage.session.set({
-      screenshots: screenshots,
-      currentScreenshotId: currentScreenshotId,
-      tabId: currentTab?.id || null
-    });
-
-    console.log('[Annotate] New screenshot captured, total:', screenshots.length);
+    // Save to storage with error handling
+    try {
+      await chrome.storage.session.set({
+        screenshots: screenshots,
+        currentScreenshotId: currentScreenshotId,
+        tabId: currentTab?.id || null
+      });
+      console.log('[Annotate] New screenshot captured, total:', screenshots.length);
+    } catch (saveError) {
+      console.error('[Annotate] Error saving screenshot to storage:', saveError);
+      if (saveError.message && saveError.message.includes('quota')) {
+        // If quota exceeded, remove oldest screenshot and retry
+        console.warn('[Annotate] Storage quota exceeded, removing oldest screenshot');
+        if (screenshots.length > 1) {
+          const removedScreenshot = screenshots.shift();
+          if (currentScreenshotId === removedScreenshot.id && screenshots.length > 0) {
+            currentScreenshotId = screenshots[0].id;
+          }
+          // Retry save
+          try {
+            await chrome.storage.session.set({
+              screenshots: screenshots,
+              currentScreenshotId: currentScreenshotId,
+              tabId: currentTab?.id || null
+            });
+            console.log('[Annotate] Successfully saved after removing oldest screenshot');
+            alert('Note: Oldest screenshot was removed to free up storage space. You can still annotate and submit the remaining captures.');
+          } catch (retryError) {
+            console.error('[Annotate] Failed to save even after cleanup:', retryError);
+            alert('Error: Storage quota exceeded. Unable to save new screenshot.');
+            screenshots.push(newScreenshot); // Restore the screenshot
+          }
+        } else {
+          alert('Error: Storage quota exceeded. Unable to save new screenshot.');
+        }
+      } else {
+        throw saveError;
+      }
+    }
 
     // Reinitialize annotation with new screenshot
     initializeAnnotation();
@@ -656,12 +691,21 @@ async function saveCurrentAnnotations() {
     // Get annotator state (we'll need to add a method to Annotator class)
     currentScreenshot.annotations = annotator.getState ? annotator.getState() : null;
 
-    // Save to storage
-    await chrome.storage.session.set({
-      screenshots: screenshots
-    });
-
-    console.log('[Annotate] Saved annotations for screenshot', currentScreenshotId);
+    // Save to storage with error handling
+    try {
+      await chrome.storage.session.set({
+        screenshots: screenshots
+      });
+      console.log('[Annotate] Saved annotations for screenshot', currentScreenshotId);
+    } catch (error) {
+      console.error('[Annotate] Error saving annotations:', error);
+      if (error.message && error.message.includes('quota')) {
+        console.warn('[Annotate] Storage quota exceeded while saving annotations');
+        // Don't throw - annotations are less critical than the media itself
+      } else {
+        throw error;
+      }
+    }
   }
 }
 
@@ -678,10 +722,18 @@ async function switchScreenshot(screenshotId) {
     // Update current screenshot
     currentScreenshotId = screenshotId;
 
-    // Save to storage
-    await chrome.storage.session.set({
-      currentScreenshotId: currentScreenshotId
-    });
+    // Save to storage with error handling
+    try {
+      await chrome.storage.session.set({
+        currentScreenshotId: currentScreenshotId
+      });
+    } catch (error) {
+      console.error('[Annotate] Error saving current screenshot to storage:', error);
+      if (!error.message || !error.message.includes('quota')) {
+        throw error; // Re-throw if not a quota error
+      }
+      // For quota errors, continue anyway - we can still use the screenshot
+    }
 
     // Reinitialize annotation with selected screenshot
     initializeAnnotation();

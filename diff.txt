@@ -1,0 +1,1018 @@
+﻿diff --git a/annotate/annotate.js b/annotate/annotate.js
+index ab96d51..257d8ad 100644
+--- a/annotate/annotate.js
++++ b/annotate/annotate.js
+@@ -16,6 +16,8 @@ let videoDataUrl = null; // Store video recording if available
+ let selectedTabIds = []; // Track selected tabs for multi-tab capture
+ let allTabs = []; // Store all tabs
+ let recordingTimeframe = null; // Store recording timeframe {tabId, startTime, endTime, duration}
++let selectedIssue = null; // Store selected issue for update mode
++let currentIssueMode = 'create'; // Track current mode: 'create' or 'update'
+ 
+ // Sanitize text to remove unicode/emoji characters that cause 500 errors
+ function sanitizeText(text) {
+@@ -70,7 +72,7 @@ document.addEventListener('DOMContentLoaded', async () => {
+     redmineAPI = new RedmineAPI(settings.redmineUrl, settings.apiKey);
+ 
+     // Load screenshot data and video recording from session storage
+-    const result = await chrome.storage.session.get(['screenshots', 'screenshotData', 'tabId', 'currentScreenshotId', 'videoRecording', 'hasVideoRecording', 'recordingTimeframe']);
++    const result = await chrome.storage.session.get(['screenshots', 'screenshotData', 'tabId', 'currentScreenshotId', 'videoRecording', 'hasVideoRecording', 'videoInIndexedDB', 'videoSizeMB', 'recordingTimeframe']);
+ 
+     // Check if we have the new multi-screenshot format or old single screenshot
+     if (result.screenshots && result.screenshots.length > 0) {
+@@ -121,9 +123,35 @@ document.addEventListener('DOMContentLoaded', async () => {
+     console.log('[Annotate] Media data loaded successfully');
+ 
+     // Load video recording if available
+-    if (result.hasVideoRecording && result.videoRecording) {
+-      videoDataUrl = result.videoRecording;
+-      console.log('[Annotate] Video recording loaded successfully');
++    if (result.hasVideoRecording) {
++      // Check if video is in IndexedDB (for large videos) or session storage (for small videos)
++      if (result.videoInIndexedDB) {
++        console.log('[Annotate] Loading large video from IndexedDB (', result.videoSizeMB.toFixed(2), 'MB)...');
++        try {
++          const videoData = await videoStorage.getVideo();
++          if (videoData && videoData.dataUrl) {
++            videoDataUrl = videoData.dataUrl;
++            console.log('[Annotate] Large video loaded successfully from IndexedDB');
++            // Clean up IndexedDB after loading
++            await videoStorage.deleteVideo();
++          } else {
++            console.error('[Annotate] No video found in IndexedDB');
++            showError('Video recording not found in storage. Please try recording again.');
++            return;
++          }
++        } catch (error) {
++          console.error('[Annotate] Error loading video from IndexedDB:', error);
++          showError('Failed to load video recording: ' + error.message);
++          return;
++        }
++      } else if (result.videoRecording) {
++        videoDataUrl = result.videoRecording;
++        console.log('[Annotate] Small video loaded successfully from session storage');
++      } else {
++        console.error('[Annotate] Video recording flag set but no video data found');
++        showError('Video recording not found in storage. Please try recording again.');
++        return;
++      }
+ 
+       // Load recording timeframe for this video
+       let videoTimeframe = null;
+@@ -138,7 +166,7 @@ document.addEventListener('DOMContentLoaded', async () => {
+       }
+ 
+       // Clear from session storage after loading
+-      await chrome.storage.session.remove(['videoRecording', 'hasVideoRecording', 'recordingTimeframe']);
++      await chrome.storage.session.remove(['videoRecording', 'hasVideoRecording', 'videoInIndexedDB', 'videoSizeMB', 'recordingTimeframe']);
+ 
+       // Count existing videos to number this one
+       const existingVideos = screenshots.filter(s => s.type === 'video');
+@@ -314,6 +342,18 @@ function setupEventListeners() {
+   document.getElementById('project').addEventListener('change', onProjectChange);
+   document.getElementById('bugReportForm').addEventListener('submit', submitBugReport);
+ 
++  // Issue Mode Toggle
++  document.querySelectorAll('input[name="issueMode"]').forEach(radio => {
++    radio.addEventListener('change', onIssueModeChange);
++  });
++
++  // Issue Search and Selection
++  document.getElementById('issueSearchInput').addEventListener('input', debounce(onIssueSearch, 500));
++  document.getElementById('issueSelect').addEventListener('change', onIssueSelectChange);
++  document.getElementById('loadIssuesBtn').addEventListener('click', loadRecentIssues);
++  document.getElementById('clearIssueSelection').addEventListener('click', clearIssueSelection);
++  document.getElementById('projectFilterSelect').addEventListener('change', onProjectFilterChange);
++
+   // Additional Documents
+   document.getElementById('additionalDocuments').addEventListener('change', updateSelectedFilesList);
+ 
+@@ -1231,6 +1271,10 @@ async function loadRedmineData() {
+     const projectSelect = document.getElementById('project');
+     projectSelect.innerHTML = '<option value="">-- Select Project --</option>';
+ 
++    // Also populate project filter for issue search
++    const projectFilterSelect = document.getElementById('projectFilterSelect');
++    projectFilterSelect.innerHTML = '<option value="">-- All Projects --</option>';
++
+     projects.forEach(project => {
+       const option = document.createElement('option');
+       option.value = project.id;
+@@ -1239,6 +1283,12 @@ async function loadRedmineData() {
+         option.selected = true;
+       }
+       projectSelect.appendChild(option);
++
++      // Add to filter dropdown as well
++      const filterOption = document.createElement('option');
++      filterOption.value = project.id;
++      filterOption.textContent = project.name;
++      projectFilterSelect.appendChild(filterOption);
+     });
+ 
+     // Load trackers
+@@ -1347,6 +1397,20 @@ async function submitBugReport(e) {
+   try {
+     console.log('[Annotate] Preparing bug report submission...');
+ 
++    // Additional validation for update mode
++    if (currentIssueMode === 'update') {
++      if (!selectedIssue) {
++        alert('Please select an issue to update.');
++        return;
++      }
++
++      const noteText = document.getElementById('noteText').value.trim();
++      if (!noteText) {
++        alert('Please enter a note/comment to add to the issue.');
++        return;
++      }
++    }
++
+     // Populate review modal with all data
+     await populateReviewModal();
+ 
+@@ -1696,12 +1760,32 @@ async function actuallySubmitBugReport() {
+       }
+     }
+ 
+-    console.log('[Annotate] Creating issue with', attachments.length, 'attachments...');
++    let issue;
+ 
+-    // Create issue with attachments
+-    const issue = await redmineAPI.createIssueWithAttachments(formData, attachments);
++    if (currentIssueMode === 'update') {
++      // Update existing issue with note and attachments
++      if (!selectedIssue) {
++        throw new Error('No issue selected. Please select an issue to update.');
++      }
++
++      const noteText = document.getElementById('noteText').value.trim();
++      if (!noteText) {
++        throw new Error('Please enter a note/comment to add to the issue.');
++      }
++
++      console.log('[Annotate] Updating issue #' + selectedIssue.id + ' with note and', attachments.length, 'attachments...');
++
++      issue = await redmineAPI.updateIssue(selectedIssue.id, { notes: noteText }, attachments);
++
++      console.log('[Annotate] Issue #' + issue.id + ' updated successfully with note');
++    } else {
++      // Create new issue with attachments
++      console.log('[Annotate] Creating issue with', attachments.length, 'attachments...');
+ 
+-    console.log('[Annotate] Issue created successfully:', issue);
++      issue = await redmineAPI.createIssueWithAttachments(formData, attachments);
++
++      console.log('[Annotate] Issue created successfully:', issue);
++    }
+ 
+     // Close review modal
+     closeReviewModal();
+@@ -2006,11 +2090,22 @@ function showSuccessScreen(issue) {
+ 
+   const issueLink = document.getElementById('issueLink');
+   const issueUrl = `${settings.redmineUrl}/issues/${issue.id}`;
+-
+-  issueLink.innerHTML = `
+-    <strong>Issue #${issue.id}</strong><br>
+-    <a href="${issueUrl}" target="_blank">${issueUrl}</a>
+-  `;
++  const successMessage = document.querySelector('#successSection h2');
++
++  // Update success message based on mode
++  if (currentIssueMode === 'update') {
++    successMessage.textContent = 'Note Added!';
++    issueLink.innerHTML = `
++      <strong>Note added to Issue #${issue.id}</strong><br>
++      <a href="${issueUrl}" target="_blank">${issueUrl}</a>
++    `;
++  } else {
++    successMessage.textContent = 'Issue Submitted!';
++    issueLink.innerHTML = `
++      <strong>Issue #${issue.id}</strong><br>
++      <a href="${issueUrl}" target="_blank">${issueUrl}</a>
++    `;
++  }
+ }
+ 
+ // Populate review modal
+@@ -2018,49 +2113,94 @@ async function populateReviewModal() {
+   try {
+     console.log('[Annotate] Populating review modal...');
+ 
+-    const projectSelect = document.getElementById('project');
+-    const trackerSelect = document.getElementById('tracker');
+-    const prioritySelect = document.getElementById('priority');
+-    const assigneeSelect = document.getElementById('assignee');
+-
+-    // Form Data Tab - Populate editable fields
+-    const reviewProjectSelect = document.getElementById('reviewProjectSelect');
+-    reviewProjectSelect.innerHTML = '';
+-    Array.from(projectSelect.options).forEach(option => {
+-      const newOption = option.cloneNode(true);
+-      reviewProjectSelect.appendChild(newOption);
+-    });
+-    reviewProjectSelect.value = projectSelect.value;
+-
+-    const reviewTrackerSelect = document.getElementById('reviewTrackerSelect');
+-    reviewTrackerSelect.innerHTML = '';
+-    Array.from(trackerSelect.options).forEach(option => {
+-      const newOption = option.cloneNode(true);
+-      reviewTrackerSelect.appendChild(newOption);
+-    });
+-    reviewTrackerSelect.value = trackerSelect.value;
+-
+-    const reviewSubjectInput = document.getElementById('reviewSubjectInput');
+-    reviewSubjectInput.value = document.getElementById('subject').value || '';
++    // Update modal title based on mode
++    const modalTitle = document.querySelector('#reviewModal h2');
++    if (currentIssueMode === 'update') {
++      modalTitle.textContent = 'Review Note Before Adding to Issue';
++    } else {
++      modalTitle.textContent = 'Review Issue Before Submitting';
++    }
+ 
+-    const reviewPrioritySelect = document.getElementById('reviewPrioritySelect');
+-    reviewPrioritySelect.innerHTML = '';
+-    Array.from(prioritySelect.options).forEach(option => {
+-      const newOption = option.cloneNode(true);
+-      reviewPrioritySelect.appendChild(newOption);
+-    });
+-    reviewPrioritySelect.value = prioritySelect.value;
++    if (currentIssueMode === 'update') {
++      // Update mode - show issue details and note
++      const reviewProjectSelect = document.getElementById('reviewProjectSelect');
++      const reviewTrackerSelect = document.getElementById('reviewTrackerSelect');
++      const reviewSubjectInput = document.getElementById('reviewSubjectInput');
++      const reviewPrioritySelect = document.getElementById('reviewPrioritySelect');
++      const reviewAssigneeSelect = document.getElementById('reviewAssigneeSelect');
++      const reviewDescriptionText = document.getElementById('reviewDescriptionText');
++
++      // Hide/disable create-mode fields
++      reviewProjectSelect.disabled = true;
++      reviewTrackerSelect.disabled = true;
++      reviewSubjectInput.disabled = true;
++      reviewPrioritySelect.disabled = true;
++      reviewAssigneeSelect.disabled = true;
++
++      // Show selected issue details
++      if (selectedIssue) {
++        reviewProjectSelect.innerHTML = `<option>${selectedIssue.project?.name || 'N/A'}</option>`;
++        reviewTrackerSelect.innerHTML = `<option>${selectedIssue.tracker?.name || 'N/A'}</option>`;
++        reviewSubjectInput.value = selectedIssue.subject || '';
++        reviewPrioritySelect.innerHTML = `<option>${selectedIssue.priority?.name || 'N/A'}</option>`;
++        reviewAssigneeSelect.innerHTML = `<option>${selectedIssue.assigned_to?.name || 'Unassigned'}</option>`;
++      }
+ 
+-    const reviewAssigneeSelect = document.getElementById('reviewAssigneeSelect');
+-    reviewAssigneeSelect.innerHTML = '';
+-    Array.from(assigneeSelect.options).forEach(option => {
+-      const newOption = option.cloneNode(true);
+-      reviewAssigneeSelect.appendChild(newOption);
+-    });
+-    reviewAssigneeSelect.value = assigneeSelect.value;
++      // Show note text as description
++      const noteText = document.getElementById('noteText').value;
++      reviewDescriptionText.value = noteText;
++      reviewDescriptionText.placeholder = 'Note/Comment to be added...';
++    } else {
++      // Create mode - populate editable fields
++      const projectSelect = document.getElementById('project');
++      const trackerSelect = document.getElementById('tracker');
++      const prioritySelect = document.getElementById('priority');
++      const assigneeSelect = document.getElementById('assignee');
++
++      const reviewProjectSelect = document.getElementById('reviewProjectSelect');
++      reviewProjectSelect.disabled = false;
++      reviewProjectSelect.innerHTML = '';
++      Array.from(projectSelect.options).forEach(option => {
++        const newOption = option.cloneNode(true);
++        reviewProjectSelect.appendChild(newOption);
++      });
++      reviewProjectSelect.value = projectSelect.value;
++
++      const reviewTrackerSelect = document.getElementById('reviewTrackerSelect');
++      reviewTrackerSelect.disabled = false;
++      reviewTrackerSelect.innerHTML = '';
++      Array.from(trackerSelect.options).forEach(option => {
++        const newOption = option.cloneNode(true);
++        reviewTrackerSelect.appendChild(newOption);
++      });
++      reviewTrackerSelect.value = trackerSelect.value;
++
++      const reviewSubjectInput = document.getElementById('reviewSubjectInput');
++      reviewSubjectInput.disabled = false;
++      reviewSubjectInput.value = document.getElementById('subject').value || '';
++
++      const reviewPrioritySelect = document.getElementById('reviewPrioritySelect');
++      reviewPrioritySelect.disabled = false;
++      reviewPrioritySelect.innerHTML = '';
++      Array.from(prioritySelect.options).forEach(option => {
++        const newOption = option.cloneNode(true);
++        reviewPrioritySelect.appendChild(newOption);
++      });
++      reviewPrioritySelect.value = prioritySelect.value;
++
++      const reviewAssigneeSelect = document.getElementById('reviewAssigneeSelect');
++      reviewAssigneeSelect.disabled = false;
++      reviewAssigneeSelect.innerHTML = '';
++      Array.from(assigneeSelect.options).forEach(option => {
++        const newOption = option.cloneNode(true);
++        reviewAssigneeSelect.appendChild(newOption);
++      });
++      reviewAssigneeSelect.value = assigneeSelect.value;
+ 
+-    const reviewDescriptionText = document.getElementById('reviewDescriptionText');
+-    reviewDescriptionText.value = buildDescription();
++      const reviewDescriptionText = document.getElementById('reviewDescriptionText');
++      reviewDescriptionText.value = buildDescription();
++      reviewDescriptionText.placeholder = 'Issue description...';
++    }
+ 
+     // Media Tab - Show all media items (screenshots and videos)
+     const mediaTabContent = document.getElementById('mediaTab').querySelector('.review-section');
+@@ -2733,6 +2873,271 @@ function formatFileSize(bytes) {
+   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+ }
+ 
++// ========== Issue Mode Toggle and Selection Functions ==========
++
++// Handle issue mode change (create vs update)
++function onIssueModeChange(e) {
++  currentIssueMode = e.target.value;
++  console.log('[Annotate] Issue mode changed to:', currentIssueMode);
++
++  const existingIssueSection = document.getElementById('existingIssueSection');
++  const noteFieldSection = document.getElementById('noteFieldSection');
++  const createIssueFields = document.getElementById('createIssueFields');
++  const submitBtn = document.getElementById('submitBtn');
++  const submitBtnText = submitBtn.querySelector('.btn-text');
++
++  // Get all required fields in create mode
++  const projectField = document.getElementById('project');
++  const trackerField = document.getElementById('tracker');
++  const subjectField = document.getElementById('subject');
++  const priorityField = document.getElementById('priority');
++  const assigneeField = document.getElementById('assignee');
++  const noteField = document.getElementById('noteText');
++
++  if (currentIssueMode === 'update') {
++    // Show update mode UI
++    existingIssueSection.classList.remove('hidden');
++    noteFieldSection.classList.remove('hidden');
++    createIssueFields.classList.add('hidden');
++    submitBtnText.textContent = 'Add Note to Issue';
++
++    // Disable validation on create-mode required fields
++    projectField.removeAttribute('required');
++    trackerField.removeAttribute('required');
++    subjectField.removeAttribute('required');
++    priorityField.removeAttribute('required');
++    assigneeField.removeAttribute('required');
++
++    // Enable validation on note field
++    noteField.setAttribute('required', 'required');
++
++    // Clear any previous selection
++    clearIssueSelection();
++  } else {
++    // Show create mode UI
++    existingIssueSection.classList.add('hidden');
++    noteFieldSection.classList.add('hidden');
++    createIssueFields.classList.remove('hidden');
++    submitBtnText.textContent = 'Submit Issue Report';
++
++    // Enable validation on create-mode required fields
++    projectField.setAttribute('required', 'required');
++    trackerField.setAttribute('required', 'required');
++    subjectField.setAttribute('required', 'required');
++    priorityField.setAttribute('required', 'required');
++    assigneeField.setAttribute('required', 'required');
++
++    // Disable validation on note field
++    noteField.removeAttribute('required');
++
++    // Clear issue selection
++    selectedIssue = null;
++    clearIssueSelection();
++  }
++}
++
++// Debounce helper function
++function debounce(func, wait) {
++  let timeout;
++  return function executedFunction(...args) {
++    const later = () => {
++      clearTimeout(timeout);
++      func(...args);
++    };
++    clearTimeout(timeout);
++    timeout = setTimeout(later, wait);
++  };
++}
++
++// Handle issue search input
++async function onIssueSearch(e) {
++  const searchTerm = e.target.value.trim();
++  const statusEl = document.getElementById('issueSearchStatus');
++
++  if (!searchTerm) {
++    statusEl.textContent = '';
++    statusEl.className = 'status-message';
++    return;
++  }
++
++  try {
++    statusEl.textContent = 'Searching...';
++    statusEl.className = 'status-message info';
++
++    // Check if search term is numeric (issue number)
++    const isNumeric = /^\d+$/.test(searchTerm);
++
++    if (isNumeric) {
++      // Search by issue number
++      const issue = await redmineAPI.getIssue(searchTerm, ['attachments']);
++      displaySelectedIssue(issue);
++      statusEl.textContent = `Found issue #${issue.id}`;
++      statusEl.className = 'status-message success';
++    } else {
++      // Search by subject
++      const result = await redmineAPI.getIssues({
++        subject: searchTerm,
++        status_id: 'open',
++        limit: 20
++      });
++
++      if (result.issues.length === 0) {
++        statusEl.textContent = 'No issues found';
++        statusEl.className = 'status-message warning';
++      } else {
++        // Populate the dropdown with results
++        const issueSelect = document.getElementById('issueSelect');
++        issueSelect.innerHTML = '<option value="">-- Select Issue --</option>';
++
++        result.issues.forEach(issue => {
++          const option = document.createElement('option');
++          option.value = issue.id;
++          option.textContent = `#${issue.id}: ${issue.subject}`;
++          issueSelect.appendChild(option);
++        });
++
++        statusEl.textContent = `Found ${result.issues.length} issue(s)`;
++        statusEl.className = 'status-message success';
++      }
++    }
++  } catch (error) {
++    console.error('[Annotate] Error searching for issue:', error);
++    statusEl.textContent = `Error: ${error.message}`;
++    statusEl.className = 'status-message error';
++  }
++}
++
++// Handle issue select dropdown change
++async function onIssueSelectChange(e) {
++  const issueId = e.target.value;
++
++  if (!issueId) {
++    selectedIssue = null;
++    document.getElementById('selectedIssuePreview').classList.add('hidden');
++    return;
++  }
++
++  const statusEl = document.getElementById('issueSearchStatus');
++
++  try {
++    statusEl.textContent = `Loading issue #${issueId}...`;
++    statusEl.className = 'status-message info';
++
++    const issue = await redmineAPI.getIssue(issueId, ['attachments']);
++    displaySelectedIssue(issue);
++
++    statusEl.textContent = `Issue #${issueId} loaded`;
++    statusEl.className = 'status-message success';
++  } catch (error) {
++    console.error('[Annotate] Error loading issue:', error);
++    statusEl.textContent = `Error: ${error.message}`;
++    statusEl.className = 'status-message error';
++  }
++}
++
++// Handle project filter change
++function onProjectFilterChange() {
++  // Clear the issue dropdown when filter changes
++  const issueSelect = document.getElementById('issueSelect');
++  issueSelect.innerHTML = '<option value="">-- Select Issue --</option>';
++
++  // Clear status message
++  const statusEl = document.getElementById('issueSearchStatus');
++  statusEl.textContent = '';
++  statusEl.className = 'status-message';
++
++  console.log('[Annotate] Project filter changed, issue list cleared');
++}
++
++// Load recent open issues
++async function loadRecentIssues() {
++  const statusEl = document.getElementById('issueSearchStatus');
++  const loadBtn = document.getElementById('loadIssuesBtn');
++
++  try {
++    loadBtn.disabled = true;
++    statusEl.textContent = 'Loading recent issues...';
++    statusEl.className = 'status-message info';
++
++    // Get selected project from filter dropdown
++    const projectId = document.getElementById('projectFilterSelect').value;
++    const filters = {
++      status_id: 'open',
++      limit: 100,
++      sort: 'updated_on:desc'
++    };
++
++    if (projectId) {
++      filters.project_id = projectId;
++    }
++
++    const result = await redmineAPI.getIssues(filters);
++
++    if (result.issues.length === 0) {
++      statusEl.textContent = 'No open issues found';
++      statusEl.className = 'status-message warning';
++      return;
++    }
++
++    // Populate the dropdown
++    const issueSelect = document.getElementById('issueSelect');
++    issueSelect.innerHTML = '<option value="">-- Select Issue --</option>';
++
++    result.issues.forEach(issue => {
++      const option = document.createElement('option');
++      option.value = issue.id;
++      option.textContent = `#${issue.id}: ${issue.subject} (${issue.status?.name || 'Unknown'})`;
++      issueSelect.appendChild(option);
++    });
++
++    statusEl.textContent = `Loaded ${result.issues.length} issue(s)`;
++    statusEl.className = 'status-message success';
++  } catch (error) {
++    console.error('[Annotate] Error loading recent issues:', error);
++    statusEl.textContent = `Error: ${error.message}`;
++    statusEl.className = 'status-message error';
++  } finally {
++    loadBtn.disabled = false;
++  }
++}
++
++// Display selected issue in preview
++function displaySelectedIssue(issue) {
++  selectedIssue = issue;
++
++  const preview = document.getElementById('selectedIssuePreview');
++  const title = document.getElementById('selectedIssueTitle');
++  const details = document.getElementById('selectedIssueDetails');
++
++  title.textContent = `#${issue.id}: ${issue.subject}`;
++
++  const detailParts = [];
++  if (issue.project) detailParts.push(`Project: ${issue.project.name}`);
++  if (issue.status) detailParts.push(`Status: ${issue.status.name}`);
++  if (issue.assigned_to) detailParts.push(`Assigned to: ${issue.assigned_to.name}`);
++  if (issue.priority) detailParts.push(`Priority: ${issue.priority.name}`);
++
++  details.textContent = detailParts.join(' | ');
++
++  preview.classList.remove('hidden');
++
++  // Clear search input and dropdown
++  document.getElementById('issueSearchInput').value = '';
++  document.getElementById('issueSelect').value = '';
++}
++
++// Clear issue selection
++function clearIssueSelection() {
++  selectedIssue = null;
++  document.getElementById('selectedIssuePreview').classList.add('hidden');
++  document.getElementById('issueSearchInput').value = '';
++  document.getElementById('issueSelect').value = '';
++  document.getElementById('issueSearchStatus').textContent = '';
++  document.getElementById('issueSearchStatus').className = 'status-message';
++}
++
++// ========== End of Issue Mode Functions ==========
++
+ // Close review modal
+ function closeReviewModal() {
+   document.getElementById('reviewModal').classList.add('hidden');
+diff --git a/background/background.js b/background/background.js
+index e7e4681..ef4fcf5 100644
+--- a/background/background.js
++++ b/background/background.js
+@@ -156,9 +156,13 @@ async function handleCaptureDisplayScreenshot() {
+ }
+ 
+ 
+-async function handleRecordingComplete(videoDataUrl) {
++async function handleRecordingComplete(videoDataUrl, largeVideo = false, videoSizeMB = 0) {
+   try {
+-    console.log('[Background] Processing completed recording, video data length:', videoDataUrl.length);
++    if (largeVideo) {
++      console.log('[Background] Processing completed recording (large video stored in IndexedDB, size:', videoSizeMB.toFixed(2), 'MB)');
++    } else {
++      console.log('[Background] Processing completed recording, video data length:', videoDataUrl.length);
++    }
+ 
+     // Restore recording state from storage if service worker was restarted
+     if (!recordingStartTime || !recordingTabId) {
+@@ -185,9 +189,8 @@ async function handleRecordingComplete(videoDataUrl) {
+     // Close offscreen document
+     await closeOffscreenDocument();
+ 
+-    // Save video and recording timeframe to session storage
+-    await chrome.storage.session.set({
+-      videoRecording: videoDataUrl,
++    // Prepare session storage data
++    const sessionData = {
+       hasVideoRecording: true,
+       tabId: recordingTabId,
+       recordingTimeframe: {
+@@ -196,8 +199,21 @@ async function handleRecordingComplete(videoDataUrl) {
+         endTime: recordingEndTime,
+         duration: duration
+       }
+-    });
+-    console.log('[Background] Video and recording timeframe saved to session storage');
++    };
++
++    // For small videos, store in session storage; for large videos, flag to load from IndexedDB
++    if (largeVideo) {
++      sessionData.videoInIndexedDB = true;
++      sessionData.videoSizeMB = videoSizeMB;
++      console.log('[Background] Large video flagged for IndexedDB retrieval');
++    } else {
++      sessionData.videoRecording = videoDataUrl;
++      console.log('[Background] Small video stored in session storage');
++    }
++
++    // Save to session storage
++    await chrome.storage.session.set(sessionData);
++    console.log('[Background] Recording metadata saved to session storage');
+     console.log('[Background] Timeframe:', {
+       start: new Date(recordingStartTime).toISOString(),
+       end: new Date(recordingEndTime).toISOString(),
+@@ -466,8 +482,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+   }
+ 
+   if (request.action === 'recordingComplete') {
+-    console.log('[Background] Recording complete, processing video data');
+-    handleRecordingComplete(request.videoDataUrl)
++    if (request.largeVideo) {
++      console.log('[Background] Recording complete, large video in IndexedDB (', request.videoSizeMB.toFixed(2), 'MB)');
++    } else {
++      console.log('[Background] Recording complete, processing video data');
++    }
++    handleRecordingComplete(request.videoDataUrl, request.largeVideo, request.videoSizeMB)
+       .then(() => {
+         console.log('[Background] Recording processed successfully');
+       })
+diff --git a/lib/redmine-api.js b/lib/redmine-api.js
+index 7a760ee..e84fc7c 100644
+--- a/lib/redmine-api.js
++++ b/lib/redmine-api.js
+@@ -197,6 +197,115 @@ class RedmineAPI {
+     return data.issue_categories || [];
+   }
+ 
++  // Get issues with filters (for searching/browsing existing issues)
++  async getIssues(filters = {}) {
++    const params = new URLSearchParams();
++
++    // Add common filters
++    if (filters.project_id) params.append('project_id', filters.project_id);
++    if (filters.status_id) params.append('status_id', filters.status_id);
++    if (filters.assigned_to_id) params.append('assigned_to_id', filters.assigned_to_id);
++    if (filters.subject) params.append('subject', `~${filters.subject}`); // ~ for partial match
++
++    // Add pagination
++    const limit = filters.limit || 100;
++    const offset = filters.offset || 0;
++    params.append('limit', limit);
++    params.append('offset', offset);
++
++    // Sort by updated date by default
++    const sort = filters.sort || 'updated_on:desc';
++    params.append('sort', sort);
++
++    const queryString = params.toString();
++    const data = await this.request(`/issues.json?${queryString}`);
++
++    return {
++      issues: data.issues || [],
++      total_count: data.total_count || 0,
++      offset: data.offset || 0,
++      limit: data.limit || limit
++    };
++  }
++
++  // Get a single issue with full details
++  async getIssue(issueId, include = []) {
++    const includeParam = include.length > 0 ? `?include=${include.join(',')}` : '';
++    const data = await this.request(`/issues/${issueId}.json${includeParam}`);
++    return data.issue;
++  }
++
++  // Update an existing issue (add notes/comments with attachments)
++  async updateIssue(issueId, updates, attachments = []) {
++    try {
++      console.log(`[Redmine API] Updating issue #${issueId} with ${attachments.length} attachment(s)`);
++
++      // Sanitize note text if present
++      const sanitizedUpdates = { ...updates };
++      if (updates.notes) {
++        sanitizedUpdates.notes = this.sanitizeContent(updates.notes);
++      }
++
++      // Upload all attachments first (same process as creating issues)
++      const uploadTokens = [];
++
++      for (let i = 0; i < attachments.length; i++) {
++        const attachment = attachments[i];
++        console.log(`[Redmine API] Processing attachment ${i + 1}/${attachments.length}: ${attachment.filename}`);
++
++        let fileBlob;
++
++        if (attachment.data && attachment.data.startsWith('data:')) {
++          // Convert base64 to blob
++          fileBlob = this.base64ToBlob(attachment.data, attachment.type || 'image/png');
++        } else if (attachment.blob) {
++          fileBlob = attachment.blob;
++        } else {
++          console.warn(`[Redmine API] Skipping attachment ${attachment.filename}: no data or blob`);
++          continue;
++        }
++
++        // Create File object from Blob with sanitized filename
++        const sanitizedFilename = this.sanitizeFilename(attachment.filename);
++        const file = new File([fileBlob], sanitizedFilename, { type: attachment.type || 'image/png' });
++
++        try {
++          const upload = await this.uploadFile(file);
++
++          uploadTokens.push({
++            token: upload.token,
++            filename: sanitizedFilename,
++            content_type: attachment.type || 'image/png'
++          });
++        } catch (uploadError) {
++          console.error(`[Redmine API] Failed to upload ${attachment.filename}:`, uploadError);
++          throw uploadError;
++        }
++      }
++
++      // Add upload tokens to update data
++      if (uploadTokens.length > 0) {
++        console.log(`[Redmine API] Attaching ${uploadTokens.length} file(s) to issue update`);
++        sanitizedUpdates.uploads = uploadTokens;
++      }
++
++      // Update the issue (PUT returns 204 No Content on success)
++      console.log(`[Redmine API] Updating issue #${issueId}`);
++      await this.request(`/issues/${issueId}.json`, {
++        method: 'PUT',
++        body: JSON.stringify({ issue: sanitizedUpdates })
++      });
++
++      console.log(`[Redmine API] Issue #${issueId} updated successfully`);
++
++      // Fetch and return the updated issue
++      return await this.getIssue(issueId);
++    } catch (error) {
++      console.error(`[Redmine API] Error updating issue #${issueId}:`, error);
++      throw error;
++    }
++  }
++
+   // Create a new issue
+   async createIssue(issueData) {
+     // Sanitize text fields to prevent 500 errors from unicode
+diff --git a/lib/video-storage.js b/lib/video-storage.js
+new file mode 100644
+index 0000000..bf70e1b
+--- /dev/null
++++ b/lib/video-storage.js
+@@ -0,0 +1,138 @@
++// Video storage helper using IndexedDB for large videos
++// IndexedDB has much higher storage limits than chrome.storage (several GB vs 10MB)
++
++const DB_NAME = 'CapScreenVideoDB';
++const DB_VERSION = 1;
++const STORE_NAME = 'videos';
++
++class VideoStorage {
++  constructor() {
++    this.db = null;
++  }
++
++  async init() {
++    if (this.db) return this.db;
++
++    return new Promise((resolve, reject) => {
++      const request = indexedDB.open(DB_NAME, DB_VERSION);
++
++      request.onerror = () => {
++        console.error('[VideoStorage] Error opening database:', request.error);
++        reject(request.error);
++      };
++
++      request.onsuccess = () => {
++        this.db = request.result;
++        console.log('[VideoStorage] Database opened successfully');
++        resolve(this.db);
++      };
++
++      request.onupgradeneeded = (event) => {
++        const db = event.target.result;
++
++        // Create object store if it doesn't exist
++        if (!db.objectStoreNames.contains(STORE_NAME)) {
++          const objectStore = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
++          objectStore.createIndex('timestamp', 'timestamp', { unique: false });
++          console.log('[VideoStorage] Object store created');
++        }
++      };
++    });
++  }
++
++  async saveVideo(videoDataUrl, metadata = {}) {
++    await this.init();
++
++    const videoData = {
++      id: 'current-recording', // Always use same ID to overwrite previous
++      dataUrl: videoDataUrl,
++      timestamp: Date.now(),
++      size: videoDataUrl.length,
++      ...metadata
++    };
++
++    return new Promise((resolve, reject) => {
++      const transaction = this.db.transaction([STORE_NAME], 'readwrite');
++      const objectStore = transaction.objectStore(STORE_NAME);
++      const request = objectStore.put(videoData);
++
++      request.onsuccess = () => {
++        console.log('[VideoStorage] Video saved successfully, size:', videoDataUrl.length);
++        resolve(videoData.id);
++      };
++
++      request.onerror = () => {
++        console.error('[VideoStorage] Error saving video:', request.error);
++        reject(request.error);
++      };
++    });
++  }
++
++  async getVideo(id = 'current-recording') {
++    await this.init();
++
++    return new Promise((resolve, reject) => {
++      const transaction = this.db.transaction([STORE_NAME], 'readonly');
++      const objectStore = transaction.objectStore(STORE_NAME);
++      const request = objectStore.get(id);
++
++      request.onsuccess = () => {
++        if (request.result) {
++          console.log('[VideoStorage] Video retrieved, size:', request.result.dataUrl.length);
++          resolve(request.result);
++        } else {
++          console.log('[VideoStorage] No video found with id:', id);
++          resolve(null);
++        }
++      };
++
++      request.onerror = () => {
++        console.error('[VideoStorage] Error retrieving video:', request.error);
++        reject(request.error);
++      };
++    });
++  }
++
++  async deleteVideo(id = 'current-recording') {
++    await this.init();
++
++    return new Promise((resolve, reject) => {
++      const transaction = this.db.transaction([STORE_NAME], 'readwrite');
++      const objectStore = transaction.objectStore(STORE_NAME);
++      const request = objectStore.delete(id);
++
++      request.onsuccess = () => {
++        console.log('[VideoStorage] Video deleted:', id);
++        resolve();
++      };
++
++      request.onerror = () => {
++        console.error('[VideoStorage] Error deleting video:', request.error);
++        reject(request.error);
++      };
++    });
++  }
++
++  async clear() {
++    await this.init();
++
++    return new Promise((resolve, reject) => {
++      const transaction = this.db.transaction([STORE_NAME], 'readwrite');
++      const objectStore = transaction.objectStore(STORE_NAME);
++      const request = objectStore.clear();
++
++      request.onsuccess = () => {
++        console.log('[VideoStorage] All videos cleared');
++        resolve();
++      };
++
++      request.onerror = () => {
++        console.error('[VideoStorage] Error clearing videos:', request.error);
++        reject(request.error);
++      };
++    });
++  }
++}
++
++// Create singleton instance
++const videoStorage = new VideoStorage();
+diff --git a/offscreen/offscreen.js b/offscreen/offscreen.js
+index 8a9362d..5ad35c7 100644
+--- a/offscreen/offscreen.js
++++ b/offscreen/offscreen.js
+@@ -87,7 +87,7 @@ async function startDisplayRecording() {
+       try {
+         // Create blob from recorded chunks
+         const blob = new Blob(recordedChunks, { type: 'video/webm' });
+-        console.log('[Offscreen] Created blob, size:', blob.size);
++        console.log('[Offscreen] Created blob, size:', blob.size, 'bytes (', (blob.size / 1024 / 1024).toFixed(2), 'MB)');
+ 
+         // Convert blob to data URL
+         const videoDataUrl = await new Promise((resolve, reject) => {
+@@ -97,7 +97,7 @@ async function startDisplayRecording() {
+           reader.readAsDataURL(blob);
+         });
+ 
+-        console.log('[Offscreen] Converted to data URL, length:', videoDataUrl.length);
++        console.log('[Offscreen] Converted to data URL, length:', videoDataUrl.length, 'chars (', (videoDataUrl.length / 1024 / 1024).toFixed(2), 'MB)');
+ 
+         // Stop all tracks
+         stream.getTracks().forEach(track => {
+@@ -105,11 +105,35 @@ async function startDisplayRecording() {
+           track.stop();
+         });
+ 
+-        // Notify background that recording is complete with video data
+-        chrome.runtime.sendMessage({
+-          action: 'recordingComplete',
+-          videoDataUrl: videoDataUrl
+-        });
++        // For large videos (>5MB), use IndexedDB instead of chrome.runtime.sendMessage
++        // chrome.runtime.sendMessage has size limits (~4MB) and chrome.storage.session has quota limits (~10MB)
++        const videoSizeMB = videoDataUrl.length / 1024 / 1024;
++
++        if (videoSizeMB > 5) {
++          console.log('[Offscreen] Large video detected (', videoSizeMB.toFixed(2), 'MB), using IndexedDB storage');
++
++          // Save to IndexedDB
++          await videoStorage.saveVideo(videoDataUrl, {
++            size: blob.size,
++            duration: blob.duration || 0,
++            type: 'video/webm'
++          });
++
++          // Notify background that recording is complete (without video data)
++          chrome.runtime.sendMessage({
++            action: 'recordingComplete',
++            largeVideo: true,
++            videoSizeMB: videoSizeMB
++          });
++        } else {
++          console.log('[Offscreen] Small video (', videoSizeMB.toFixed(2), 'MB), sending via message');
++
++          // For small videos, send directly via message (faster)
++          chrome.runtime.sendMessage({
++            action: 'recordingComplete',
++            videoDataUrl: videoDataUrl
++          });
++        }
+ 
+       } catch (error) {
+         console.error('[Offscreen] Error processing recording:', error);
+@@ -130,9 +154,10 @@ async function startDisplayRecording() {
+       }
+     };
+ 
+-    // Start recording
+-    mediaRecorder.start();
+-    console.log('[Offscreen] MediaRecorder started for display media');
++    // Start recording with timeslice to prevent memory issues with long recordings
++    // Collect data every 10 seconds instead of waiting until the end
++    mediaRecorder.start(10000);
++    console.log('[Offscreen] MediaRecorder started for display media with 10s timeslice');
+ 
+   } catch (error) {
+     console.error('[Offscreen] Error in startDisplayRecording:', error);
