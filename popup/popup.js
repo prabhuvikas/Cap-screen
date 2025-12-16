@@ -192,13 +192,21 @@ async function captureCurrentTab() {
       name: 'Screenshot 1'
     };
 
-    await chrome.storage.session.set({
-      screenshots: [newScreenshot],
-      currentScreenshotId: newScreenshot.id,
-      tabId: currentTab.id,
-      // Keep old format for backward compatibility
-      screenshotData: screenshotDataUrl
-    });
+    try {
+      await chrome.storage.session.set({
+        screenshots: [newScreenshot],
+        currentScreenshotId: newScreenshot.id,
+        tabId: currentTab.id,
+        // Keep old format for backward compatibility
+        screenshotData: screenshotDataUrl
+      });
+    } catch (storageError) {
+      console.error('[Popup] Error saving screenshot to storage:', storageError);
+      if (!storageError.message || !storageError.message.includes('quota')) {
+        throw storageError;
+      }
+      // Continue anyway - we still have the screenshot, annotation page will be blank but functional
+    }
 
     // Open annotation page in new tab
     const annotateTab = await chrome.tabs.create({
@@ -265,13 +273,21 @@ async function captureScreenshot() {
       name: 'Screenshot 1'
     };
 
-    await chrome.storage.session.set({
-      screenshots: [newScreenshot],
-      currentScreenshotId: newScreenshot.id,
-      tabId: currentTab.id,
-      // Keep old format for backward compatibility
-      screenshotData: screenshotDataUrl
-    });
+    try {
+      await chrome.storage.session.set({
+        screenshots: [newScreenshot],
+        currentScreenshotId: newScreenshot.id,
+        tabId: currentTab.id,
+        // Keep old format for backward compatibility
+        screenshotData: screenshotDataUrl
+      });
+    } catch (storageError) {
+      console.error('[Popup] Error saving screenshot to storage:', storageError);
+      if (!storageError.message || !storageError.message.includes('quota')) {
+        throw storageError;
+      }
+      // Continue anyway - we still have the screenshot, annotation page will be blank but functional
+    }
 
     // Open annotation page in new tab
     const annotateTab = await chrome.tabs.create({
@@ -541,12 +557,17 @@ async function collectTechnicalDataFromSingleTab(tabId) {
     }
 
     // Collect page information
-    const pageInfoResponse = await chrome.tabs.sendMessage(tabId, {
-      action: 'collectPageInfo'
-    });
+    try {
+      const pageInfoResponse = await chrome.tabs.sendMessage(tabId, {
+        action: 'collectPageInfo'
+      });
 
-    if (pageInfoResponse && pageInfoResponse.success) {
-      pageInfo = pageInfoResponse.data;
+      if (pageInfoResponse && pageInfoResponse.success) {
+        pageInfo = pageInfoResponse.data;
+      }
+    } catch (e) {
+      console.log('Could not collect page info (content script unavailable):', e.message);
+      // Continue anyway - we can still submit without page info
     }
 
     // Collect console logs
@@ -566,24 +587,32 @@ async function collectTechnicalDataFromSingleTab(tabId) {
 
     // Collect network requests
     if (settings.includeNetworkRequests) {
-      const networkResponse = await chrome.runtime.sendMessage({
-        action: 'getNetworkRequests',
-        tabId: tabId
-      });
+      try {
+        const networkResponse = await chrome.runtime.sendMessage({
+          action: 'getNetworkRequests',
+          tabId: tabId
+        });
 
-      if (networkResponse && networkResponse.success) {
-        networkRequests = networkResponse.data;
+        if (networkResponse && networkResponse.success) {
+          networkRequests = networkResponse.data;
+        }
+      } catch (e) {
+        console.log('Could not collect network requests:', e.message);
       }
     }
 
     // Collect storage data
     if (settings.includeLocalStorage || settings.includeCookies) {
-      const storageResponse = await chrome.tabs.sendMessage(tabId, {
-        action: 'collectStorageData'
-      });
+      try {
+        const storageResponse = await chrome.tabs.sendMessage(tabId, {
+          action: 'collectStorageData'
+        });
 
-      if (storageResponse && storageResponse.success) {
-        pageInfo.storage = storageResponse.data;
+        if (storageResponse && storageResponse.success) {
+          pageInfo.storage = storageResponse.data;
+        }
+      } catch (e) {
+        console.log('Could not collect storage data (content script unavailable):', e.message);
       }
     }
   } catch (error) {

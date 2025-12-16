@@ -9,6 +9,11 @@ let recordingTabId = null;
 let recordingStartTime = null;
 let recordingEndTime = null;
 
+// Storage quota management
+const MAX_REQUESTS_PER_TAB = 100;
+const MAX_REQUEST_AGE_MS = 30 * 60 * 1000; // 30 minutes
+const CLEANUP_INTERVAL_MS = 60 * 1000; // Clean every 1 minute instead of 5
+
 // Load persisted network requests from storage on startup
 async function loadNetworkRequestsFromStorage() {
   try {
@@ -41,6 +46,23 @@ async function saveNetworkRequestsToStorage() {
       console.log(`[Background] Saved ${totalRequests} network requests from ${tabCount} tabs to storage`);
     } catch (error) {
       console.error('[Background] Error saving network requests to storage:', error);
+      // On quota exceeded, try clearing oldest data from all tabs
+      if (error.message && error.message.includes('quota')) {
+        console.warn('[Background] Storage quota exceeded, attempting aggressive cleanup...');
+        for (const tabId in networkRequests) {
+          // Keep only last 10 requests per tab instead of 100
+          if (networkRequests[tabId].requests.length > 10) {
+            networkRequests[tabId].requests = networkRequests[tabId].requests.slice(-10);
+          }
+        }
+        // Retry save with reduced data
+        try {
+          await chrome.storage.session.set({ networkRequests });
+          console.log('[Background] Successfully saved after aggressive cleanup');
+        } catch (retryError) {
+          console.error('[Background] Failed to save even with aggressive cleanup:', retryError);
+        }
+      }
     }
   }, 1000);
 }
@@ -223,12 +245,26 @@ async function handleRecordingComplete(videoDataUrl, largeVideo = false, videoSi
     // Notify content script that recording stopped (so it can remove overlay if present)
     if (recordingTabId) {
       try {
-        await chrome.tabs.sendMessage(recordingTabId, {
-          action: 'recordingStopped'
-        });
-        console.log('[Background] Notified content script');
-      } catch (e) {
-        console.error('[Background] Could not notify content script:', e);
+        // First check if the tab still exists
+        await chrome.tabs.get(recordingTabId);
+
+        // Tab exists, try to send message
+        try {
+          await chrome.tabs.sendMessage(recordingTabId, {
+            action: 'recordingStopped'
+          });
+          console.log('[Background] Notified content script of recording stop');
+        } catch (messageError) {
+          // Tab exists but content script might not be loaded or tab navigated
+          if (messageError.message && messageError.message.includes('receiving end')) {
+            console.log('[Background] Content script not available (tab may have navigated or extension not injected)');
+          } else {
+            console.warn('[Background] Could not send recordingStopped message:', messageError.message);
+          }
+        }
+      } catch (tabError) {
+        // Tab no longer exists - this is normal
+        console.log('[Background] Recording tab no longer exists');
       }
     }
 
@@ -252,29 +288,57 @@ async function handleRecordingComplete(videoDataUrl, largeVideo = false, videoSi
   }
 }
 
-// Clean up old data periodically
+// Clean up old data periodically - more aggressive approach
 setInterval(() => {
   const now = Date.now();
   let cleaned = false;
+  let deletedTabs = 0;
 
+  // Clean network requests - both old requests and enforce per-tab limits
   for (const tabId in networkRequests) {
-    if (networkRequests[tabId].timestamp < now - 3600000) { // 1 hour old
+    const requests = networkRequests[tabId].requests;
+    const originalCount = requests.length;
+
+    // 1. Remove old requests (older than MAX_REQUEST_AGE_MS)
+    networkRequests[tabId].requests = requests.filter(req => {
+      const age = now - req.timestamp;
+      return age < MAX_REQUEST_AGE_MS;
+    });
+
+    // 2. Enforce max requests per tab - keep only the most recent ones
+    if (networkRequests[tabId].requests.length > MAX_REQUESTS_PER_TAB) {
+      networkRequests[tabId].requests = networkRequests[tabId].requests.slice(-MAX_REQUESTS_PER_TAB);
+    }
+
+    // 3. Remove tabs with no requests and old timestamp
+    if (networkRequests[tabId].requests.length === 0 &&
+        networkRequests[tabId].timestamp < now - 300000) { // 5 minutes idle
       delete networkRequests[tabId];
+      deletedTabs++;
+      cleaned = true;
+    } else if (requests.length !== networkRequests[tabId].requests.length) {
+      cleaned = true;
+      const removed = originalCount - networkRequests[tabId].requests.length;
+      console.log(`[Background] Cleaned ${removed} old requests from tab ${tabId}`);
+    }
+  }
+
+  // Clean console logs more aggressively
+  for (const tabId in consoleLogs) {
+    if (consoleLogs[tabId].timestamp < now - 1800000) { // 30 minutes old
+      delete consoleLogs[tabId];
       cleaned = true;
     }
   }
-  for (const tabId in consoleLogs) {
-    if (consoleLogs[tabId].timestamp < now - 3600000) {
-      delete consoleLogs[tabId];
-    }
-  }
 
-  // Save to storage if we cleaned anything
   if (cleaned) {
-    console.log('[Background] Cleaned old network request data');
-    saveNetworkRequestsToStorage();
+    console.log(`[Background] Cleanup: removed ${deletedTabs} idle tabs`);
+    saveNetworkRequestsToStorage().catch(err => {
+      // Don't spam console if cleanup causes storage errors
+      console.warn('[Background] Cleanup save failed (quota may be exceeded):', err.message);
+    });
   }
-}, 300000); // Clean every 5 minutes
+}, CLEANUP_INTERVAL_MS); // Clean every 1 minute for faster quota recovery
 
 // Listen for network requests
 chrome.webRequest.onBeforeRequest.addListener(
@@ -287,14 +351,28 @@ chrome.webRequest.onBeforeRequest.addListener(
       console.log(`[Background] Started tracking network requests for tab ${details.tabId}`);
     }
 
+    // Don't store full request body to save space - only store if it's small
+    let requestBody = null;
+    if (details.requestBody && details.requestBody.raw) {
+      const bodySize = details.requestBody.raw.reduce((sum, part) => sum + (part.bytes ? part.bytes.byteLength : 0), 0);
+      // Only keep request body if it's under 1KB to save storage space
+      if (bodySize < 1024) {
+        requestBody = details.requestBody;
+      }
+    }
+
     const request = {
       id: details.requestId,
       url: details.url,
       method: details.method,
       type: details.type,
-      timestamp: details.timeStamp,
-      requestBody: details.requestBody
+      timestamp: Date.now() // Use client timestamp for more accurate cleanup
     };
+
+    // Only include small request bodies
+    if (requestBody) {
+      request.requestBody = requestBody;
+    }
 
     networkRequests[details.tabId].requests.push(request);
 

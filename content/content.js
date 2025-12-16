@@ -316,7 +316,7 @@ function collectStorageData() {
   return storageData;
 }
 
-// Listen for messages from popup
+// Listen for messages from popup and background
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'collectPageInfo') {
     const pageInfo = collectPageInfo();
@@ -335,6 +335,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       logs: consoleLogs
     });
     sendResponse({ success: true, data: consoleLogs });
+  }
+
+  if (request.action === 'recordingStopped') {
+    // Recording has stopped - remove recording overlay if present
+    console.log('[Content] Recording stopped notification received');
+    // Remove any recording indicator/overlay that may have been added
+    const overlay = document.getElementById('cap-screen-recording-overlay');
+    if (overlay) {
+      overlay.remove();
+      console.log('[Content] Removed recording overlay');
+    }
+    sendResponse({ success: true });
   }
 
   return true;
