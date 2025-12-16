@@ -1,0 +1,256 @@
+# Changelog
+
+All notable changes to Cred Issue Reporter will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [2.0.0] - December 16, 2025
+
+### Added
+- **Issue Management Enhancement**: Ability to update existing Redmine issues with notes and attachments
+- **Project Filtering**: Intelligent project filter for issue selection with validation
+- **Storage Optimization**: IndexedDB support for handling large video files exceeding 10MB
+- **Enhanced Validation**: Improved validation logic for bug report submission with better error messages
+
+### Fixed
+- **Storage Quota Management**:
+  - Fixed session storage quota exceeded errors by optimizing network request accumulation
+  - Implemented per-tab request limits (maximum 100 requests per tab)
+  - Added individual request age checking (30-minute retention limit)
+  - Improved cleanup intervals from 5 minutes to 1 minute for faster quota recovery
+  - Added aggressive quota recovery (reduces to 10 requests/tab when quota exceeded)
+  - Optimized request body storage (only stores bodies under 1KB)
+  - Added idle tab cleanup (removes tabs with no activity for 5+ minutes)
+
+- **Video Handling Improvements**:
+  - Fixed full screen recording for long videos by utilizing IndexedDB
+  - Improved error handling for large file storage
+  - Better progress indication for video file processing
+
+- **Content Script Error Handling**:
+  - Fixed "Could not establish connection" errors when recording finishes
+  - Added message listener for `recordingStopped` action in content script
+  - Improved tab existence verification before sending messages
+  - Added graceful error handling for closed/navigated tabs
+  - Fixed recording overlay removal on stop
+
+- **Redmine Integration**:
+  - Enhanced error handling for API communication
+  - Better validation of API responses
+  - Improved handling of edge cases in issue creation
+
+### Changed
+- Optimized session storage usage patterns for better stability under heavy use
+- Improved performance when dealing with multiple simultaneous tabs
+
+---
+
+## [1.1.0] - December 10, 2025
+
+### Added
+- **Storage Quota Fixes**: Comprehensive optimization of storage quota management
+- **Video Recording Enhancements**: Support for longer video recordings through improved memory management
+- **IndexedDB Integration**: Support for storing large files that exceed Chrome's session storage limits
+- **Enhanced Console Logging**: Better tracking and organization of console messages
+
+### Fixed
+- **Session Storage Management**:
+  - Reduced storage accumulation from network request monitoring
+  - Implemented intelligent cleanup strategies
+  - Fixed quota overflow errors
+  - Better handling of large request payloads
+
+- **Full Screen Recording**:
+  - Fixed issue where report window was hidden during full screen recording
+  - Improved overlay management during recording sessions
+
+- **Recording Lifecycle**:
+  - Fixed connection errors between background script and content scripts
+  - Improved message passing reliability
+
+### Improved
+- Code Noir theme consistency across extension UI
+- Typography system for better visual hierarchy
+- Overall extension stability and error recovery
+
+---
+
+## [1.0.0] - December 7, 2025
+
+### Added
+
+#### Media Capture Features
+- **Quick Screenshot**: Instant capture of current browser tab
+- **Advanced Screenshot**: Browser-native picker for selecting capture source:
+  - Current tab
+  - Other browser tabs
+  - Browser window
+  - Entire screen (all monitors)
+  - Other application windows
+- **Video Recording**: Screen activity recording with optional audio capture
+- High-quality PNG screenshots and WebM video format support
+
+#### Annotation Tools
+- Freehand drawing/pen tool with customizable colors and line widths
+- Shape tools: rectangles, circles, and arrows
+- Blackout/redaction tool for hiding sensitive information
+- Text annotation support
+- Color picker with predefined color palette
+- Adjustable line width (1-10 pixels)
+- Undo/redo functionality
+- Clear all annotations option
+
+#### Technical Data Collection
+- Automatic URL and page title capture
+- Browser and platform information collection
+- Viewport and screen resolution detection
+- Timestamp recording with timezone awareness
+- Page metadata extraction
+- Performance metrics collection
+
+#### Network Monitoring
+- Capture all HTTP/HTTPS requests made by the page
+- Request and response headers logging
+- HTTP method and request type tracking
+- Status code recording
+- Failed request identification
+- Request timing information (duration, latency)
+- Network waterfall visualization support
+
+#### Console Monitoring
+- Capture console.log, console.warn, console.error, console.info messages
+- Error stack trace collection
+- Unhandled promise rejection tracking
+- Timestamp and source URL for each log entry
+- Log level categorization
+
+#### Data Privacy & Security
+- Toggle network request collection on/off
+- Toggle console log collection on/off
+- Toggle localStorage and cookie data collection
+- Automatic sensitive data sanitization (API keys, tokens, passwords)
+- Pre-submission review modal with tabbed interface
+- Complete data transparency before submission
+- GDPR-compliant data handling
+
+#### Redmine Integration
+- Direct Redmine server integration with API key authentication
+- Project selection with dynamic project listing
+- Tracker selection (Bug, Feature, Support)
+- Priority assignment (Low, Normal, High, Urgent)
+- Assignee selection from project members
+- Category and target version selection
+- Automatic media attachment to issues
+- Technical data export as JSON file
+- Direct link to created issue in success notification
+- Test connection verification
+
+#### User Interface
+- Modern, intuitive popup interface
+- Tab-based settings page for configuration
+- Keyboard shortcut support (Ctrl+Shift+B on Windows, Cmd+Shift+B on Mac)
+- Dark theme UI (Code Noir aesthetic)
+- Progress indicators for long operations
+- Error messages with helpful troubleshooting hints
+- Help documentation and tooltip support
+
+#### Extension Management
+- Options/settings page for configuration
+- Persistent settings storage using Chrome storage API
+- Default project configuration
+- Privacy setting preferences
+- Manual and test modes
+
+---
+
+## Installation & Compatibility
+
+### Supported Browsers
+- Google Chrome 72+
+- Microsoft Edge 79+
+
+### System Requirements
+- Active Redmine instance with REST API enabled
+- Valid Redmine API key
+- Minimum 100MB free disk space for video recording
+- 10MB available session storage
+
+---
+
+## Known Limitations
+
+### Version 2.0.0
+- DRM-protected content (Netflix, Disney+, etc.) cannot be captured due to browser security restrictions
+- Very large video files (>500MB) may require extended processing time
+- Some legacy Redmine versions may have limited API compatibility
+
+### Version 1.1.0
+- IndexedDB storage limited by available disk space
+- Video recording audio requires explicit user permission per session
+
+### Version 1.0.0
+- Session storage quota of ~10MB (addressed in v1.1.0+)
+- No support for offline issue creation
+
+---
+
+## Migration Guide
+
+### Upgrading from 1.0.0 to 1.1.0
+- No configuration changes required
+- Existing settings will be preserved
+- New storage optimization is automatic
+
+### Upgrading from 1.1.0 to 2.0.0
+- No breaking changes
+- All previous settings and data are compatible
+- New issue update feature is opt-in
+- Existing issues can continue to be created as before
+
+---
+
+## Deprecations
+
+- None currently planned
+
+---
+
+## Technical Details
+
+### Permissions Used
+- `activeTab`: Access current tab for capturing
+- `storage`: Store user settings and preferences
+- `tabs`: Access tab information and send messages
+- `webRequest`: Monitor network activity (deprecated in MV3, using webRequest alternative)
+- `scripting`: Inject and run content scripts
+- `tabCapture`: Capture screen/tab content
+- `offscreen`: Run background tasks in offscreen document
+
+### Storage Usage
+- Session Storage: ~1-5MB typical (optimized in v1.1.0+)
+- Local Storage: ~100KB for settings
+- IndexedDB: Up to available disk space for large videos (v1.1.0+)
+
+### API Integrations
+- Redmine REST API v1.0+
+- Chrome Extensions API (MV3)
+- Web APIs: Canvas, MediaRecorder, IndexedDB, WebRTC
+
+---
+
+## Support & Reporting
+
+For bug reports and feature requests, please visit:
+https://github.com/prabhuvikas/Cap-screen/issues
+
+For general support:
+https://support.credenceanalytics.com/projects/redmine_tracker/issues
+
+---
+
+## License
+
+This project is proprietary software. All rights reserved.
