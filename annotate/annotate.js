@@ -1582,7 +1582,7 @@ async function actuallySubmitBugReport() {
     }
 
     // Add HAR files - separate file per video recording if videos have timeframes
-    if (settings.includeNetworkRequests && networkRequests.length > 0) {
+    if (document.getElementById('attachTechnicalData').checked && settings.includeNetworkRequests && networkRequests.length > 0) {
       // Check if we have videos with recording timeframes
       const videosWithTimeframes = screenshots.filter(s => s.type === 'video' && s.recordingTimeframe);
 
@@ -1683,7 +1683,7 @@ async function actuallySubmitBugReport() {
     }
 
     // Add console logs files - separate file per video recording if videos have timeframes
-    if (settings.includeConsoleLogs && consoleLogs.length > 0) {
+    if (document.getElementById('attachTechnicalData').checked && settings.includeConsoleLogs && consoleLogs.length > 0) {
       // Check if we have videos with recording timeframes
       const videosWithTimeframes = screenshots.filter(s => s.type === 'video' && s.recordingTimeframe);
 

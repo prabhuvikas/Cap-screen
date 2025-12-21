@@ -1,9 +1,72 @@
-# 🚀 Introducing Cred Issue Reporter - Now Available Company-Wide!
+# 🚀 Cred Issue Reporter - Latest Updates
+
+---
+
+## 🔧 Version 2.0.1 - Bug Fix Release
+
+**Release Date:** December 21, 2025
+**Version:** 2.0.1
+
+### What's Fixed
+
+#### Critical Bug Fix: Technical Data Attachment Control
+
+We've resolved a critical issue where the "Attach technical data" checkbox wasn't working as expected.
+
+**The Problem:**
+- When you unchecked "Attach technical data (page info, network requests, console logs)", the HAR files and console log files were still being attached to your bug reports
+- Only the technical-data JSON file was being controlled by the checkbox
+
+**The Solution:**
+- The checkbox now properly controls ALL technical data attachments:
+  - ✅ technical-data-*.json file
+  - ✅ network-requests-*.har files
+  - ✅ console-logs-*.txt files
+- When unchecked, NO technical data will be attached to your reports
+- When checked, ALL technical data will be included as before
+
+**Why This Matters:**
+- Better privacy control - you decide exactly what gets shared
+- Smaller attachments when technical data isn't needed
+- Consistent behavior across the extension
+
+This fix applies to both the main popup workflow and the annotate page workflow.
+
+---
+
+---
+
+## 🎉 Version 2.0.0 - Major Feature Update
+
+**Release Date:** December 16, 2025
+**Version:** 2.0.0
+
+### What's New
+
+#### Update Existing Issues
+- Add notes and attachments to existing Redmine issues
+- Search issues by number or subject
+- Filter issues by project
+- Preview selected issue before updating
+
+#### Enhanced Storage Management
+- IndexedDB support for large video files (>10MB)
+- Optimized network request storage
+- Better quota management and cleanup
+
+#### Improved Validation
+- Enhanced error handling and validation
+- Better feedback during submission
+- Improved project filtering
+
+---
+
+---
+
+## 🚀 Version 1.0.0 - Initial Release
 
 **Release Date:** December 7, 2025
 **Version:** 1.0.0
-
----
 
 ---
 

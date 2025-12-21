@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.1] - December 21, 2025
+
+### Fixed
+- **Technical Data Attachment**: Fixed critical bug where HAR files and console logs were being attached even when "Attach technical data" checkbox was unchecked
+  - HAR (network requests) files now properly respect the checkbox state
+  - Console log files now properly respect the checkbox state
+  - All technical data types (technical-data JSON, HAR files, console logs) are now controlled by the single checkbox
+  - Affects both annotate.js and popup.js submission flows
+
+---
+
 ## [2.0.0] - December 16, 2025
 
 ### Added
