@@ -984,7 +984,7 @@ async function actuallySubmitBugReport() {
     }
 
     // Add HAR files - separate file per tab if multi-tab capture was used
-    if (settings.includeNetworkRequests && networkRequests.length > 0) {
+    if (document.getElementById('attachTechnicalData').checked && settings.includeNetworkRequests && networkRequests.length > 0) {
       const isMultiTabCapture = networkRequests.some(req => req._tabId);
 
       if (isMultiTabCapture) {
@@ -1043,7 +1043,7 @@ async function actuallySubmitBugReport() {
     }
 
     // Add console logs files - separate file per tab if multi-tab capture was used
-    if (settings.includeConsoleLogs && consoleLogs.length > 0) {
+    if (document.getElementById('attachTechnicalData').checked && settings.includeConsoleLogs && consoleLogs.length > 0) {
       const isMultiTabCapture = consoleLogs.some(log => log._tabId);
 
       if (isMultiTabCapture) {
