@@ -906,7 +906,8 @@ async function actuallySubmitBugReport() {
       subject: document.getElementById('reviewSubjectInput').value,
       description: document.getElementById('reviewDescriptionText').value,
       priority_id: document.getElementById('reviewPrioritySelect').value,
-      assigned_to_id: document.getElementById('reviewAssigneeSelect').value
+      assigned_to_id: document.getElementById('reviewAssigneeSelect').value,
+      due_date: new Date().toISOString().split('T')[0] // Set due date to today (YYYY-MM-DD)
     };
 
     // Validate required fields (including mandatory assignee)
