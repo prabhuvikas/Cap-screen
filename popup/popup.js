@@ -385,6 +385,10 @@ function selectTool(tool, buttonElement) {
 async function continueToReport() {
   showSection('reportSection');
 
+  // Set due date to today
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('dueDate').value = today;
+
   // Collect technical data
   await collectTechnicalData();
 
@@ -907,11 +911,11 @@ async function actuallySubmitBugReport() {
       description: document.getElementById('reviewDescriptionText').value,
       priority_id: document.getElementById('reviewPrioritySelect').value,
       assigned_to_id: document.getElementById('reviewAssigneeSelect').value,
-      due_date: new Date().toISOString().split('T')[0] // Set due date to today (YYYY-MM-DD)
+      due_date: document.getElementById('reviewDueDateInput').value // Read due date from review modal
     };
 
-    // Validate required fields (including mandatory assignee)
-    if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id || !formData.assigned_to_id) {
+    // Validate required fields (including mandatory assignee and due date)
+    if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id || !formData.assigned_to_id || !formData.due_date) {
       throw new Error('Please fill in all required fields (marked with *)');
     }
 
@@ -1512,6 +1516,13 @@ async function populateReviewModal() {
       reviewAssigneeSelect.appendChild(newOption);
     });
     reviewAssigneeSelect.value = assigneeSelect.value;
+
+    // Set due date
+    const reviewDueDateInput = document.getElementById('reviewDueDateInput');
+    if (!reviewDueDateInput) {
+      throw new Error('reviewDueDateInput not found in DOM');
+    }
+    reviewDueDateInput.value = document.getElementById('dueDate').value || new Date().toISOString().split('T')[0];
 
     // Set description
     const reviewDescriptionText = document.getElementById('reviewDescriptionText');
