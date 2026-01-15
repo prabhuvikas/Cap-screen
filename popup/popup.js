@@ -1146,31 +1146,40 @@ function buildDescription() {
   description += `- Title: ${sanitizeText(pageInfo.title || currentTab.title)}\n`;
   description += `- Timestamp: ${new Date().toISOString()}\n`;
 
-  // Reference attached files instead of embedding all details
-  description += '\n\n## Additional Information\n';
-  description += 'Detailed technical information (browser, system, network, performance data) ';
-  description += 'is available in the attached technical-data.json file.\n';
+  // Only add Additional Information section if attachTechnicalData is checked
+  const attachTechnicalDataChecked = document.getElementById('attachTechnicalData') && document.getElementById('attachTechnicalData').checked;
 
-  if (videoDataUrl) {
+  if (attachTechnicalDataChecked) {
+    // Reference attached files instead of embedding all details
+    description += '\n\n## Additional Information\n';
+    description += 'Detailed technical information (browser, system, network, performance data) ';
+    description += 'is available in the attached technical-data.json file.\n';
+
+    if (videoDataUrl) {
+      description += '- Video recording of the issue is attached.\n';
+    }
+
+    // Check if multi-tab capture was used
+    const isMultiTabCapture = networkRequests.some(req => req._tabId) || consoleLogs.some(log => log._tabId);
+    if (isMultiTabCapture) {
+      const uniqueTabIds = new Set([
+        ...networkRequests.filter(req => req._tabId).map(req => req._tabId),
+        ...consoleLogs.filter(log => log._tabId).map(log => log._tabId)
+      ]);
+      description += `\n**Note:** Data captured from ${uniqueTabIds.size} tab(s).\n`;
+    }
+
+    if (settings.includeNetworkRequests && networkRequests.length > 0) {
+      description += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
+    }
+
+    if (settings.includeConsoleLogs && consoleLogs.length > 0) {
+      description += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
+    }
+  } else if (videoDataUrl) {
+    // If technical data is not attached but we have a video, still mention it
+    description += '\n\n## Additional Information\n';
     description += '- Video recording of the issue is attached.\n';
-  }
-
-  // Check if multi-tab capture was used
-  const isMultiTabCapture = networkRequests.some(req => req._tabId) || consoleLogs.some(log => log._tabId);
-  if (isMultiTabCapture) {
-    const uniqueTabIds = new Set([
-      ...networkRequests.filter(req => req._tabId).map(req => req._tabId),
-      ...consoleLogs.filter(log => log._tabId).map(log => log._tabId)
-    ]);
-    description += `\n**Note:** Data captured from ${uniqueTabIds.size} tab(s).\n`;
-  }
-
-  if (settings.includeNetworkRequests && networkRequests.length > 0) {
-    description += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
-  }
-
-  if (settings.includeConsoleLogs && consoleLogs.length > 0) {
-    description += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
   }
 
   // Sanitize the entire description to remove any remaining unicode
@@ -1662,15 +1671,23 @@ async function populateReviewModal() {
 
     pageInfoContainer.innerHTML = pageInfoHtml;
 
+    // Check if technical data should be shown
+    const attachTechnicalDataChecked = document.getElementById('attachTechnicalData') && document.getElementById('attachTechnicalData').checked;
+
     // Network Tab
     const networkCount = networkRequests.length;
-    document.getElementById('networkCount').textContent = networkCount;
-    document.getElementById('networkCountText').textContent = networkCount;
+    document.getElementById('networkCount').textContent = attachTechnicalDataChecked ? networkCount : 0;
+    document.getElementById('networkCountText').textContent = attachTechnicalDataChecked ? networkCount : 0;
 
     const networkContainer = document.getElementById('reviewNetwork');
     networkContainer.innerHTML = '';
 
-    if (networkCount === 0) {
+    if (!attachTechnicalDataChecked) {
+      const notIncludedMsg = document.createElement('div');
+      notIncludedMsg.style.cssText = 'padding: 16px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; color: #856404;';
+      notIncludedMsg.innerHTML = '<p style="margin: 0; font-weight: 600;">ℹ️ Network data not included</p><p style="margin: 8px 0 0 0; font-size: 12px;">The "Attach technical data" checkbox is not checked. Network requests will not be captured or attached to the issue.</p>';
+      networkContainer.appendChild(notIncludedMsg);
+    } else if (networkCount === 0) {
       networkContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No network requests captured</p>';
     } else {
       networkRequests.slice(0, 50).forEach((req, index) => {
@@ -1714,13 +1731,18 @@ async function populateReviewModal() {
 
     // Console Tab
     const consoleCount = consoleLogs.length;
-    document.getElementById('consoleCount').textContent = consoleCount;
-    document.getElementById('consoleCountText').textContent = consoleCount;
+    document.getElementById('consoleCount').textContent = attachTechnicalDataChecked ? consoleCount : 0;
+    document.getElementById('consoleCountText').textContent = attachTechnicalDataChecked ? consoleCount : 0;
 
     const consoleContainer = document.getElementById('reviewConsole');
     consoleContainer.innerHTML = '';
 
-    if (consoleCount === 0) {
+    if (!attachTechnicalDataChecked) {
+      const notIncludedMsg = document.createElement('div');
+      notIncludedMsg.style.cssText = 'padding: 16px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; color: #856404;';
+      notIncludedMsg.innerHTML = '<p style="margin: 0; font-weight: 600;">ℹ️ Console logs not included</p><p style="margin: 8px 0 0 0; font-size: 12px;">The "Attach technical data" checkbox is not checked. Console logs will not be captured or attached to the issue.</p>';
+      consoleContainer.appendChild(notIncludedMsg);
+    } else if (consoleCount === 0) {
       consoleContainer.innerHTML = '<p style="color: #666; font-size: 12px;">No console logs captured</p>';
     } else {
       consoleLogs.slice(0, 50).forEach((log, index) => {

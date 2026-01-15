@@ -1884,57 +1884,85 @@ function buildDescription() {
   description += `- Title: ${sanitizeText(pageInfo.title || 'N/A')}\n`;
   description += `- Timestamp: ${new Date().toISOString()}\n`;
 
-  // Reference attached files
-  description += '\n\n## Additional Information\n';
-  description += 'Detailed technical information (browser, system, network, performance data) ';
-  description += 'is available in the attached technical-data.json file.\n';
+  // Only add Additional Information section if attachTechnicalData is checked
+  const attachTechnicalDataChecked = document.getElementById('attachTechnicalData') && document.getElementById('attachTechnicalData').checked;
 
-  if (videoDataUrl) {
-    description += '- Video recording of the issue is attached.\n';
-  }
+  if (attachTechnicalDataChecked) {
+    // Reference attached files
+    description += '\n\n## Additional Information\n';
+    description += 'Detailed technical information (browser, system, network, performance data) ';
+    description += 'is available in the attached technical-data.json file.\n';
 
-  // Check if multi-tab capture was used
-  const isMultiTabCapture = networkRequests.some(req => req._tabId) || consoleLogs.some(log => log._tabId);
-  if (isMultiTabCapture) {
-    const uniqueTabIds = new Set([
-      ...networkRequests.filter(req => req._tabId).map(req => req._tabId),
-      ...consoleLogs.filter(log => log._tabId).map(log => log._tabId)
-    ]);
-    description += `\n**Note:** Data captured from ${uniqueTabIds.size} tab(s).\n`;
-  }
+    if (videoDataUrl) {
+      description += '- Video recording of the issue is attached.\n';
+    }
 
-  if (settings.includeNetworkRequests && networkRequests.length > 0) {
-    description += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
-  }
+    // Check if multi-tab capture was used
+    const isMultiTabCapture = networkRequests.some(req => req._tabId) || consoleLogs.some(log => log._tabId);
+    if (isMultiTabCapture) {
+      const uniqueTabIds = new Set([
+        ...networkRequests.filter(req => req._tabId).map(req => req._tabId),
+        ...consoleLogs.filter(log => log._tabId).map(log => log._tabId)
+      ]);
+      description += `\n**Note:** Data captured from ${uniqueTabIds.size} tab(s).\n`;
+    }
 
-  if (settings.includeConsoleLogs && consoleLogs.length > 0) {
-    description += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
-  }
+    if (settings.includeNetworkRequests && networkRequests.length > 0) {
+      description += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
+    }
 
-  // Mention media attachments
-  if (screenshots && screenshots.length > 0) {
-    const screenshotCount = screenshots.filter(s => s.type !== 'video').length;
-    const videoCount = screenshots.filter(s => s.type === 'video').length;
+    if (settings.includeConsoleLogs && consoleLogs.length > 0) {
+      description += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
+    }
 
-    if (screenshotCount > 0 || videoCount > 0) {
-      description += `\n### Media Attachments\n`;
-      if (screenshotCount > 0) {
-        description += `- ${screenshotCount} screenshot(s) attached\n`;
-      }
-      if (videoCount > 0) {
-        description += `- ${videoCount} video recording(s) attached\n`;
+    // Mention media attachments
+    if (screenshots && screenshots.length > 0) {
+      const screenshotCount = screenshots.filter(s => s.type !== 'video').length;
+      const videoCount = screenshots.filter(s => s.type === 'video').length;
+
+      if (screenshotCount > 0 || videoCount > 0) {
+        description += `\n### Media Attachments\n`;
+        if (screenshotCount > 0) {
+          description += `- ${screenshotCount} screenshot(s) attached\n`;
+        }
+        if (videoCount > 0) {
+          description += `- ${videoCount} video recording(s) attached\n`;
+        }
       }
     }
-  }
 
-  // Mention additional user-uploaded documents
-  const fileInput = document.getElementById('additionalDocuments');
-  if (fileInput && fileInput.files && fileInput.files.length > 0) {
-    description += `\n### User-Uploaded Documents\n`;
-    description += `${fileInput.files.length} additional document(s) attached:\n`;
-    for (let i = 0; i < fileInput.files.length; i++) {
-      const file = fileInput.files[i];
-      description += `- ${file.name} (${(file.size / 1024).toFixed(2)} KB)\n`;
+    // Mention additional user-uploaded documents
+    const fileInput = document.getElementById('additionalDocuments');
+    if (fileInput && fileInput.files && fileInput.files.length > 0) {
+      description += `\n### User-Uploaded Documents\n`;
+      description += `${fileInput.files.length} additional document(s) attached:\n`;
+      for (let i = 0; i < fileInput.files.length; i++) {
+        const file = fileInput.files[i];
+        description += `- ${file.name} (${(file.size / 1024).toFixed(2)} KB)\n`;
+      }
+    }
+  } else if (videoDataUrl || (screenshots && screenshots.filter(s => s.type !== 'video').length > 0)) {
+    // If technical data is not attached but we have media, still mention them
+    description += '\n\n## Additional Information\n';
+
+    if (videoDataUrl) {
+      description += '- Video recording of the issue is attached.\n';
+    }
+
+    // Mention media attachments
+    if (screenshots && screenshots.length > 0) {
+      const screenshotCount = screenshots.filter(s => s.type !== 'video').length;
+      const videoCount = screenshots.filter(s => s.type === 'video').length;
+
+      if (screenshotCount > 0 || videoCount > 0) {
+        description += `\n### Media Attachments\n`;
+        if (screenshotCount > 0) {
+          description += `- ${screenshotCount} screenshot(s) attached\n`;
+        }
+        if (videoCount > 0) {
+          description += `- ${videoCount} video recording(s) attached\n`;
+        }
+      }
     }
   }
 
@@ -2407,13 +2435,23 @@ async function populateReviewModal() {
 
     pageInfoContainer.innerHTML = pageInfoHtml;
 
+    // Check if technical data should be shown
+    const attachTechnicalDataChecked = document.getElementById('attachTechnicalData') && document.getElementById('attachTechnicalData').checked;
+
     // Network Tab
     const networkCount = networkRequests.length;
-    document.getElementById('networkCount').textContent = networkCount;
-    document.getElementById('networkCountText').textContent = networkCount;
+    document.getElementById('networkCount').textContent = attachTechnicalDataChecked ? networkCount : 0;
+    document.getElementById('networkCountText').textContent = attachTechnicalDataChecked ? networkCount : 0;
 
     const networkContainer = document.getElementById('reviewNetwork');
     networkContainer.innerHTML = '';
+
+    if (!attachTechnicalDataChecked) {
+      const notIncludedMsg = document.createElement('div');
+      notIncludedMsg.style.cssText = 'padding: 16px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; color: #856404;';
+      notIncludedMsg.innerHTML = '<p style="margin: 0; font-weight: 600;">ℹ️ Network data not included</p><p style="margin: 8px 0 0 0; font-size: 12px;">The "Attach technical data" checkbox is not checked. Network requests will not be captured or attached to the issue.</p>';
+      networkContainer.appendChild(notIncludedMsg);
+    } else {
 
     // Show recording timeframe indicator if we have videos with timeframes and network requests
     const videosWithTimeframes = screenshots.filter(s => s.type === 'video' && s.recordingTimeframe);
@@ -2537,15 +2575,22 @@ async function populateReviewModal() {
         networkContainer.appendChild(more);
       }
     }
+    } // End of attachTechnicalDataChecked check for Network Tab
 
     // Console Tab
     const consoleCount = consoleLogs.length;
-    document.getElementById('consoleCount').textContent = consoleCount;
-    document.getElementById('consoleCountText').textContent = consoleCount;
+    document.getElementById('consoleCount').textContent = attachTechnicalDataChecked ? consoleCount : 0;
+    document.getElementById('consoleCountText').textContent = attachTechnicalDataChecked ? consoleCount : 0;
 
     const consoleContainer = document.getElementById('reviewConsole');
     consoleContainer.innerHTML = '';
 
+    if (!attachTechnicalDataChecked) {
+      const notIncludedMsg = document.createElement('div');
+      notIncludedMsg.style.cssText = 'padding: 16px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; color: #856404;';
+      notIncludedMsg.innerHTML = '<p style="margin: 0; font-weight: 600;">ℹ️ Console logs not included</p><p style="margin: 8px 0 0 0; font-size: 12px;">The "Attach technical data" checkbox is not checked. Console logs will not be captured or attached to the issue.</p>';
+      consoleContainer.appendChild(notIncludedMsg);
+    } else {
     // Show recording timeframe indicator if we have videos with timeframes and console logs
     if (videosWithTimeframes.length > 0 && consoleCount > 0) {
       // Filter videos to only those with console logs in their timeframe
@@ -2679,6 +2724,7 @@ async function populateReviewModal() {
         consoleContainer.appendChild(more);
       }
     }
+    } // End of attachTechnicalDataChecked check for Console Tab
 
     // Additional Documents Tab
     const fileInput = document.getElementById('additionalDocuments');
