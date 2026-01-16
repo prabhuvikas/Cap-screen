@@ -69,6 +69,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Setup event listeners
   setupEventListeners();
 
+  // Verify due date field exists in DOM
+  console.log('[DEBUG] Checking for dueDate field in DOM...');
+  const dueDateField = document.getElementById('dueDate');
+  console.log('[DEBUG] dueDate field found:', dueDateField);
+  if (dueDateField) {
+    console.log('[DEBUG] dueDate field type:', dueDateField.type);
+    console.log('[DEBUG] dueDate field required:', dueDateField.required);
+    console.log('[DEBUG] dueDate field parent:', dueDateField.parentElement);
+  }
+
   // Show initial section
   showSection('captureSection');
 });
@@ -387,7 +397,15 @@ async function continueToReport() {
 
   // Set due date to today
   const today = new Date().toISOString().split('T')[0];
-  document.getElementById('dueDate').value = today;
+  const dueDateField = document.getElementById('dueDate');
+  console.log('[Due Date] Setting due date field to:', today);
+  console.log('[Due Date] Field element:', dueDateField);
+  if (dueDateField) {
+    dueDateField.value = today;
+    console.log('[Due Date] Value set successfully:', dueDateField.value);
+  } else {
+    console.error('[Due Date] ERROR: dueDate field not found in DOM!');
+  }
 
   // Collect technical data
   await collectTechnicalData();
@@ -804,6 +822,14 @@ async function loadRedmineData() {
     // Trigger project change to load project-specific data
     if (settings.defaultProject) {
       await onProjectChange();
+    }
+
+    // Ensure due date is set (fallback)
+    const dueDateField = document.getElementById('dueDate');
+    if (dueDateField && !dueDateField.value) {
+      const today = new Date().toISOString().split('T')[0];
+      dueDateField.value = today;
+      console.log('[Due Date] Fallback: Set due date to:', today);
     }
 
   } catch (error) {
