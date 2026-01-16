@@ -384,23 +384,30 @@
 
   <script>
     // Immediate test - runs before anything else
-    console.log('🚨 IMMEDIATE TEST: popup.html loaded! Version 2024-01-16-v7');
+    console.log('🚨 IMMEDIATE TEST: popup.html loaded! Version 2024-01-16-v8');
     console.log('🚨 Testing dueDate field existence...');
+
+    // Test immediately (no setTimeout)
+    const dueDateField = document.getElementById('dueDate');
+    console.log('🚨 dueDate field IMMEDIATE check:', dueDateField);
+    if (dueDateField) {
+      console.log('🚨 ✅ dueDate field EXISTS!');
+      console.log('🚨 Field details:', {
+        type: dueDateField.type,
+        required: dueDateField.required,
+        style: dueDateField.getAttribute('style'),
+        display: window.getComputedStyle(dueDateField).display,
+        visibility: window.getComputedStyle(dueDateField).visibility
+      });
+    } else {
+      console.log('🚨 ❌ dueDate field NOT FOUND!');
+    }
+
+    // Also test with setTimeout
     setTimeout(() => {
-      const dueDateField = document.getElementById('dueDate');
-      console.log('🚨 dueDate field on timeout:', dueDateField);
-      if (dueDateField) {
-        console.log('🚨 ✅ dueDate field EXISTS!');
-        console.log('🚨 Field details:', {
-          type: dueDateField.type,
-          required: dueDateField.required,
-          style: dueDateField.getAttribute('style'),
-          display: window.getComputedStyle(dueDateField).display,
-          visibility: window.getComputedStyle(dueDateField).visibility
-        });
-      } else {
-        console.log('🚨 ❌ dueDate field NOT FOUND!');
-      }
+      console.log('🚨 setTimeout executed after 2 seconds');
+      const dueDateField2 = document.getElementById('dueDate');
+      console.log('🚨 dueDate field on timeout:', dueDateField2);
     }, 2000);
   </script>
   <script src="../lib/utils.js"></script>
