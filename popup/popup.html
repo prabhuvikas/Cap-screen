@@ -378,13 +378,14 @@
 
     <!-- Footer -->
     <footer>
-      <small>Cred Issue Reporter v1.1.0</small>
+      <small>Cred Issue Reporter v2.0.9-CACHE-BUST</small>
     </footer>
   </div>
 
   <script>
     // Immediate test - runs before anything else
-    console.log('🚨 IMMEDIATE TEST: popup.html loaded! Version 2024-01-16-v8');
+    console.log('🚨 IMMEDIATE TEST: popup.html loaded! Version 2024-01-16-v9-CACHE-BUST');
+    console.log('🚨 If you see v9-CACHE-BUST, the new HTML is loaded!');
     console.log('🚨 Testing dueDate field existence...');
 
     // Test immediately (no setTimeout)
@@ -410,9 +411,9 @@
       console.log('🚨 dueDate field on timeout:', dueDateField2);
     }, 2000);
   </script>
-  <script src="../lib/utils.js"></script>
-  <script src="../lib/redmine-api.js"></script>
-  <script src="../content/annotator.js"></script>
-  <script src="popup.js"></script>
+  <script src="../lib/utils.js?v=9"></script>
+  <script src="../lib/redmine-api.js?v=9"></script>
+  <script src="../content/annotator.js?v=9"></script>
+  <script src="popup.js?v=9"></script>
 </body>
 </html>
