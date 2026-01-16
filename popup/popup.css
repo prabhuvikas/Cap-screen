@@ -370,6 +370,11 @@ main {
   transition: border-color 0.3s;
 }
 
+.form-group input[type="date"] {
+  min-height: 36px;
+  display: block;
+}
+
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
