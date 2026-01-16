@@ -127,6 +127,9 @@
 
       <!-- Step 3: Fill Issue Report -->
       <section id="reportSection" class="section hidden">
+        <div style="background: red; color: white; padding: 20px; font-size: 20px; font-weight: bold; text-align: center; margin-bottom: 20px;">
+          🚨 TEST: IF YOU SEE THIS RED BOX, HTML FILE IS LOADED! Version: 2024-01-16-v7 🚨
+        </div>
         <h2>3. Issue Details</h2>
 
         <form id="bugReportForm">
@@ -379,6 +382,27 @@
     </footer>
   </div>
 
+  <script>
+    // Immediate test - runs before anything else
+    console.log('🚨 IMMEDIATE TEST: popup.html loaded! Version 2024-01-16-v7');
+    console.log('🚨 Testing dueDate field existence...');
+    setTimeout(() => {
+      const dueDateField = document.getElementById('dueDate');
+      console.log('🚨 dueDate field on timeout:', dueDateField);
+      if (dueDateField) {
+        console.log('🚨 ✅ dueDate field EXISTS!');
+        console.log('🚨 Field details:', {
+          type: dueDateField.type,
+          required: dueDateField.required,
+          style: dueDateField.getAttribute('style'),
+          display: window.getComputedStyle(dueDateField).display,
+          visibility: window.getComputedStyle(dueDateField).visibility
+        });
+      } else {
+        console.log('🚨 ❌ dueDate field NOT FOUND!');
+      }
+    }, 2000);
+  </script>
   <script src="../lib/utils.js"></script>
   <script src="../lib/redmine-api.js"></script>
   <script src="../content/annotator.js"></script>
