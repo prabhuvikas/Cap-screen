@@ -1381,6 +1381,14 @@ async function loadRedmineData() {
       await onProjectChange();
     }
 
+    // Set due date to today
+    const dueDateField = document.getElementById('dueDate');
+    if (dueDateField) {
+      const today = new Date().toISOString().split('T')[0];
+      dueDateField.value = today;
+      console.log('[Annotate] Due date set to today:', today);
+    }
+
     console.log('[Annotate] Redmine data loaded successfully');
   } catch (error) {
     console.error('[Annotate] Error loading Redmine data:', error);
@@ -1493,11 +1501,12 @@ async function actuallySubmitBugReport() {
       subject: document.getElementById('reviewSubjectInput').value,
       description: document.getElementById('reviewDescriptionText').value,
       priority_id: document.getElementById('reviewPrioritySelect').value,
-      assigned_to_id: document.getElementById('reviewAssigneeSelect').value
+      assigned_to_id: document.getElementById('reviewAssigneeSelect').value,
+      due_date: document.getElementById('reviewDueDateInput').value
     };
 
     // Validate required fields
-    if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id || !formData.assigned_to_id) {
+    if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id || !formData.assigned_to_id || !formData.due_date) {
       throw new Error('Please fill in all required fields (marked with *)');
     }
 
@@ -2248,6 +2257,12 @@ async function populateReviewModal() {
         reviewAssigneeSelect.appendChild(newOption);
       });
       reviewAssigneeSelect.value = assigneeSelect.value;
+
+      // Set due date in review modal
+      const reviewDueDateInput = document.getElementById('reviewDueDateInput');
+      if (reviewDueDateInput) {
+        reviewDueDateInput.value = document.getElementById('dueDate').value || new Date().toISOString().split('T')[0];
+      }
 
       const reviewDescriptionText = document.getElementById('reviewDescriptionText');
       reviewDescriptionText.value = buildDescription();
