@@ -61,7 +61,9 @@ function createJWT(credentials) {
   const now = Math.floor(Date.now() / 1000);
   const claim = {
     iss: credentials.client_email,
-    scope: 'https://www.googleapis.com/auth/drive.file',
+    // Using drive scope instead of drive.file to allow uploading to existing folders
+    // that the service account has been shared access to
+    scope: 'https://www.googleapis.com/auth/drive',
     aud: 'https://oauth2.googleapis.com/token',
     exp: now + 3600,
     iat: now
@@ -163,6 +165,13 @@ function uploadFile(accessToken, zipFile, fileName, folderId) {
         if (res.statusCode === 200 || res.statusCode === 201) {
           const response = JSON.parse(data);
           resolve(response.id);
+        } else if (res.statusCode === 404 && data.includes('File not found')) {
+          reject(new Error(
+            `Failed to upload file: 404 - Target folder not found or not accessible.\n` +
+            `This usually means the folder ID "${folderId}" is invalid or the service account ` +
+            `doesn't have access to it.\n` +
+            `To fix: Share the target Google Drive folder with the service account email: ${credentials.client_email}`
+          ));
         } else {
           reject(new Error(`Failed to upload file: ${res.statusCode} ${data}`));
         }
