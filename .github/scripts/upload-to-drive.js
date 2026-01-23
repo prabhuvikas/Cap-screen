@@ -3,6 +3,10 @@
 /**
  * Upload extension ZIP to Google Drive
  * Uses service account authentication
+ *
+ * IMPORTANT: Service accounts don't have storage quota. The target folder
+ * must be in a Shared Drive (Team Drive), not a regular user's My Drive.
+ * See: https://developers.google.com/drive/api/guides/about-shareddrives
  */
 
 const fs = require('fs');
@@ -187,7 +191,8 @@ function verifyFolderAccess(accessToken, folderId) {
     const options = {
       hostname: 'www.googleapis.com',
       port: 443,
-      path: `/drive/v3/files/${folderId}?fields=id,name,mimeType,owners,permissions`,
+      // supportsAllDrives=true is required to access Shared Drive folders
+      path: `/drive/v3/files/${folderId}?fields=id,name,mimeType,owners,permissions,driveId&supportsAllDrives=true`,
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${accessToken}`
@@ -208,6 +213,13 @@ function verifyFolderAccess(accessToken, folderId) {
           const folderInfo = JSON.parse(data);
           debug(`Folder name: ${folderInfo.name}`);
           debug(`Folder mimeType: ${folderInfo.mimeType}`);
+          if (folderInfo.driveId) {
+            debug(`Shared Drive ID: ${folderInfo.driveId}`);
+            console.log('✅ Folder is in a Shared Drive (required for service account uploads)');
+          } else {
+            console.warn('⚠️  WARNING: Folder is NOT in a Shared Drive. Service accounts cannot upload to My Drive folders.');
+            console.warn('   Please move the folder to a Shared Drive or use a Shared Drive folder ID.');
+          }
           if (folderInfo.owners) {
             debug(`Folder owners: ${folderInfo.owners.map(o => o.emailAddress).join(', ')}`);
           }
@@ -286,7 +298,8 @@ function uploadFile(accessToken, zipFile, fileName, folderId) {
     const options = {
       hostname: 'www.googleapis.com',
       port: 443,
-      path: '/upload/drive/v3/files?uploadType=multipart',
+      // supportsAllDrives=true is required for uploading to Shared Drives
+      path: '/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -318,6 +331,17 @@ function uploadFile(accessToken, zipFile, fileName, folderId) {
             `This usually means the folder ID "${folderId}" is invalid or the service account ` +
             `doesn't have access to it.\n` +
             `To fix: Share the target Google Drive folder with the service account email: ${credentials.client_email}`
+          ));
+        } else if (res.statusCode === 403 && data.includes('storageQuotaExceeded')) {
+          reject(new Error(
+            `Failed to upload file: 403 - Storage quota exceeded.\n` +
+            `Service accounts don't have their own storage quota.\n` +
+            `SOLUTION: The target folder must be in a Shared Drive (Team Drive), not a regular My Drive folder.\n` +
+            `Steps to fix:\n` +
+            `  1. Create a Shared Drive in Google Drive (or use an existing one)\n` +
+            `  2. Share the Shared Drive with the service account: ${credentials.client_email}\n` +
+            `  3. Update GOOGLE_DRIVE_FOLDER_ID to use a folder ID from the Shared Drive\n` +
+            `See: https://developers.google.com/drive/api/guides/about-shareddrives`
           ));
         } else {
           reject(new Error(`Failed to upload file: ${res.statusCode} ${data}`));
@@ -352,7 +376,8 @@ function makeFilePublic(accessToken, fileId) {
     const options = {
       hostname: 'www.googleapis.com',
       port: 443,
-      path: `/drive/v3/files/${fileId}/permissions`,
+      // supportsAllDrives=true is required for files in Shared Drives
+      path: `/drive/v3/files/${fileId}/permissions?supportsAllDrives=true`,
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
