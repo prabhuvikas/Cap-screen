@@ -263,8 +263,13 @@ function verifyFolderAccess(accessToken, folderId) {
 
 /**
  * Upload file to Google Drive
+ * @param {string} accessToken - OAuth access token
+ * @param {string} zipFile - Path to the file to upload
+ * @param {string} fileName - Name for the uploaded file
+ * @param {string} folderId - Parent folder ID
+ * @param {string|null} driveId - Shared Drive ID (null for My Drive)
  */
-function uploadFile(accessToken, zipFile, fileName, folderId) {
+function uploadFile(accessToken, zipFile, fileName, folderId, driveId = null) {
   return new Promise((resolve, reject) => {
     debug('Preparing file upload...');
 
@@ -276,6 +281,12 @@ function uploadFile(accessToken, zipFile, fileName, folderId) {
       name: fileName,
       parents: [folderId]
     };
+
+    // For Shared Drives, include the driveId in metadata
+    if (driveId) {
+      debug(`Including driveId in metadata for Shared Drive: ${driveId}`);
+    }
+
     debug(`Upload metadata: ${JSON.stringify(metadata)}`);
 
     const boundary = '-------314159265358979323846';
@@ -295,11 +306,18 @@ function uploadFile(accessToken, zipFile, fileName, folderId) {
     const requestBodyLength = Buffer.byteLength(multipartRequestBody);
     debug(`Multipart request body size: ${requestBodyLength} bytes (${(requestBodyLength / 1024 / 1024).toFixed(2)} MB)`);
 
+    // Build the upload path with query parameters
+    let uploadPath = '/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true';
+    // For Shared Drives, explicitly include the driveId to ensure proper routing
+    if (driveId) {
+      uploadPath += `&driveId=${encodeURIComponent(driveId)}`;
+      debug(`Upload path includes Shared Drive ID: ${driveId}`);
+    }
+
     const options = {
       hostname: 'www.googleapis.com',
       port: 443,
-      // supportsAllDrives=true is required for uploading to Shared Drives
-      path: '/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
+      path: uploadPath,
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -431,18 +449,34 @@ async function main() {
     console.log('✅ Access token obtained');
 
     console.log('Step 3: Verifying folder access...');
+    let sharedDriveId = null;
+    let folderVerified = false;
     try {
       const folderInfo = await verifyFolderAccess(accessToken, folderId);
       console.log(`✅ Folder verified: "${folderInfo.name}"`);
+      folderVerified = true;
+      // Store the driveId if this is a Shared Drive folder
+      if (folderInfo.driveId) {
+        sharedDriveId = folderInfo.driveId;
+        console.log(`📁 Target is in Shared Drive: ${folderInfo.driveId}`);
+        debug(`Will use Shared Drive ID: ${sharedDriveId} for upload`);
+      }
     } catch (folderError) {
-      console.error('⚠️  Folder verification failed, attempting upload anyway...');
-      debug(`Folder verification error: ${folderError.message}`);
+      console.error('❌ Folder verification failed:', folderError.message);
+      console.error('');
+      console.error('The upload cannot proceed without access to the target folder.');
+      console.error('Please ensure:');
+      console.error(`  1. The folder ID "${folderId}" is correct`);
+      console.error(`  2. The folder is shared with the service account: ${credentials.client_email}`);
+      console.error('  3. For Shared Drives: the service account must be added as a member of the Shared Drive');
+      console.error('');
+      throw folderError;
     }
 
     const fileName = path.basename(zipFile);
     debug(`File name for upload: ${fileName}`);
     console.log(`Step 4: Uploading ${fileName}...`);
-    const fileId = await uploadFile(accessToken, zipFile, fileName, folderId);
+    const fileId = await uploadFile(accessToken, zipFile, fileName, folderId, sharedDriveId);
     console.log(`✅ File uploaded with ID: ${fileId}`);
 
     console.log('Step 5: Making file publicly accessible...');
