@@ -1453,13 +1453,39 @@ function openSettings() {
 
 // Show section
 function showSection(sectionId) {
+  console.log('🚨 showSection called with:', sectionId);
+
   document.querySelectorAll('.section').forEach(section => {
     section.classList.remove('active');
     section.classList.add('hidden');
   });
+
   const targetSection = document.getElementById(sectionId);
-  targetSection.classList.add('active');
-  targetSection.classList.remove('hidden');
+  console.log('🚨 Target section element:', targetSection);
+
+  if (targetSection) {
+    targetSection.classList.add('active');
+    targetSection.classList.remove('hidden');
+    console.log('🚨 Section classes after update:', targetSection.className);
+    console.log('🚨 Section display style:', window.getComputedStyle(targetSection).display);
+
+    // If showing reportSection, check for due date field
+    if (sectionId === 'reportSection') {
+      setTimeout(() => {
+        const dueDateField = document.getElementById('dueDate');
+        const redBox = targetSection.querySelector('div[style*="background: red"]');
+        console.log('🚨 [reportSection] Red test box found:', redBox);
+        console.log('🚨 [reportSection] Due date field found:', dueDateField);
+        if (dueDateField) {
+          console.log('🚨 [reportSection] Due date field visible?', dueDateField.offsetHeight > 0);
+          console.log('🚨 [reportSection] Due date field parent:', dueDateField.parentElement);
+          console.log('🚨 [reportSection] Due date computed display:', window.getComputedStyle(dueDateField).display);
+        }
+      }, 100);
+    }
+  } else {
+    console.error('🚨 ERROR: Target section not found:', sectionId);
+  }
 }
 
 // Show status message
