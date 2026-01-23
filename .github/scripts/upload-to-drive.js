@@ -22,24 +22,48 @@ if (!zipFile || !version) {
 const credentialsJson = process.env.GOOGLE_DRIVE_CREDENTIALS;
 const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
+// Debug logging helper
+const DEBUG = process.env.DEBUG === 'true' || process.env.ACTIONS_STEP_DEBUG === 'true';
+function debug(message) {
+  if (DEBUG) {
+    console.log(`[DEBUG] ${message}`);
+  }
+}
+
+debug('Starting Google Drive upload script');
+debug(`Node version: ${process.version}`);
+debug(`Working directory: ${process.cwd()}`);
+
 if (!credentialsJson) {
   console.error('❌ GOOGLE_DRIVE_CREDENTIALS environment variable not set');
   process.exit(1);
 }
+
+debug(`Credentials JSON length: ${credentialsJson.length} characters`);
 
 if (!folderId) {
   console.error('❌ GOOGLE_DRIVE_FOLDER_ID environment variable not set');
   process.exit(1);
 }
 
+debug(`Folder ID: ${folderId.substring(0, 8)}...${folderId.substring(folderId.length - 4)} (length: ${folderId.length})`);
+
 console.log(`Uploading ${zipFile} to Google Drive...`);
 
 // Parse credentials
 let credentials;
 try {
+  debug('Parsing credentials JSON...');
   credentials = JSON.parse(credentialsJson);
+  debug('Credentials parsed successfully');
+  debug(`Service account email: ${credentials.client_email}`);
+  debug(`Project ID: ${credentials.project_id}`);
+  debug(`Private key ID: ${credentials.private_key_id ? credentials.private_key_id.substring(0, 8) + '...' : 'NOT SET'}`);
+  debug(`Private key present: ${credentials.private_key ? 'Yes' : 'No'}`);
+  debug(`Private key length: ${credentials.private_key ? credentials.private_key.length : 0} characters`);
 } catch (error) {
   console.error('❌ Failed to parse Google Drive credentials JSON:', error.message);
+  debug(`Raw credentials first 50 chars: ${credentialsJson.substring(0, 50)}...`);
   process.exit(1);
 }
 
@@ -53,6 +77,8 @@ if (!fs.existsSync(zipFile)) {
  * Create JWT token for service account authentication
  */
 function createJWT(credentials) {
+  debug('Creating JWT token...');
+
   const header = {
     alg: 'RS256',
     typ: 'JWT'
@@ -69,15 +95,29 @@ function createJWT(credentials) {
     iat: now
   };
 
+  debug(`JWT issuer (iss): ${claim.iss}`);
+  debug(`JWT scope: ${claim.scope}`);
+  debug(`JWT audience (aud): ${claim.aud}`);
+  debug(`JWT issued at (iat): ${claim.iat}`);
+  debug(`JWT expires (exp): ${claim.exp}`);
+
   const base64Header = Buffer.from(JSON.stringify(header)).toString('base64url');
   const base64Claim = Buffer.from(JSON.stringify(claim)).toString('base64url');
 
+  debug(`JWT header (base64url): ${base64Header}`);
+  debug(`JWT claim length: ${base64Claim.length} characters`);
+
   const crypto = require('crypto');
   const signatureInput = `${base64Header}.${base64Claim}`;
+
+  debug('Signing JWT with RSA-SHA256...');
   const signature = crypto
     .createSign('RSA-SHA256')
     .update(signatureInput)
     .sign(credentials.private_key, 'base64url');
+
+  debug(`JWT signature length: ${signature.length} characters`);
+  debug('JWT created successfully');
 
   return `${signatureInput}.${signature}`;
 }
@@ -87,6 +127,8 @@ function createJWT(credentials) {
  */
 function getAccessToken(jwt) {
   return new Promise((resolve, reject) => {
+    debug('Requesting access token from Google OAuth2...');
+
     const postData = `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`;
 
     const options = {
@@ -100,21 +142,109 @@ function getAccessToken(jwt) {
       }
     };
 
+    debug(`OAuth2 request URL: https://${options.hostname}${options.path}`);
+    debug(`OAuth2 request method: ${options.method}`);
+    debug(`OAuth2 request body length: ${postData.length} characters`);
+
     const req = https.request(options, (res) => {
       let data = '';
+      debug(`OAuth2 response status: ${res.statusCode}`);
+      debug(`OAuth2 response headers: ${JSON.stringify(res.headers)}`);
+
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => {
+        debug(`OAuth2 response body length: ${data.length} characters`);
+
         if (res.statusCode === 200) {
           const response = JSON.parse(data);
+          debug(`Access token obtained, expires in: ${response.expires_in} seconds`);
+          debug(`Token type: ${response.token_type}`);
+          debug(`Access token length: ${response.access_token ? response.access_token.length : 0} characters`);
           resolve(response.access_token);
         } else {
+          debug(`OAuth2 error response: ${data}`);
           reject(new Error(`Failed to get access token: ${res.statusCode} ${data}`));
         }
       });
     });
 
-    req.on('error', reject);
+    req.on('error', (error) => {
+      debug(`OAuth2 request error: ${error.message}`);
+      reject(error);
+    });
     req.write(postData);
+    req.end();
+  });
+}
+
+/**
+ * Verify folder exists and is accessible
+ */
+function verifyFolderAccess(accessToken, folderId) {
+  return new Promise((resolve, reject) => {
+    debug('Verifying folder access...');
+
+    const options = {
+      hostname: 'www.googleapis.com',
+      port: 443,
+      path: `/drive/v3/files/${folderId}?fields=id,name,mimeType,owners,permissions`,
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    };
+
+    debug(`Folder verification URL: https://${options.hostname}${options.path}`);
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      debug(`Folder verification response status: ${res.statusCode}`);
+
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        debug(`Folder verification response: ${data}`);
+
+        if (res.statusCode === 200) {
+          const folderInfo = JSON.parse(data);
+          debug(`Folder name: ${folderInfo.name}`);
+          debug(`Folder mimeType: ${folderInfo.mimeType}`);
+          if (folderInfo.owners) {
+            debug(`Folder owners: ${folderInfo.owners.map(o => o.emailAddress).join(', ')}`);
+          }
+          if (folderInfo.permissions) {
+            debug(`Folder permissions count: ${folderInfo.permissions.length}`);
+            folderInfo.permissions.forEach((p, i) => {
+              debug(`  Permission ${i + 1}: role=${p.role}, type=${p.type}, email=${p.emailAddress || 'N/A'}`);
+            });
+          }
+          resolve(folderInfo);
+        } else if (res.statusCode === 404) {
+          debug('Folder not found (404)');
+          reject(new Error(
+            `Folder not found (404). The folder ID "${folderId}" does not exist or is not accessible.\n` +
+            `Possible causes:\n` +
+            `  1. The folder ID is incorrect\n` +
+            `  2. The folder has been deleted\n` +
+            `  3. The service account doesn't have access to the folder\n` +
+            `To fix: Share the Google Drive folder with: ${credentials.client_email}`
+          ));
+        } else if (res.statusCode === 403) {
+          debug('Folder access forbidden (403)');
+          reject(new Error(
+            `Folder access forbidden (403). The service account doesn't have permission to access this folder.\n` +
+            `To fix: Share the Google Drive folder with: ${credentials.client_email}\n` +
+            `Make sure to grant at least "Editor" access.`
+          ));
+        } else {
+          reject(new Error(`Failed to verify folder: ${res.statusCode} ${data}`));
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      debug(`Folder verification error: ${error.message}`);
+      reject(error);
+    });
     req.end();
   });
 }
@@ -124,13 +254,17 @@ function getAccessToken(jwt) {
  */
 function uploadFile(accessToken, zipFile, fileName, folderId) {
   return new Promise((resolve, reject) => {
+    debug('Preparing file upload...');
+
     const fileContent = fs.readFileSync(zipFile);
     const fileSize = fileContent.length;
+    debug(`File size: ${fileSize} bytes (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
 
     const metadata = {
       name: fileName,
       parents: [folderId]
     };
+    debug(`Upload metadata: ${JSON.stringify(metadata)}`);
 
     const boundary = '-------314159265358979323846';
     const delimiter = `\r\n--${boundary}\r\n`;
@@ -146,6 +280,9 @@ function uploadFile(accessToken, zipFile, fileName, folderId) {
       fileContent.toString('base64') +
       closeDelimiter;
 
+    const requestBodyLength = Buffer.byteLength(multipartRequestBody);
+    debug(`Multipart request body size: ${requestBodyLength} bytes (${(requestBodyLength / 1024 / 1024).toFixed(2)} MB)`);
+
     const options = {
       hostname: 'www.googleapis.com',
       port: 443,
@@ -154,16 +291,26 @@ function uploadFile(accessToken, zipFile, fileName, folderId) {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': `multipart/related; boundary=${boundary}`,
-        'Content-Length': Buffer.byteLength(multipartRequestBody)
+        'Content-Length': requestBodyLength
       }
     };
 
+    debug(`Upload URL: https://${options.hostname}${options.path}`);
+    debug(`Upload method: ${options.method}`);
+    debug(`Upload headers: ${JSON.stringify({ ...options.headers, Authorization: 'Bearer [REDACTED]' })}`);
+
     const req = https.request(options, (res) => {
       let data = '';
+      debug(`Upload response status: ${res.statusCode}`);
+      debug(`Upload response headers: ${JSON.stringify(res.headers)}`);
+
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => {
+        debug(`Upload response body: ${data}`);
+
         if (res.statusCode === 200 || res.statusCode === 201) {
           const response = JSON.parse(data);
+          debug(`Upload successful! File ID: ${response.id}`);
           resolve(response.id);
         } else if (res.statusCode === 404 && data.includes('File not found')) {
           reject(new Error(
@@ -178,7 +325,10 @@ function uploadFile(accessToken, zipFile, fileName, folderId) {
       });
     });
 
-    req.on('error', reject);
+    req.on('error', (error) => {
+      debug(`Upload request error: ${error.message}`);
+      reject(error);
+    });
     req.write(multipartRequestBody);
     req.end();
   });
@@ -189,12 +339,15 @@ function uploadFile(accessToken, zipFile, fileName, folderId) {
  */
 function makeFilePublic(accessToken, fileId) {
   return new Promise((resolve, reject) => {
+    debug('Setting file permissions to public...');
+
     const permission = {
       role: 'reader',
       type: 'anyone'
     };
 
     const postData = JSON.stringify(permission);
+    debug(`Permission payload: ${postData}`);
 
     const options = {
       hostname: 'www.googleapis.com',
@@ -208,11 +361,18 @@ function makeFilePublic(accessToken, fileId) {
       }
     };
 
+    debug(`Permission URL: https://${options.hostname}${options.path}`);
+
     const req = https.request(options, (res) => {
       let data = '';
+      debug(`Permission response status: ${res.statusCode}`);
+
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => {
+        debug(`Permission response: ${data}`);
+
         if (res.statusCode === 200 || res.statusCode === 201) {
+          debug('File permissions set successfully');
           resolve();
         } else {
           reject(new Error(`Failed to make file public: ${res.statusCode} ${data}`));
@@ -220,7 +380,10 @@ function makeFilePublic(accessToken, fileId) {
       });
     });
 
-    req.on('error', reject);
+    req.on('error', (error) => {
+      debug(`Permission request error: ${error.message}`);
+      reject(error);
+    });
     req.write(postData);
     req.end();
   });
@@ -231,19 +394,33 @@ function makeFilePublic(accessToken, fileId) {
  */
 async function main() {
   try {
+    debug('=== Starting Google Drive Upload ===');
+    debug(`Timestamp: ${new Date().toISOString()}`);
+
     console.log('Step 1: Creating JWT...');
     const jwt = createJWT(credentials);
+    debug('JWT token created');
 
     console.log('Step 2: Getting access token...');
     const accessToken = await getAccessToken(jwt);
     console.log('✅ Access token obtained');
 
+    console.log('Step 3: Verifying folder access...');
+    try {
+      const folderInfo = await verifyFolderAccess(accessToken, folderId);
+      console.log(`✅ Folder verified: "${folderInfo.name}"`);
+    } catch (folderError) {
+      console.error('⚠️  Folder verification failed, attempting upload anyway...');
+      debug(`Folder verification error: ${folderError.message}`);
+    }
+
     const fileName = path.basename(zipFile);
-    console.log(`Step 3: Uploading ${fileName}...`);
+    debug(`File name for upload: ${fileName}`);
+    console.log(`Step 4: Uploading ${fileName}...`);
     const fileId = await uploadFile(accessToken, zipFile, fileName, folderId);
     console.log(`✅ File uploaded with ID: ${fileId}`);
 
-    console.log('Step 4: Making file publicly accessible...');
+    console.log('Step 5: Making file publicly accessible...');
     await makeFilePublic(accessToken, fileId);
     console.log('✅ File is now publicly accessible');
 
@@ -254,11 +431,14 @@ async function main() {
     console.log(`View link: ${driveLink}`);
     console.log(`Download link: ${downloadLink}`);
 
+    debug(`Saving drive link to drive-link.txt`);
     // Save link to file for workflow to read
     fs.writeFileSync('drive-link.txt', driveLink);
+    debug('=== Google Drive Upload Complete ===');
 
   } catch (error) {
     console.error('❌ Upload failed:', error.message);
+    debug(`Full error stack: ${error.stack}`);
     process.exit(1);
   }
 }
