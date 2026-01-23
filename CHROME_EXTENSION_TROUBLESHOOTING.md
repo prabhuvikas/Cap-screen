@@ -47,6 +47,7 @@ Service Workers are notorious for caching aggressively.
 
 ## Solution 4: Hard Reset with Profile Reload
 
+### For Linux:
 1. Close ALL Chrome windows
 2. Run the cache clear script:
    ```bash
@@ -59,6 +60,36 @@ Service Workers are notorious for caching aggressively.
    rm -rf ~/.cache/google-chrome/Default/Cache
    rm -rf ~/.cache/google-chrome/Default/Code\ Cache
    ```
+4. Restart Chrome
+5. Load extension
+
+### For Windows (Batch File):
+1. Close ALL Chrome windows
+2. Double-click: `CHROME_CACHE_FIX_WINDOWS.bat`
+3. Follow the prompts
+4. Restart Chrome
+5. Load extension
+
+### For Windows (PowerShell - Recommended):
+1. Right-click `CHROME_CACHE_FIX_WINDOWS.ps1`
+2. Select "Run with PowerShell"
+3. If you get an execution policy error, run PowerShell as Administrator and run:
+   ```powershell
+   Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
+   ```
+4. Then run the script again
+5. Follow the prompts
+6. Restart Chrome
+7. Load extension
+
+### For Windows (Manual):
+1. Close ALL Chrome windows
+2. Press `Win + R`, type: `%LOCALAPPDATA%\Google\Chrome\User Data`
+3. Delete these folders:
+   - `Default\Service Worker`
+   - `Default\Cache`
+   - `Default\Code Cache`
+   - `Default\GPUCache`
 4. Restart Chrome
 5. Load extension
 
