@@ -80,7 +80,12 @@ jobs:
         env:
           GOOGLE_DRIVE_CREDENTIALS: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          DEBUG: 'true'
         run: |
+          echo "=== Debug Info ==="
+          echo "Folder ID length: ${#GOOGLE_DRIVE_FOLDER_ID}"
+          echo "Credentials length: ${#GOOGLE_DRIVE_CREDENTIALS}"
+          echo "==================="
           node .github/scripts/upload-to-drive.js \
             "${{ steps.build.outputs.zip_file }}" \
             "${{ steps.bump_version.outputs.version }}"
