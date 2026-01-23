@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.1] - January 23, 2026
+
+### Added
+- **Due Date Field**: Automatic due date assignment for all Redmine issues
+  - Due date field appears in the issue creation form (between Assignee and Category)
+  - Automatically pre-filled with today's date for convenience
+  - Fully editable in both main form and review modal before submission
+  - Required field with proper validation
+  - Sent to Redmine API with all issue data
+
+### Improved
+- **Developer Experience**: Added comprehensive Chrome extension cache troubleshooting tools
+  - Windows cache clearing scripts (`.bat` and `.ps1`)
+  - Linux/Mac cache clearing script (`.sh`)
+  - Comprehensive troubleshooting documentation
+  - Windows-specific cache fix guide
+
+### Fixed
+- CSS styling for date input field to match other form controls
+- Content Security Policy violations in debug scripts
+- Cleaned up unused code from popup files
+
+### Changed
+- Updated version display across all pages to v2.1.1
+- Updated help documentation version
+
+---
+
 ## [2.0.1] - December 21, 2025
 
 ### Fixed
