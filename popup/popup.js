@@ -69,16 +69,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Setup event listeners
   setupEventListeners();
 
-  // Verify due date field exists in DOM
-  console.log('[DEBUG] Checking for dueDate field in DOM...');
-  const dueDateField = document.getElementById('dueDate');
-  console.log('[DEBUG] dueDate field found:', dueDateField);
-  if (dueDateField) {
-    console.log('[DEBUG] dueDate field type:', dueDateField.type);
-    console.log('[DEBUG] dueDate field required:', dueDateField.required);
-    console.log('[DEBUG] dueDate field parent:', dueDateField.parentElement);
-  }
-
   // Show initial section
   showSection('captureSection');
 });
@@ -394,18 +384,6 @@ function selectTool(tool, buttonElement) {
 // Continue to report form
 async function continueToReport() {
   showSection('reportSection');
-
-  // Set due date to today
-  const today = new Date().toISOString().split('T')[0];
-  const dueDateField = document.getElementById('dueDate');
-  console.log('[Due Date] Setting due date field to:', today);
-  console.log('[Due Date] Field element:', dueDateField);
-  if (dueDateField) {
-    dueDateField.value = today;
-    console.log('[Due Date] Value set successfully:', dueDateField.value);
-  } else {
-    console.error('[Due Date] ERROR: dueDate field not found in DOM!');
-  }
 
   // Collect technical data
   await collectTechnicalData();
@@ -824,14 +802,6 @@ async function loadRedmineData() {
       await onProjectChange();
     }
 
-    // Ensure due date is set (fallback)
-    const dueDateField = document.getElementById('dueDate');
-    if (dueDateField && !dueDateField.value) {
-      const today = new Date().toISOString().split('T')[0];
-      dueDateField.value = today;
-      console.log('[Due Date] Fallback: Set due date to:', today);
-    }
-
   } catch (error) {
     console.error('Error loading Redmine data:', error);
     showStatus('submitStatus', 'Error loading Redmine data. Please check your settings.', 'error');
@@ -936,12 +906,11 @@ async function actuallySubmitBugReport() {
       subject: document.getElementById('reviewSubjectInput').value,
       description: document.getElementById('reviewDescriptionText').value,
       priority_id: document.getElementById('reviewPrioritySelect').value,
-      assigned_to_id: document.getElementById('reviewAssigneeSelect').value,
-      due_date: document.getElementById('reviewDueDateInput').value // Read due date from review modal
+      assigned_to_id: document.getElementById('reviewAssigneeSelect').value
     };
 
-    // Validate required fields (including mandatory assignee and due date)
-    if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id || !formData.assigned_to_id || !formData.due_date) {
+    // Validate required fields (including mandatory assignee)
+    if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id || !formData.assigned_to_id) {
       throw new Error('Please fill in all required fields (marked with *)');
     }
 
@@ -1453,39 +1422,13 @@ function openSettings() {
 
 // Show section
 function showSection(sectionId) {
-  console.log('🚨 showSection called with:', sectionId);
-
   document.querySelectorAll('.section').forEach(section => {
     section.classList.remove('active');
     section.classList.add('hidden');
   });
-
   const targetSection = document.getElementById(sectionId);
-  console.log('🚨 Target section element:', targetSection);
-
-  if (targetSection) {
-    targetSection.classList.add('active');
-    targetSection.classList.remove('hidden');
-    console.log('🚨 Section classes after update:', targetSection.className);
-    console.log('🚨 Section display style:', window.getComputedStyle(targetSection).display);
-
-    // If showing reportSection, check for due date field
-    if (sectionId === 'reportSection') {
-      setTimeout(() => {
-        const dueDateField = document.getElementById('dueDate');
-        const redBox = targetSection.querySelector('div[style*="background: red"]');
-        console.log('🚨 [reportSection] Red test box found:', redBox);
-        console.log('🚨 [reportSection] Due date field found:', dueDateField);
-        if (dueDateField) {
-          console.log('🚨 [reportSection] Due date field visible?', dueDateField.offsetHeight > 0);
-          console.log('🚨 [reportSection] Due date field parent:', dueDateField.parentElement);
-          console.log('🚨 [reportSection] Due date computed display:', window.getComputedStyle(dueDateField).display);
-        }
-      }, 100);
-    }
-  } else {
-    console.error('🚨 ERROR: Target section not found:', sectionId);
-  }
+  targetSection.classList.add('active');
+  targetSection.classList.remove('hidden');
 }
 
 // Show status message
@@ -1568,13 +1511,6 @@ async function populateReviewModal() {
       reviewAssigneeSelect.appendChild(newOption);
     });
     reviewAssigneeSelect.value = assigneeSelect.value;
-
-    // Set due date
-    const reviewDueDateInput = document.getElementById('reviewDueDateInput');
-    if (!reviewDueDateInput) {
-      throw new Error('reviewDueDateInput not found in DOM');
-    }
-    reviewDueDateInput.value = document.getElementById('dueDate').value || new Date().toISOString().split('T')[0];
 
     // Set description
     const reviewDescriptionText = document.getElementById('reviewDescriptionText');

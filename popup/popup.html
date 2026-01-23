@@ -127,9 +127,6 @@
 
       <!-- Step 3: Fill Issue Report -->
       <section id="reportSection" class="section hidden">
-        <div style="background: red; color: white; padding: 20px; font-size: 20px; font-weight: bold; text-align: center; margin-bottom: 20px;">
-          🚨 TEST: IF YOU SEE THIS RED BOX, REPORT SECTION IS VISIBLE! Version: v10 🚨
-        </div>
         <h2>3. Issue Details</h2>
 
         <form id="bugReportForm">
@@ -169,11 +166,6 @@
             <select id="assignee" required>
               <option value="">-- Select Assignee --</option>
             </select>
-          </div>
-
-          <div class="form-group" style="background-color: yellow; padding: 10px; border: 3px solid red;">
-            <label for="dueDate" style="color: red; font-size: 16px; font-weight: bold;">Due Date * (TEST - IF YOU SEE THIS, FIELD EXISTS)</label>
-            <input type="date" id="dueDate" required style="border: 3px solid red !important; height: 50px !important; font-size: 16px !important;">
           </div>
 
           <div class="form-group">
@@ -321,10 +313,6 @@
                     <option value="">-- Select Assignee --</option>
                   </select>
                 </div>
-                <div class="review-item">
-                  <label for="reviewDueDateInput">Due Date: *</label>
-                  <input type="date" id="reviewDueDateInput" class="review-input" required>
-                </div>
                 <div class="review-item full-width">
                   <label for="reviewDescriptionText">Description: *</label>
                   <textarea id="reviewDescriptionText" class="review-textarea" rows="10" required placeholder="Enter description"></textarea>
@@ -378,14 +366,13 @@
 
     <!-- Footer -->
     <footer>
-      <small>Cred Issue Reporter v2.1.0-DEBUG</small>
+      <small>Cred Issue Reporter v1.1.0</small>
     </footer>
   </div>
 
-  <script src="debug.js?v=10"></script>
-  <script src="../lib/utils.js?v=10"></script>
-  <script src="../lib/redmine-api.js?v=10"></script>
-  <script src="../content/annotator.js?v=10"></script>
-  <script src="popup.js?v=10"></script>
+  <script src="../lib/utils.js"></script>
+  <script src="../lib/redmine-api.js"></script>
+  <script src="../content/annotator.js"></script>
+  <script src="popup.js"></script>
 </body>
 </html>

@@ -358,7 +358,6 @@ main {
 }
 
 .form-group input[type="text"],
-.form-group input[type="date"],
 .form-group select,
 .form-group textarea {
   width: 100%;
@@ -368,11 +367,6 @@ main {
   font-size: 13px;
   font-family: inherit;
   transition: border-color 0.3s;
-}
-
-.form-group input[type="date"] {
-  min-height: 36px;
-  display: block;
 }
 
 .form-group input:focus,
