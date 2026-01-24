@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.2] - January 24, 2026
+
+### Changes
+- Handle 204 No Content responses in Redmine news creation
+  - Updated the Redmine news creation script to properly handle both 201 (Created) and 204 (No Content) HTTP response codes as successful outcomes, with improved handling of empty response bodies.
+  - Extended success status code check to accept both  and  responses
+  - Added conditional logic to safely parse response data only when present
+  - Implemented fallback to success message when response body is empty or unparseable
+  - Added clarifying comment documenting the meaning of each success status code
+
+_Merged PR #33 by @prabhuvikas_
+
+---
+
+
+
 ## [2.1.1] - January 23, 2026
 
 ### Added
