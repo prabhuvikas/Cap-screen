@@ -112,49 +112,62 @@ function sanitizeUnicode(text) {
 }
 
 /**
- * Format changelog as Redmine textile markup
+ * Remove PR references from changelog text
+ * Strips patterns like (#32), (PR #32), PR #32, etc.
+ */
+function stripPRReferences(text) {
+  if (!text) return text;
+
+  return text
+    // Remove PR references in parentheses: (#32), (PR #32), (pull #32)
+    .replace(/\s*\(#\d+\)/g, '')
+    .replace(/\s*\(PR\s*#\d+\)/gi, '')
+    .replace(/\s*\(pull\s*#\d+\)/gi, '')
+    // Remove standalone PR references: PR #32, pull #32
+    .replace(/\s*PR\s*#\d+/gi, '')
+    .replace(/\s*pull\s*#\d+/gi, '')
+    // Clean up any double spaces left behind
+    .replace(/  +/g, ' ')
+    // Clean up lines that end with just whitespace
+    .replace(/\s+$/gm, '');
+}
+
+/**
+ * Format changelog as Markdown for Redmine
  */
 function formatForRedmine(changelog, driveLink) {
   if (!changelog) {
     changelog = 'Release notes coming soon.';
   }
 
-  // Convert markdown to Redmine textile
-  let textile = changelog
-    // Convert markdown headers (###) to Redmine headers (h3.)
-    .replace(/^#### (.+)$/gm, 'h4. $1')
-    .replace(/^### (.+)$/gm, 'h3. $1')
-    .replace(/^## (.+)$/gm, 'h2. $1')
-    // Convert bold **text** to *text*
-    .replace(/\*\*(.+?)\*\*/g, '*$1*')
-    // Convert markdown lists with proper indentation
-    .replace(/^- /gm, '* ')
-    .replace(/^  - /gm, '** ')
-    .replace(/^    - /gm, '*** ');
+  // Strip PR references from changelog
+  let content = stripPRReferences(changelog);
 
-  // Add download section
-  const downloadSection = `
-
-h3. Download
-
-Download the latest version of Cred Issue Reporter:
-
-* "Chrome Extension v${version}":${driveLink}
-
-h3. Installation
-
-# Download the ZIP file from the link above
-# Extract the ZIP file
-# Open Chrome and navigate to chrome://extensions/
-# Enable "Developer mode"
-# Click "Load unpacked" and select the extracted folder
-# The extension is now installed and ready to use
+  // Build Markdown template
+  const template = `${content}
 
 ---
 
-For support and bug reports, visit: "GitHub Issues":https://github.com/prabhuvikas/Cap-screen/issues`;
+### Download
 
-  return textile + downloadSection;
+Download the latest version of Cred Issue Reporter:
+
+- [Chrome Extension v${version}](${driveLink})
+
+### Installation
+
+1. Download the ZIP file from the link above
+2. Extract the ZIP file
+3. Open Chrome and navigate to chrome://extensions/
+4. Enable "Developer mode"
+5. Click "Load unpacked" and select the extracted folder
+6. The extension is now installed and ready to use
+
+---
+
+For support and bug reports, visit the [GitHub Issues](https://github.com/prabhuvikas/Cap-screen/issues) page.`;
+
+  return template;
 }
 
 /**
@@ -195,11 +208,16 @@ function createRedmineNews(title, description, summary) {
       res.on('end', () => {
         console.log(`Response status: ${res.statusCode}`);
 
-        if (res.statusCode === 201) {
-          try {
-            const response = JSON.parse(data);
-            resolve(response);
-          } catch (e) {
+        if (res.statusCode === 201 || res.statusCode === 204) {
+          // 201 = Created, 204 = No Content (both are success)
+          if (data) {
+            try {
+              const response = JSON.parse(data);
+              resolve(response);
+            } catch (e) {
+              resolve({ message: 'News created successfully' });
+            }
+          } else {
             resolve({ message: 'News created successfully' });
           }
         } else {
