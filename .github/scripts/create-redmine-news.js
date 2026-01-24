@@ -195,11 +195,16 @@ function createRedmineNews(title, description, summary) {
       res.on('end', () => {
         console.log(`Response status: ${res.statusCode}`);
 
-        if (res.statusCode === 201) {
-          try {
-            const response = JSON.parse(data);
-            resolve(response);
-          } catch (e) {
+        if (res.statusCode === 201 || res.statusCode === 204) {
+          // 201 = Created, 204 = No Content (both are success)
+          if (data) {
+            try {
+              const response = JSON.parse(data);
+              resolve(response);
+            } catch (e) {
+              resolve({ message: 'News created successfully' });
+            }
+          } else {
             resolve({ message: 'News created successfully' });
           }
         } else {
