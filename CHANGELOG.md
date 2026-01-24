@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.3] - January 24, 2026
+
+### Changes
+- Refactor release workflow into 4 sequential stages
+  - Restructured the monolithic release workflow into a modular 4-stage pipeline with clear separation of concerns, improved artifact handling, and better visibility into each phase.
+  - **Stage 1 (Prepare)**: Version bump type detection only
+  - Outputs version type for downstream stages
+  - Minimal permissions (pull-requests: read)
+  - **Stage 2 (Build)**: Version bumping, changelog generation, and extension build
+
+_Merged PR #34 by @prabhuvikas_
+
+---
+
+
+
 ## [2.1.2] - January 24, 2026
 
 ### Changes
