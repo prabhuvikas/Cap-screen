@@ -7,32 +7,22 @@ on:
       - main
 
 jobs:
-  release:
-    # Only run if PR was merged (not just closed)
+  # =============================================================================
+  # STAGE 1: PREPARE
+  # Environment setup and version detection
+  # =============================================================================
+  prepare:
+    name: "Stage 1: Prepare"
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write
       pull-requests: read
 
+    outputs:
+      version_type: ${{ steps.version_type.outputs.type }}
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Configure Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
       - name: Detect version bump type
         id: version_type
         run: |
@@ -50,10 +40,43 @@ jobs:
             echo "Detected: PATCH version bump (default)"
           fi
 
+      - name: Stage Summary
+        run: |
+          echo "## Stage 1: Prepare" >> $GITHUB_STEP_SUMMARY
+          echo "- Version bump type: **${{ steps.version_type.outputs.type }}**" >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================================
+  # STAGE 2: BUILD
+  # Version bump, changelog generation, and extension build
+  # =============================================================================
+  build:
+    name: "Stage 2: Build"
+    needs: prepare
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    outputs:
+      version: ${{ steps.bump_version.outputs.version }}
+      zip_file: ${{ steps.build.outputs.zip_file }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Bump version
         id: bump_version
         run: |
-          node .github/scripts/bump-version.js ${{ steps.version_type.outputs.type }}
+          node .github/scripts/bump-version.js ${{ needs.prepare.outputs.version_type }}
           NEW_VERSION=$(node -p "require('./manifest.json').version")
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "New version: $NEW_VERSION"
@@ -75,6 +98,48 @@ jobs:
           echo "zip_file=$ZIP_FILE" >> $GITHUB_OUTPUT
           echo "Built: $ZIP_FILE"
 
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            manifest.json
+            CHANGELOG.md
+            Cap-screen-v${{ steps.bump_version.outputs.version }}.zip
+          retention-days: 1
+
+      - name: Stage Summary
+        run: |
+          echo "## Stage 2: Build" >> $GITHUB_STEP_SUMMARY
+          echo "- New version: **v${{ steps.bump_version.outputs.version }}**" >> $GITHUB_STEP_SUMMARY
+          echo "- Extension ZIP: \`${{ steps.build.outputs.zip_file }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================================
+  # STAGE 3: DISTRIBUTE
+  # Upload to external services (Google Drive and Redmine)
+  # =============================================================================
+  distribute:
+    name: "Stage 3: Distribute"
+    needs: build
+    runs-on: ubuntu-latest
+
+    outputs:
+      drive_link: ${{ steps.upload_drive.outputs.drive_link }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+
       - name: Upload to Google Drive
         id: upload_drive
         env:
@@ -87,8 +152,8 @@ jobs:
           echo "Credentials length: ${#GOOGLE_DRIVE_CREDENTIALS}"
           echo "==================="
           node .github/scripts/upload-to-drive.js \
-            "${{ steps.build.outputs.zip_file }}" \
-            "${{ steps.bump_version.outputs.version }}"
+            "${{ needs.build.outputs.zip_file }}" \
+            "${{ needs.build.outputs.version }}"
           DRIVE_LINK=$(cat drive-link.txt)
           echo "drive_link=$DRIVE_LINK" >> $GITHUB_OUTPUT
           echo "Google Drive link: $DRIVE_LINK"
@@ -100,13 +165,48 @@ jobs:
           REDMINE_PROJECT_ID: ${{ secrets.REDMINE_PROJECT_ID }}
         run: |
           node .github/scripts/create-redmine-news.js \
-            "${{ steps.bump_version.outputs.version }}" \
+            "${{ needs.build.outputs.version }}" \
             "${{ steps.upload_drive.outputs.drive_link }}"
+
+      - name: Stage Summary
+        run: |
+          echo "## Stage 3: Distribute" >> $GITHUB_STEP_SUMMARY
+          echo "- Google Drive: [${{ steps.upload_drive.outputs.drive_link }}](${{ steps.upload_drive.outputs.drive_link }})" >> $GITHUB_STEP_SUMMARY
+          echo "- Redmine news: Created" >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================================
+  # STAGE 4: PUBLISH
+  # Commit changes and create GitHub release
+  # =============================================================================
+  publish:
+    name: "Stage 4: Publish"
+    needs: [prepare, build, distribute]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
 
       - name: Commit version changes
         run: |
-          git add manifest.json CHANGELOG.md Cap-screen-v${{ steps.bump_version.outputs.version }}.zip
-          git commit -m "chore: release v${{ steps.bump_version.outputs.version }} [skip ci]
+          git add manifest.json CHANGELOG.md ${{ needs.build.outputs.zip_file }}
+          git commit -m "chore: release v${{ needs.build.outputs.version }} [skip ci]
 
           Auto-generated by release workflow
           PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }}"
@@ -116,10 +216,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.bump_version.outputs.version }}
-          name: "Release v${{ steps.bump_version.outputs.version }}"
+          tag_name: v${{ needs.build.outputs.version }}
+          name: "Release v${{ needs.build.outputs.version }}"
           body: |
-            ## 🚀 Cred Issue Reporter v${{ steps.bump_version.outputs.version }}
+            ## Cred Issue Reporter v${{ needs.build.outputs.version }}
 
             ### Changes
             ${{ github.event.pull_request.title }}
@@ -127,34 +227,34 @@ jobs:
             ${{ github.event.pull_request.body }}
 
             ### Downloads
-            - 📦 [Chrome Extension ZIP](${{ steps.upload_drive.outputs.drive_link }})
-            - 📝 [View on Redmine](${{ secrets.REDMINE_SERVER_URL }}/projects/${{ secrets.REDMINE_PROJECT_ID }}/news)
+            - [Chrome Extension ZIP](${{ needs.distribute.outputs.drive_link }})
+            - [View on Redmine](${{ secrets.REDMINE_SERVER_URL }}/projects/${{ secrets.REDMINE_PROJECT_ID }}/news)
 
             ---
             Merged PR #${{ github.event.pull_request.number }} by @${{ github.event.pull_request.user.login }}
           files: |
-            ${{ steps.build.outputs.zip_file }}
+            ${{ needs.build.outputs.zip_file }}
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Summary
+      - name: Final Summary
         run: |
-          echo "## 🎉 Release Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "## Release Complete!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** v${{ steps.bump_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Type:** ${{ steps.version_type.outputs.type }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** v${{ needs.build.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Type:** ${{ needs.prepare.outputs.version_type }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "- Extension ZIP: \`${{ steps.build.outputs.zip_file }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Google Drive: [${{ steps.upload_drive.outputs.drive_link }}](${{ steps.upload_drive.outputs.drive_link }})" >> $GITHUB_STEP_SUMMARY
-          echo "- GitHub Release: [v${{ steps.bump_version.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/v${{ steps.bump_version.outputs.version }})" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- Extension ZIP: \`${{ needs.build.outputs.zip_file }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Google Drive: [${{ needs.distribute.outputs.drive_link }}](${{ needs.distribute.outputs.drive_link }})" >> $GITHUB_STEP_SUMMARY
+          echo "- GitHub Release: [v${{ needs.build.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/v${{ needs.build.outputs.version }})" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📝 Updates" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ manifest.json version bumped" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ CHANGELOG.md updated" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Extension built and uploaded to Google Drive" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Redmine news created" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ GitHub release created" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Changes committed to main branch" >> $GITHUB_STEP_SUMMARY
+          echo "### Updates" >> $GITHUB_STEP_SUMMARY
+          echo "- manifest.json version bumped" >> $GITHUB_STEP_SUMMARY
+          echo "- CHANGELOG.md updated" >> $GITHUB_STEP_SUMMARY
+          echo "- Extension built and uploaded to Google Drive" >> $GITHUB_STEP_SUMMARY
+          echo "- Redmine news created" >> $GITHUB_STEP_SUMMARY
+          echo "- GitHub release created" >> $GITHUB_STEP_SUMMARY
+          echo "- Changes committed to main branch" >> $GITHUB_STEP_SUMMARY
