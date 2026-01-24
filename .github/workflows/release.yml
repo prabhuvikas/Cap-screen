@@ -8,12 +8,100 @@ on:
 
 jobs:
   # =============================================================================
+  # PRE-CHECK: Determine if release should run
+  # Skip release for: skip-release label, or CI/docs-only changes
+  # =============================================================================
+  check:
+    name: "Pre-check: Should Release?"
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    permissions:
+      pull-requests: read
+      contents: read
+
+    outputs:
+      should_release: ${{ steps.decision.outputs.should_release }}
+      skip_reason: ${{ steps.decision.outputs.skip_reason }}
+
+    steps:
+      - name: Check for skip-release label
+        id: check_label
+        run: |
+          LABELS='${{ toJson(github.event.pull_request.labels.*.name) }}'
+          echo "Labels: $LABELS"
+          if echo "$LABELS" | grep -q "skip-release"; then
+            echo "has_skip_label=true" >> $GITHUB_OUTPUT
+            echo "Found 'skip-release' label"
+          else
+            echo "has_skip_label=false" >> $GITHUB_OUTPUT
+            echo "No 'skip-release' label found"
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check changed files
+        id: changed_files
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            release_worthy:
+              - '!.github/**'
+              - '!**.md'
+              - '!.gitignore'
+              - '!.editorconfig'
+              - '!LICENSE'
+
+      - name: Determine if release should proceed
+        id: decision
+        run: |
+          HAS_SKIP_LABEL="${{ steps.check_label.outputs.has_skip_label }}"
+          HAS_RELEASE_WORTHY_CHANGES="${{ steps.changed_files.outputs.release_worthy }}"
+
+          echo "Skip label present: $HAS_SKIP_LABEL"
+          echo "Has release-worthy changes: $HAS_RELEASE_WORTHY_CHANGES"
+
+          if [ "$HAS_SKIP_LABEL" = "true" ]; then
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "skip_reason=PR has 'skip-release' label" >> $GITHUB_OUTPUT
+            echo "::notice::Skipping release: PR has 'skip-release' label"
+          elif [ "$HAS_RELEASE_WORTHY_CHANGES" = "false" ]; then
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "skip_reason=Only CI/docs files changed (.github/**, *.md, etc.)" >> $GITHUB_OUTPUT
+            echo "::notice::Skipping release: Only CI/docs files changed"
+          else
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
+            echo "::notice::Proceeding with release"
+          fi
+
+      - name: Summary
+        run: |
+          echo "## Pre-check: Release Decision" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.decision.outputs.should_release }}" = "true" ]; then
+            echo "✅ **Proceeding with release**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⏭️ **Skipping release**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Reason:** ${{ steps.decision.outputs.skip_reason }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Checks Performed" >> $GITHUB_STEP_SUMMARY
+          echo "- Skip label present: \`${{ steps.check_label.outputs.has_skip_label }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Release-worthy changes: \`${{ steps.changed_files.outputs.release_worthy }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================================
   # STAGE 1: PREPARE
   # Environment setup and version detection
   # =============================================================================
   prepare:
     name: "Stage 1: Prepare"
-    if: github.event.pull_request.merged == true
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
     runs-on: ubuntu-latest
 
     permissions:
