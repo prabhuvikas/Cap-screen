@@ -24,9 +24,60 @@ console.log(`Updating CHANGELOG.md for v${version}...`);
 const changelogPath = 'CHANGELOG.md';
 
 /**
+ * Detect change type from PR title using conventional commit prefixes and keywords
+ */
+function detectChangeType(prTitle) {
+  const title = prTitle.toLowerCase();
+
+  // Conventional commit prefixes
+  if (/^fix[:\(]|^bugfix[:\(]|^hotfix[:\(]/.test(title)) {
+    return 'fixed';
+  }
+  if (/^feat[:\(]|^feature[:\(]/.test(title)) {
+    return 'added';
+  }
+  if (/^refactor[:\(]|^perf[:\(]|^style[:\(]|^chore[:\(]/.test(title)) {
+    return 'changed';
+  }
+  if (/^revert[:\(]|^remove[:\(]/.test(title)) {
+    return 'removed';
+  }
+
+  // Keyword-based detection
+  if (/\bfix(es|ed|ing)?\b|\bbug\b|\bpatch\b|\bresolve[sd]?\b|\bcorrect(s|ed|ing)?\b/.test(title)) {
+    return 'fixed';
+  }
+  if (/\badd(s|ed|ing)?\b|\bnew\b|\bimplement(s|ed|ing)?\b|\bcreate[sd]?\b|\bintroduce[sd]?\b/.test(title)) {
+    return 'added';
+  }
+  if (/\bremove[sd]?\b|\bdelete[sd]?\b|\bdeprecate[sd]?\b/.test(title)) {
+    return 'removed';
+  }
+  if (/\bupdate[sd]?\b|\bchange[sd]?\b|\bmodif(y|ies|ied)\b|\brefactor(s|ed|ing)?\b|\bimprove[sd]?\b|\benhance[sd]?\b|\boptimize[sd]?\b/.test(title)) {
+    return 'changed';
+  }
+
+  // Default to 'changed' if no pattern matches
+  return 'changed';
+}
+
+/**
+ * Get human-readable category name
+ */
+function getCategoryName(category) {
+  const names = {
+    added: 'Added',
+    fixed: 'Fixed',
+    changed: 'Changed',
+    removed: 'Removed'
+  };
+  return names[category] || 'Changed';
+}
+
+/**
  * Parse PR body to extract categorized changes
  */
-function parseChanges(prBody) {
+function parseChanges(prBody, prTitle) {
   const changes = {
     added: [],
     fixed: [],
@@ -34,12 +85,16 @@ function parseChanges(prBody) {
     removed: []
   };
 
+  // Detect category from PR title for fallback
+  const detectedCategory = detectChangeType(prTitle);
+
   if (!prBody) {
-    return changes;
+    return { changes, detectedCategory };
   }
 
   const lines = prBody.split('\n');
   let currentCategory = null;
+  let hasExplicitCategories = false;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -48,6 +103,7 @@ function parseChanges(prBody) {
     if (/^##\s*(added|fixed|changed|removed)/i.test(trimmed)) {
       const match = trimmed.match(/^##\s*(added|fixed|changed|removed)/i);
       currentCategory = match[1].toLowerCase();
+      hasExplicitCategories = true;
     }
     // Extract bullet points
     else if (trimmed.startsWith('-') || trimmed.startsWith('*')) {
@@ -58,7 +114,7 @@ function parseChanges(prBody) {
     }
   }
 
-  return changes;
+  return { changes, detectedCategory, hasExplicitCategories };
 }
 
 /**
@@ -83,14 +139,14 @@ function formatDate() {
  */
 function generateChangelogEntry(version, prTitle, prBody, prNumber, prAuthor) {
   const date = formatDate();
-  const changes = parseChanges(prBody);
+  const { changes, detectedCategory, hasExplicitCategories } = parseChanges(prBody, prTitle);
 
   let entry = `## [${version}] - ${date}\n\n`;
 
-  // If we have categorized changes, use them
+  // If we have explicit categorized changes from PR body, use them
   const hasCategories = Object.values(changes).some(arr => arr.length > 0);
 
-  if (hasCategories) {
+  if (hasCategories && hasExplicitCategories) {
     if (changes.added.length > 0) {
       entry += '### Added\n';
       changes.added.forEach(item => {
@@ -123,8 +179,9 @@ function generateChangelogEntry(version, prTitle, prBody, prNumber, prAuthor) {
       entry += '\n';
     }
   } else {
-    // Fallback: use PR title and body
-    entry += `### Changes\n`;
+    // Use detected category from PR title
+    const categoryName = getCategoryName(detectedCategory);
+    entry += `### ${categoryName}\n`;
     entry += `- ${prTitle}\n`;
 
     // Try to extract meaningful information from PR body

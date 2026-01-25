@@ -1,14 +1,53 @@
 # Test Documentation
 
-This directory contains manual test scripts for the Cred Issue Reporter Chrome extension.
+This directory contains automated tests for the Cred Issue Reporter Chrome extension.
+
+## Automated Testing (CI)
+
+Tests run automatically on every pull request via GitHub Actions. **PRs cannot be merged unless all tests pass.**
+
+### Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run specific test suites
+npm run test:smoke      # Critical path tests (~5 sec)
+npm run test:unit       # Unit tests (~10 sec)
+npm run test:regression # Full regression (~30 sec)
+
+# Run with coverage
+npm test -- --coverage
+```
+
+### CI Workflow
+
+The CI workflow (`.github/workflows/ci.yml`) automatically:
+1. Runs all test suites on every PR
+2. Posts test results as a PR comment
+3. Blocks merge if any tests fail
+
+To view test results:
+- Check the PR for the bot comment with results
+- Click **"Details"** on the status check
+- View the **Actions** tab for full logs
 
 ## Test Files
 
 | File | Purpose | When to Use | Time |
 |------|---------|-------------|------|
-| `UNIT_TESTS.md` | Test individual functions/methods | After modifying core logic | 15-20 min |
-| `SMOKE_TEST.md` | Quick pre-merge verification | Before every PR merge | 5 min |
-| `REGRESSION_TEST.md` | Full feature verification | Before releases | 45-60 min |
+| `smoke.test.js` | Critical path verification | Every PR (automated) | ~5 sec |
+| `annotator.test.js` | Annotator class unit tests | Every PR (automated) | ~10 sec |
+| `regression.test.js` | Full feature verification | Every PR (automated) | ~30 sec |
+
+### Manual Test Documentation
+
+| File | Purpose |
+|------|---------|
+| `UNIT_TESTS.md` | Manual unit test procedures |
+| `SMOKE_TEST.md` | Manual smoke test checklist |
+| `REGRESSION_TEST.md` | Manual regression test checklist |
 
 ## Testing Workflow
 
@@ -18,27 +57,26 @@ This directory contains manual test scripts for the Cred Issue Reporter Chrome e
 ├─────────────────────────────────────────────────────────────────┤
 │  Developer makes changes                                         │
 │       ↓                                                          │
-│  Run relevant UNIT_TESTS for modified components                 │
+│  Run tests locally: npm test                                     │
 │       ↓                                                          │
 │  Create PR                                                       │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                     PRE-MERGE PHASE                              │
+│                     CI TESTING (Automated)                       │
 ├─────────────────────────────────────────────────────────────────┤
-│  Run SMOKE_TEST (5 min)                                          │
+│  GitHub Actions runs all tests automatically                     │
 │       ↓                                                          │
-│  All tests pass? → Merge PR                                      │
-│  Tests fail? → Fix issues, re-test                               │
+│  All tests pass? → PR ready for review                           │
+│  Tests fail? → Fix issues, push again                            │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                     RELEASE PHASE                                │
+│                     MERGE & RELEASE                              │
 ├─────────────────────────────────────────────────────────────────┤
-│  Run REGRESSION_TEST (45-60 min)                                 │
+│  PR approved and tests passing → Merge to main                   │
 │       ↓                                                          │
-│  All tests pass? → Create release                                │
-│  Tests fail? → Fix critical issues, re-test                      │
+│  Release workflow runs automatically                             │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -107,9 +145,11 @@ When testing, pay special attention to these recently fixed areas:
 - History supports both legacy string and new object format
 - Test: Switch between screenshots with annotations
 
-## Future: Automated Testing
+## Test Framework
 
-These manual tests are designed to be convertible to automated tests:
+Tests use **Jest** with `jest-environment-jsdom` for browser API simulation.
+
+### Test Structure
 
 ```javascript
 // Example: Unit test for undo
@@ -129,10 +169,11 @@ describe('Annotator.undo()', () => {
 });
 ```
 
-Recommended tools for future automation:
-- **Unit tests**: Jest
-- **E2E tests**: Puppeteer or Playwright
-- **Visual regression**: Percy or Chromatic
+### Future Enhancements
+
+Potential additions:
+- **E2E tests**: Puppeteer or Playwright for full browser testing
+- **Visual regression**: Percy or Chromatic for UI screenshot testing
 
 ## Contributing
 
