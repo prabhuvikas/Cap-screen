@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.7] - January 25, 2026
+
+### Changed
+- Update upgrade instructions to preserve extension settings
+  - Updated the upgrade instructions in the v2.1.5 release notes to provide a clearer, more reliable process for updating the extension while preserving user settings and preferences.
+  - Replaced the remove
+
+_Merged PR #and by @reload approach with an in-place file replacement method
+- Added explicit step to extract the downloaded zip file
+- Changed from removing the old version to replacing its contents directly
+- Simplified the reload process by using the Chrome extensions UI reload button instead of manual unpacking
+- Clarified that all existing settings and preferences are preserved throughout the upgrade
+
+## Rationale
+The new approach is more user-friendly and reduces the risk of losing settings during the upgrade process. By replacing files in-place rather than removing and reloading, users can maintain their configuration without additional manual steps._
+
+---
+
+
+
 ## [2.1.6] - January 25, 2026
 
 ### Fixed

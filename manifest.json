@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Cred Issue Reporter",
-  "version": "2.1.6",
+  "version": "2.1.7",
   "description": "Comprehensive issue reporting tool with media annotation and Redmine integration",
   "author": "Cred Issue Reporter Team",
   "homepage_url": "https://github.com/prabhuvikas/Cap-screen",
