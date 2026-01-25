@@ -133,39 +133,220 @@ function stripPRReferences(text) {
 }
 
 /**
- * Format changelog as Markdown for Redmine
+ * Parse changelog content into categorized sections
  */
-function formatForRedmine(changelog, driveLink) {
-  if (!changelog) {
-    changelog = 'Release notes coming soon.';
+function parseChangelogSections(changelog) {
+  const sections = {
+    fixed: [],
+    added: [],
+    changed: [],
+    removed: []
+  };
+
+  if (!changelog) return sections;
+
+  const lines = changelog.split('\n');
+  let currentSection = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Detect section headers
+    if (/^###?\s*Fixed/i.test(trimmed)) {
+      currentSection = 'fixed';
+    } else if (/^###?\s*Added/i.test(trimmed)) {
+      currentSection = 'added';
+    } else if (/^###?\s*(Changed|Changes)/i.test(trimmed)) {
+      currentSection = 'changed';
+    } else if (/^###?\s*Removed/i.test(trimmed)) {
+      currentSection = 'removed';
+    }
+    // Extract bullet points
+    else if ((trimmed.startsWith('-') || trimmed.startsWith('*')) && currentSection) {
+      const item = trimmed.replace(/^[-*]\s*/, '').trim();
+      if (item && !item.startsWith('_Merged')) {
+        sections[currentSection].push(item);
+      }
+    }
   }
 
-  // Strip PR references from changelog
-  let content = stripPRReferences(changelog);
+  return sections;
+}
 
-  // Build Markdown template
-  const template = `${content}
+/**
+ * Generate summary based on sections
+ */
+function generateSummary(sections) {
+  const parts = [];
+
+  if (sections.fixed.length > 0) {
+    parts.push('stability improvements');
+  }
+  if (sections.added.length > 0) {
+    parts.push('new features');
+  }
+  if (sections.changed.length > 0) {
+    parts.push('enhancements');
+  }
+  if (sections.removed.length > 0) {
+    parts.push('cleanup');
+  }
+
+  if (parts.length === 0) {
+    return 'General improvements and updates.';
+  }
+
+  const summary = parts.join(', ');
+  return `This release includes ${summary}.`;
+}
+
+/**
+ * Format changelog as Markdown for Redmine (matching release notes format)
+ */
+function formatForRedmine(changelog, driveLink) {
+  // Strip PR references from changelog
+  const cleanChangelog = stripPRReferences(changelog);
+
+  // Parse into sections
+  const sections = parseChangelogSections(cleanChangelog);
+
+  // Generate summary
+  const summary = generateSummary(sections);
+
+  // Build formatted template
+  let template = `## Summary
+
+${summary}
 
 ---
 
-### Download
+`;
+
+  // Fixed section with table format
+  if (sections.fixed.length > 0) {
+    template += `## Fixed
+
+| Issue | Description |
+|-------|-------------|
+`;
+    sections.fixed.forEach(item => {
+      // Extract title and description if possible
+      const parts = item.split(' - ');
+      if (parts.length > 1) {
+        template += `| **${parts[0].trim()}** | ${parts.slice(1).join(' - ').trim()} |\n`;
+      } else {
+        template += `| **Fix** | ${item} |\n`;
+      }
+    });
+    template += '\n---\n\n';
+  }
+
+  // Added section with table format
+  if (sections.added.length > 0) {
+    template += `## Added
+
+| Feature | Description |
+|---------|-------------|
+`;
+    sections.added.forEach(item => {
+      const parts = item.split(' - ');
+      if (parts.length > 1) {
+        template += `| **${parts[0].trim()}** | ${parts.slice(1).join(' - ').trim()} |\n`;
+      } else {
+        template += `| **New** | ${item} |\n`;
+      }
+    });
+    template += '\n---\n\n';
+  }
+
+  // Changed section with table format
+  if (sections.changed.length > 0) {
+    template += `## Changed
+
+| Change | Description |
+|--------|-------------|
+`;
+    sections.changed.forEach(item => {
+      const parts = item.split(' - ');
+      if (parts.length > 1) {
+        template += `| **${parts[0].trim()}** | ${parts.slice(1).join(' - ').trim()} |\n`;
+      } else {
+        template += `| **Update** | ${item} |\n`;
+      }
+    });
+    template += '\n---\n\n';
+  }
+
+  // Removed section with table format
+  if (sections.removed.length > 0) {
+    template += `## Removed
+
+| Item | Description |
+|------|-------------|
+`;
+    sections.removed.forEach(item => {
+      const parts = item.split(' - ');
+      if (parts.length > 1) {
+        template += `| **${parts[0].trim()}** | ${parts.slice(1).join(' - ').trim()} |\n`;
+      } else {
+        template += `| **Removed** | ${item} |\n`;
+      }
+    });
+    template += '\n---\n\n';
+  }
+
+  // If no sections were parsed, include raw changelog
+  if (sections.fixed.length === 0 && sections.added.length === 0 &&
+      sections.changed.length === 0 && sections.removed.length === 0) {
+    template += `## Changes
+
+${cleanChangelog || 'Release notes coming soon.'}
+
+---
+
+`;
+  }
+
+  // Download section
+  template += `## Download
 
 Download the latest version of Cred Issue Reporter:
 
-- [Chrome Extension v${version}](${driveLink})
+| Version | Link |
+|---------|------|
+| Chrome Extension v${version} | [Download](${driveLink}) |
 
-### Installation
+---
+
+## Installation
 
 1. Download the ZIP file from the link above
 2. Extract the ZIP file
-3. Open Chrome and navigate to chrome://extensions/
+3. Open Chrome and navigate to \`chrome://extensions/\`
 4. Enable "Developer mode"
 5. Click "Load unpacked" and select the extracted folder
 6. The extension is now installed and ready to use
 
 ---
 
-For support and bug reports, visit the [GitHub Issues](https://github.com/prabhuvikas/Cap-screen/issues) page.`;
+## Upgrade Instructions
+
+No manual intervention required. Simply update the extension:
+
+1. Download the latest version (v${version})
+2. Go to \`chrome://extensions/\`
+3. Remove the old version
+4. Load the new unpacked extension
+
+All existing settings and preferences will be preserved.
+
+---
+
+## Support
+
+For bug reports and feature requests:
+- **GitHub Issues**: https://github.com/prabhuvikas/Cap-screen/issues
+- **Redmine**: https://support.credenceanalytics.com/projects/redmine_tracker/issues`;
 
   return template;
 }
@@ -256,7 +437,11 @@ async function main() {
     console.log('[OK] Formatted for Redmine\n');
 
     const title = `Cred Issue Reporter v${version} Released`;
-    const summary = `New version ${version} of Cred Issue Reporter is now available for download`;
+
+    // Generate summary from parsed sections
+    const sections = parseChangelogSections(stripPRReferences(changelog));
+    const summaryText = generateSummary(sections);
+    const summary = `New version ${version} of Cred Issue Reporter is now available. ${summaryText}`;
 
     // Sanitize all content to remove Unicode characters
     const sanitizedTitle = sanitizeUnicode(title);
