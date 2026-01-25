@@ -860,10 +860,17 @@ class Annotator {
 
     // Restore the canvas to the last history state
     if (this.historyStep >= 0 && this.historyStep < this.history.length) {
-      const img = await this.loadImage(this.history[this.historyStep]);
-      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      this.ctx.drawImage(img, 0, 0);
-      console.log('[Annotator] State restored successfully');
+      const historyEntry = this.history[this.historyStep];
+      // Handle both legacy string format and new object format
+      const canvasData = typeof historyEntry === 'string' ? historyEntry : historyEntry.canvasData;
+      if (canvasData) {
+        const img = await this.loadImage(canvasData);
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.drawImage(img, 0, 0);
+        console.log('[Annotator] State restored successfully');
+      } else {
+        await this.redrawCanvas();
+      }
     } else {
       // If no history, just redraw from annotations
       await this.redrawCanvas();
