@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.5] - January 25, 2026
+
+### Removed
+- Remove zip file from git commit in release workflow
+  - Updated the release workflow to exclude the zip file from the git commit when releasing a new version.
+  - Removed  from the  command in the release workflow
+  - The commit now only stages  and  files
+  - The zip file (build artifact) should not be committed to the repository. Build artifacts are typically excluded from version control and should be managed separately (e.g., uploaded to releases, stored in artifact repositories, etc.). This change ensures only the necessary version control files are committed during the release process.
+
+_Merged PR #38 by @prabhuvikas_
+
+---
+
+
+
 ## [2.1.4] - January 25, 2026
 
 ### Changes
