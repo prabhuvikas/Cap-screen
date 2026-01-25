@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.4] - January 25, 2026
+
+### Changes
+- Add pre-check job to conditionally skip releases
+  - Added a new  job to the release workflow that determines whether a release should proceed based on PR labels and changed files. This prevents unnecessary releases for documentation-only or CI configuration changes.
+  - **New  job**: Runs before the  stage and outputs a  flag
+  - Checks for  label on the merged PR
+  - Detects if only CI/docs files were changed (.github/**, *.md, .gitignore, .editorconfig, LICENSE)
+  - Skips release if either condition is met
+
+_Merged PR #35 by @prabhuvikas_
+
+---
+
+
+
 ## [2.1.3] - January 24, 2026
 
 ### Changes
