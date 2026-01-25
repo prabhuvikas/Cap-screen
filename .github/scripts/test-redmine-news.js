@@ -1,44 +1,41 @@
 #!/usr/bin/env node
 
 /**
- * Create Redmine news entry for new release
- * Posts news with changelog and download link
+ * Test script for Redmine news generation
+ * Previews the news output without posting to Redmine
+ *
+ * Usage:
+ *   node test-redmine-news.js [version]
+ *
+ * Examples:
+ *   node test-redmine-news.js           # Uses current version from CHANGELOG.md
+ *   node test-redmine-news.js 2.1.5     # Uses specific version
  */
 
 const fs = require('fs');
-const https = require('https');
 
-// Get arguments
-const version = process.argv[2];
-const driveLink = process.argv[3];
+// Get version from argument or detect from changelog
+let version = process.argv[2];
 
-if (!version || !driveLink) {
-  console.error('Usage: node create-redmine-news.js <version> <drive-link>');
-  process.exit(1);
+const changelogPath = 'CHANGELOG.md';
+
+/**
+ * Extract latest version from CHANGELOG.md
+ */
+function getLatestVersion() {
+  if (!fs.existsSync(changelogPath)) {
+    return '0.0.0';
+  }
+
+  const changelog = fs.readFileSync(changelogPath, 'utf8');
+  const match = changelog.match(/## \[(\d+\.\d+\.\d+)\]/);
+  return match ? match[1] : '0.0.0';
 }
-
-// Get Redmine configuration from environment
-const apiKey = process.env.REDMINE_API_KEY;
-const serverUrl = process.env.REDMINE_SERVER_URL;
-const projectId = process.env.REDMINE_PROJECT_ID;
-
-if (!apiKey || !serverUrl || !projectId) {
-  console.error('[ERROR] Missing Redmine configuration:');
-  if (!apiKey) console.error('  - REDMINE_API_KEY not set');
-  if (!serverUrl) console.error('  - REDMINE_SERVER_URL not set');
-  if (!projectId) console.error('  - REDMINE_PROJECT_ID not set');
-  process.exit(1);
-}
-
-console.log(`Creating Redmine news for v${version}...`);
-console.log(`Server: ${serverUrl}`);
-console.log(`Project: ${projectId}`);
 
 /**
  * Extract changelog for specific version
  */
 function extractChangelog(version) {
-  const changelogPath = 'CHANGELOG.md';
   if (!fs.existsSync(changelogPath)) {
     console.error('[ERROR] CHANGELOG.md not found');
     return null;
@@ -70,65 +67,18 @@ function extractChangelog(version) {
 }
 
 /**
- * Sanitize text to remove Unicode characters
- * Replaces non-ASCII characters with ASCII equivalents or removes them
- */
-function sanitizeUnicode(text) {
-  if (!text) return text;
-
-  // Common Unicode replacements
-  const replacements = {
-    '\u2018': "'",   // Left single quote
-    '\u2019': "'",   // Right single quote
-    '\u201C': '"',   // Left double quote
-    '\u201D': '"',   // Right double quote
-    '\u2013': '-',   // En dash
-    '\u2014': '--',  // Em dash
-    '\u2026': '...', // Ellipsis
-    '\u00A0': ' ',   // Non-breaking space
-    '\u2022': '*',   // Bullet
-    '\u00B7': '*',   // Middle dot
-    '\u2713': '[x]', // Check mark
-    '\u2714': '[x]', // Heavy check mark
-    '\u2715': '[x]', // X mark
-    '\u2716': '[x]', // Heavy X mark
-    '\u2717': '[ ]', // Ballot X
-    '\u2610': '[ ]', // Ballot box
-    '\u2611': '[x]', // Ballot box with check
-    '\u2612': '[x]', // Ballot box with X
-  };
-
-  let result = text;
-
-  // Apply specific replacements
-  for (const [unicode, ascii] of Object.entries(replacements)) {
-    result = result.split(unicode).join(ascii);
-  }
-
-  // Remove any remaining non-ASCII characters (keep only printable ASCII)
-  result = result.replace(/[^\x00-\x7F]/g, '');
-
-  return result;
-}
-
-/**
  * Remove PR references from changelog text
- * Strips patterns like (#32), (PR #32), PR #32, etc.
  */
 function stripPRReferences(text) {
   if (!text) return text;
 
   return text
-    // Remove PR references in parentheses: (#32), (PR #32), (pull #32)
     .replace(/\s*\(#\d+\)/g, '')
     .replace(/\s*\(PR\s*#\d+\)/gi, '')
     .replace(/\s*\(pull\s*#\d+\)/gi, '')
-    // Remove standalone PR references: PR #32, pull #32
     .replace(/\s*PR\s*#\d+/gi, '')
     .replace(/\s*pull\s*#\d+/gi, '')
-    // Clean up any double spaces left behind
     .replace(/  +/g, ' ')
-    // Clean up lines that end with just whitespace
     .replace(/\s+$/gm, '');
 }
 
@@ -359,119 +309,88 @@ For bug reports and feature requests:
 }
 
 /**
- * Create news entry in Redmine
- */
-function createRedmineNews(title, description, summary) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(`/projects/${projectId}/news.json`, serverUrl);
-
-    const newsData = {
-      news: {
-        title: title,
-        summary: summary,
-        description: description
-      }
-    };
-
-    const postData = JSON.stringify(newsData);
-
-    const options = {
-      hostname: url.hostname,
-      port: url.port || 443,
-      path: url.pathname,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Redmine-API-Key': apiKey,
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-
-    console.log(`\nPosting to: ${url.href}`);
-    console.log('Request body preview:', postData.substring(0, 200) + '...');
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => data += chunk);
-      res.on('end', () => {
-        console.log(`Response status: ${res.statusCode}`);
-
-        if (res.statusCode === 201 || res.statusCode === 204) {
-          // 201 = Created, 204 = No Content (both are success)
-          if (data) {
-            try {
-              const response = JSON.parse(data);
-              resolve(response);
-            } catch (e) {
-              resolve({ message: 'News created successfully' });
-            }
-          } else {
-            resolve({ message: 'News created successfully' });
-          }
-        } else {
-          console.error('Response body:', data);
-          reject(new Error(`Failed to create news: ${res.statusCode} ${data}`));
-        }
-      });
-    });
-
-    req.on('error', (error) => {
-      reject(new Error(`Request failed: ${error.message}`));
-    });
-
-    req.write(postData);
-    req.end();
-  });
-}
-
-/**
  * Main execution
  */
-async function main() {
-  try {
-    console.log('Step 1: Extracting changelog...');
-    const changelog = extractChangelog(version);
+function main() {
+  console.log('='.repeat(80));
+  console.log('REDMINE NEWS OUTPUT TEST');
+  console.log('='.repeat(80));
+  console.log();
 
-    if (changelog) {
-      console.log('[OK] Changelog extracted');
-      console.log('Preview:', changelog.substring(0, 200) + '...\n');
-    } else {
-      console.warn('[WARN] Using default changelog');
-    }
-
-    console.log('Step 2: Formatting for Redmine...');
-    const description = formatForRedmine(changelog, driveLink);
-    console.log('[OK] Formatted for Redmine\n');
-
-    const title = `Cred Issue Reporter v${version} Released`;
-
-    // Generate summary from parsed sections
-    const sections = parseChangelogSections(stripPRReferences(changelog));
-    const summaryText = generateSummary(sections);
-    const summary = `New version ${version} of Cred Issue Reporter is now available. ${summaryText}`;
-
-    // Sanitize all content to remove Unicode characters
-    const sanitizedTitle = sanitizeUnicode(title);
-    const sanitizedSummary = sanitizeUnicode(summary);
-    const sanitizedDescription = sanitizeUnicode(description);
-
-    console.log('Step 3: Creating Redmine news...');
-    const response = await createRedmineNews(sanitizedTitle, sanitizedDescription, sanitizedSummary);
-
-    console.log('\n[OK] Redmine news created successfully!');
-    console.log(`\nView at: ${serverUrl}/projects/${projectId}/news`);
-
-  } catch (error) {
-    console.error('[ERROR] Failed to create Redmine news:', error.message);
-
-    // Provide helpful debugging info
-    console.error('\nDebugging information:');
-    console.error(`- Redmine Server: ${serverUrl}`);
-    console.error(`- Project ID: ${projectId}`);
-    console.error(`- API Key: ${apiKey ? '***' + apiKey.slice(-4) : 'not set'}`);
-
-    process.exit(1);
+  // Get version
+  if (!version) {
+    version = getLatestVersion();
+    console.log(`[INFO] No version specified, using latest: v${version}`);
+  } else {
+    console.log(`[INFO] Testing with version: v${version}`);
   }
+  console.log();
+
+  // Extract changelog
+  console.log('[STEP 1] Extracting changelog...');
+  const changelog = extractChangelog(version);
+
+  if (changelog) {
+    console.log('[OK] Changelog extracted');
+    console.log();
+    console.log('--- RAW CHANGELOG ---');
+    console.log(changelog);
+    console.log('--- END RAW CHANGELOG ---');
+  } else {
+    console.log('[WARN] No changelog found, using placeholder');
+  }
+  console.log();
+
+  // Parse sections
+  console.log('[STEP 2] Parsing changelog sections...');
+  const cleanChangelog = stripPRReferences(changelog);
+  const sections = parseChangelogSections(cleanChangelog);
+
+  console.log(`  Fixed:   ${sections.fixed.length} items`);
+  console.log(`  Added:   ${sections.added.length} items`);
+  console.log(`  Changed: ${sections.changed.length} items`);
+  console.log(`  Removed: ${sections.removed.length} items`);
+  console.log();
+
+  // Generate summary
+  console.log('[STEP 3] Generating summary...');
+  const summaryText = generateSummary(sections);
+  console.log(`  Summary: ${summaryText}`);
+  console.log();
+
+  // Format for Redmine
+  console.log('[STEP 4] Formatting for Redmine...');
+  const driveLink = 'https://drive.google.com/file/d/EXAMPLE_FILE_ID/view';
+  const description = formatForRedmine(changelog, driveLink);
+  console.log('[OK] Formatted');
+  console.log();
+
+  // Output
+  const title = `Cred Issue Reporter v${version} Released`;
+  const summary = `New version ${version} of Cred Issue Reporter is now available. ${summaryText}`;
+
+  console.log('='.repeat(80));
+  console.log('REDMINE NEWS PREVIEW');
+  console.log('='.repeat(80));
+  console.log();
+  console.log(`TITLE: ${title}`);
+  console.log();
+  console.log(`SUMMARY: ${summary}`);
+  console.log();
+  console.log('DESCRIPTION:');
+  console.log('-'.repeat(80));
+  console.log(description);
+  console.log('-'.repeat(80));
+  console.log();
+
+  // Save to file for review
+  const outputFile = `test-redmine-news-v${version}.md`;
+  fs.writeFileSync(outputFile, `# ${title}\n\n**Summary:** ${summary}\n\n---\n\n${description}`);
+  console.log(`[OK] Output saved to: ${outputFile}`);
+  console.log();
+  console.log('='.repeat(80));
+  console.log('TEST COMPLETE');
+  console.log('='.repeat(80));
 }
 
 main();
