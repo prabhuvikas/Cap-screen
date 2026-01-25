@@ -338,12 +338,12 @@ Download the latest version of Cred Issue Reporter:
 
 ## Upgrade Instructions
 
-No manual intervention required. Simply update the extension:
+To preserve your settings and preferences:
 
-1. Download the latest version (v${version})
-2. Go to \`chrome://extensions/\`
-3. Remove the old version
-4. Load the new unpacked extension
+1. Download the latest version (v${version}) and extract the zip file
+2. Replace the contents of your existing extension folder with the new files
+3. Go to \`chrome://extensions/\`
+4. Click the **Reload** button on the Cred Issue Reporter extension
 
 All existing settings and preferences will be preserved.
 
