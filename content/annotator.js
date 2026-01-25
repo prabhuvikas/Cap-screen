@@ -748,31 +748,66 @@ class Annotator {
     if (this.historyStep < this.history.length) {
       this.history.length = this.historyStep;
     }
-    this.history.push(this.canvas.toDataURL());
+    // Save both canvas state and annotations
+    this.history.push({
+      canvasData: this.canvas.toDataURL(),
+      annotations: JSON.parse(JSON.stringify(this.annotations)),
+      imageDataUrl: this.imageDataUrl,
+      canvasWidth: this.canvas.width,
+      canvasHeight: this.canvas.height
+    });
   }
 
-  restoreState() {
+  restoreStateFromHistory() {
     if (this.historyStep >= 0 && this.historyStep < this.history.length) {
-      const img = new Image();
-      img.src = this.history[this.historyStep];
-      img.onload = () => {
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.drawImage(img, 0, 0);
-      };
+      const state = this.history[this.historyStep];
+
+      // Handle legacy format (just canvas data URL string)
+      if (typeof state === 'string') {
+        const img = new Image();
+        img.src = state;
+        img.onload = () => {
+          this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+          this.ctx.drawImage(img, 0, 0);
+        };
+        return;
+      }
+
+      // Restore canvas dimensions if they changed (e.g., after crop)
+      if (state.canvasWidth && state.canvasHeight) {
+        this.canvas.width = state.canvasWidth;
+        this.canvas.height = state.canvasHeight;
+      }
+
+      // Restore base image URL
+      if (state.imageDataUrl) {
+        this.imageDataUrl = state.imageDataUrl;
+      }
+
+      // Restore annotations array
+      if (state.annotations) {
+        this.annotations = JSON.parse(JSON.stringify(state.annotations));
+      }
+
+      // Clear selection when undoing/redoing
+      this.selectedAnnotation = null;
+
+      // Redraw canvas with restored state
+      this.redrawCanvas();
     }
   }
 
   undo() {
     if (this.historyStep > 0) {
       this.historyStep--;
-      this.restoreState();
+      this.restoreStateFromHistory();
     }
   }
 
   redo() {
     if (this.historyStep < this.history.length - 1) {
       this.historyStep++;
-      this.restoreState();
+      this.restoreStateFromHistory();
     }
   }
 
@@ -825,10 +860,17 @@ class Annotator {
 
     // Restore the canvas to the last history state
     if (this.historyStep >= 0 && this.historyStep < this.history.length) {
-      const img = await this.loadImage(this.history[this.historyStep]);
-      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      this.ctx.drawImage(img, 0, 0);
-      console.log('[Annotator] State restored successfully');
+      const historyEntry = this.history[this.historyStep];
+      // Handle both legacy string format and new object format
+      const canvasData = typeof historyEntry === 'string' ? historyEntry : historyEntry.canvasData;
+      if (canvasData) {
+        const img = await this.loadImage(canvasData);
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.drawImage(img, 0, 0);
+        console.log('[Annotator] State restored successfully');
+      } else {
+        await this.redrawCanvas();
+      }
     } else {
       // If no history, just redraw from annotations
       await this.redrawCanvas();
@@ -950,22 +992,11 @@ class Annotator {
     tempCanvas.height = height;
     const tempCtx = tempCanvas.getContext('2d');
 
-    // Draw the original image cropped
+    // Draw only the original image cropped (without annotations)
+    // Annotations are kept in this.annotations and rendered during redrawCanvas()
+    // This prevents duplicate annotations when moving after crop
     const img = await this.loadImage(this.imageDataUrl);
     tempCtx.drawImage(img, x1, y1, width, height, 0, 0, width, height);
-
-    // Draw annotations in the cropped area
-    this.annotations.forEach(annotation => {
-      tempCtx.save();
-
-      // Adjust annotation coordinates to crop offset
-      const adjustedAnnotation = this.adjustAnnotationForCrop(annotation, x1, y1);
-      if (adjustedAnnotation) {
-        this.renderAnnotationOnContext(tempCtx, adjustedAnnotation);
-      }
-
-      tempCtx.restore();
-    });
 
     // Get the cropped image as data URL
     this.imageDataUrl = tempCanvas.toDataURL('image/png');

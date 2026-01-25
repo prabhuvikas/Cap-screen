@@ -1,0 +1,18 @@
+{
+  "name": "cred-issue-reporter",
+  "version": "2.1.3",
+  "description": "Chrome extension for capturing, annotating, and reporting issues to Redmine",
+  "private": true,
+  "scripts": {
+    "test": "jest",
+    "test:smoke": "jest tests/smoke.test.js --verbose",
+    "test:unit": "jest tests/annotator.test.js --verbose",
+    "test:regression": "jest tests/regression.test.js --verbose",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
+  }
+}
