@@ -1,8 +1,54 @@
-# Automated Release Workflow
+# CI/CD Automation
 
-Complete automation for Chrome Extension releases when PRs are merged to main.
+Complete automation for testing, building, and releasing the Chrome Extension.
 
-## 🎯 What Gets Automated
+---
+
+## 🧪 Automated Testing (CI)
+
+The test workflow (`.github/workflows/ci.yml`) runs automatically on every pull request.
+
+### What Gets Tested
+
+When a PR is opened or updated:
+
+1. ✅ **Smoke Tests** - Critical path verification
+2. ✅ **Unit Tests** - Annotator class functionality
+3. ✅ **Regression Tests** - Full feature verification
+4. ✅ **PR Comment** - Test results posted to PR
+5. ✅ **Status Check** - Blocks merge if tests fail
+
+### Enforcing Test Requirements
+
+To require tests to pass before merging:
+
+1. Go to **Settings > Branches** in GitHub
+2. Click **Add rule** for the `main` branch
+3. Enable **"Require status checks to pass before merging"**
+4. Search for and select **"Run Tests"**
+5. Click **Create** or **Save changes**
+
+Now PRs cannot be merged until all tests pass.
+
+### Running Tests Locally
+
+```bash
+# Run all tests
+npm test
+
+# Run specific test suites
+npm run test:smoke      # Quick critical path tests
+npm run test:unit       # Annotator class tests
+npm run test:regression # Full feature verification
+```
+
+---
+
+## 🚀 Automated Release Workflow
+
+The release workflow (`.github/workflows/release.yml`) runs automatically when PRs are merged to main.
+
+### What Gets Automated
 
 When a PR is merged to the `main` branch, the workflow automatically:
 
@@ -66,7 +112,21 @@ Add one of these labels to your PR to control version bumping:
 
 ### Changelog Format
 
-For best changelog results, format your PR description like this:
+The changelog is automatically categorized based on your PR title:
+
+| PR Title Pattern | Changelog Section |
+|------------------|-------------------|
+| `fix:`, `bugfix:`, "fix", "bug" | `### Fixed` |
+| `feat:`, `feature:`, "add", "new" | `### Added` |
+| `refactor:`, "update", "improve" | `### Changed` |
+| `remove:`, "remove", "delete" | `### Removed` |
+
+**Best practice**: Use conventional commit prefixes in PR titles:
+- `fix: resolve login bug` → **Fixed**
+- `feat: add dark mode toggle` → **Added**
+- `refactor: improve API performance` → **Changed**
+
+For more detailed changelogs, format your PR description like this:
 
 ```markdown
 ## Added
@@ -82,7 +142,7 @@ For best changelog results, format your PR description like this:
 - Improved performance F
 ```
 
-The workflow will extract these categories automatically.
+The workflow will extract these categories automatically if present.
 
 ### Example Workflow
 

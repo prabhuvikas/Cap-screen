@@ -69,10 +69,28 @@ Icons and images for the extension:
 
 ### `.github/` - CI/CD Automation
 GitHub Actions workflows and scripts:
+- `workflows/ci.yml` - Automated test workflow for PRs
 - `workflows/release.yml` - Automated release pipeline
 - `scripts/` - Node.js scripts for version bumping, changelog, builds, uploads
 
 ## CI/CD Pipeline
+
+### Automated Testing (CI)
+
+The test workflow (`.github/workflows/ci.yml`) runs automatically on every pull request to `main`.
+
+**What it does:**
+- Runs all test suites (smoke, unit, regression)
+- Posts test results as a comment on the PR
+- Blocks merge if any tests fail
+
+**To enforce merge blocking**, enable branch protection in GitHub:
+1. Go to **Settings > Branches**
+2. Add a rule for `main`
+3. Enable **"Require status checks to pass before merging"**
+4. Select **"Run Tests"** as a required check
+
+### Automated Release
 
 The release workflow (`.github/workflows/release.yml`) runs automatically when PRs are merged to `main`.
 
@@ -99,6 +117,22 @@ The pipeline can be skipped in two ways:
 - `version:major` - Major version bump (breaking changes)
 - `version:minor` - Minor version bump (new features)
 - *(default)* - Patch version bump (bug fixes)
+
+### Changelog Auto-Detection
+
+The changelog script automatically categorizes changes based on PR title:
+
+| PR Title Pattern | Changelog Section |
+|------------------|-------------------|
+| `fix:`, `bugfix:`, contains "fix", "bug" | `### Fixed` |
+| `feat:`, `feature:`, contains "add", "new" | `### Added` |
+| `refactor:`, contains "update", "improve" | `### Changed` |
+| `remove:`, contains "remove", "delete" | `### Removed` |
+
+Use conventional commit prefixes in PR titles for best results:
+- `fix: resolve login bug` → Fixed
+- `feat: add dark mode` → Added
+- `refactor: improve performance` → Changed
 
 ## Development Commands
 
