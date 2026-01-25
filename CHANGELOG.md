@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.6] - January 25, 2026
+
+### Fixed
+- Release v2.1.5: Annotation editor fixes and testing infrastructure
+  - This release introduces critical bug fixes for the annotation editor, comprehensive testing infrastructure, and a refactored CI/CD pipeline with automated changelog generation.
+  - **Undo/Redo After Crop**: Fixed critical issue where undo/redo functionality stopped working after cropping an image
+  - **Duplicate Annotations**: Resolved bug where annotations would appear duplicated after crop operations
+  - **History State Handling**: Fixed  method to properly handle the new history format
+  - **UI Clarity**: Renamed 1:1 zoom button to Reset
+
+_Merged PR #Zoom for better user understanding
+
+### Testing Infrastructure
+- Added Jest unit tests for the  class covering drawing tools, undo/redo, and state management
+- Implemented automated CI workflow that runs on every PR to  with results posted as comments
+- Created smoke test suite for catching critical issues before merge
+- Added comprehensive regression test suite for annotation and cropping edge cases
+- Included manual test scripts for pre-merge and regression testing
+
+### CI/CD Pipeline Improvements
+- Refactored monolithic release workflow into a 4-stage pipeline (Pre-check → Prepare → Build → Distribute)
+- Implemented changelog auto-detection based on PR title prefixes (, , , )
+- Added conditional pipeline execution with  label support
+- Excluded zip build artifacts from version control via 
+
+### Documentation
+- Expanded  with detailed folder descriptions and responsibilities
+- Added CI test workflow documentation
+- Included GitHub branch protection setup instructions
+
+## Notable Implementation Details
+
+- Build artifacts are now only attached to GitHub releases, not committed to the repository
+- Changelog sections are automatically categorized based on PR title patterns
+- The release pipeline can be skipped for docs-only changes or via explicit label
+- All existing user settings and preferences are preserved during upgrade
+
+## Version Information
+- **Previous Version**: v2.1.2
+- **Current Version**: v2.1.5
+- **Release Date**: January 25, 2026 by @39_
+
+---
+
+
+
 ## [2.1.5] - January 25, 2026
 
 ### Removed
