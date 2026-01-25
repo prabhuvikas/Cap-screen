@@ -10,21 +10,67 @@ This file provides context for Claude Code when working with this repository.
 - **Platform**: Chrome Extension (Manifest V3)
 - **Integration**: Redmine issue tracker
 
-## Key Directories
+## Directory Structure & Responsibilities
 
-```
-Cap-screen/
-├── .github/
-│   ├── workflows/release.yml    # Automated release pipeline
-│   └── scripts/                 # CI/CD automation scripts
-├── background/                  # Service worker for network monitoring
-├── content/                     # Content scripts (page info, screenshots)
-├── popup/                       # Extension popup UI
-├── options/                     # Settings page
-├── annotate/                    # Annotation tools UI
-├── lib/                         # Shared libraries (Redmine API, utils)
-└── assets/                      # Icons and static assets
-```
+### `popup/` - Extension Entry Point
+The initial popup UI that appears when clicking the extension icon. Handles:
+- Capture options (screenshot, video recording)
+- Multi-tab selection for capture
+- Quick actions to open annotation page
+- **Files**: `popup.js`, `popup.html`, `popup.css`
+- **When to modify**: Changing initial capture options or adding new capture modes
+
+### `annotate/` - Main Annotation & Issue Reporting UI
+Full-screen annotation interface AND the primary issue submission form. This is where users:
+- Annotate screenshots with drawing tools (pen, shapes, text, arrows)
+- Fill out issue details (title, description, priority, assignee)
+- Submit issues to Redmine with attachments
+- View help documentation
+- **Files**: `annotate.js`, `annotate.html`, `annotate.css`, `help.html`
+- **When to modify**: Changing annotation tools, issue form fields, or submission logic
+
+### `background/` - Service Worker
+Persistent background script that runs independently. Handles:
+- Network request monitoring and storage
+- Console log collection
+- Video/screen recording coordination
+- Message passing between extension components
+- **Files**: `background.js`
+- **When to modify**: Changing data collection, adding new background tasks, or modifying recording logic
+
+### `content/` - Content Scripts (Injected into Pages)
+Scripts injected into web pages to collect data. Each file has a specific role:
+- `content.js` - Page info collection, console log interception
+- `screenshot.js` - Screenshot capture (viewport and full-page)
+- `annotator.js` - Drawing/annotation canvas logic (shared with annotate page)
+- `recording-overlay.js` - Recording indicator overlay on pages
+- **When to modify**: Changing what data is collected from pages or how screenshots work
+
+### `options/` - Settings Page
+Extension settings/preferences page accessible via Chrome settings. Handles:
+- Redmine server URL and API key configuration
+- Default project, priority, and assignee settings
+- Data collection toggles (network requests, console logs, cookies)
+- Connection testing
+- **Files**: `options.js`, `options.html`, `options.css`
+- **When to modify**: Adding new settings or changing configuration options
+
+### `lib/` - Shared Libraries
+Reusable modules used across multiple parts of the extension:
+- `redmine-api.js` - Redmine API client (projects, issues, uploads, users)
+- `utils.js` - Common utility functions
+- `video-storage.js` - Video data storage management
+- **When to modify**: Changing API integrations or adding shared utilities
+
+### `assets/` - Static Assets
+Icons and images for the extension:
+- Extension icons (16, 32, 48, 128px)
+- UI assets
+
+### `.github/` - CI/CD Automation
+GitHub Actions workflows and scripts:
+- `workflows/release.yml` - Automated release pipeline
+- `scripts/` - Node.js scripts for version bumping, changelog, builds, uploads
 
 ## CI/CD Pipeline
 
