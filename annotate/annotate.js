@@ -2176,6 +2176,17 @@ function showSuccessScreen(issue) {
       <a href="${issueUrl}" target="_blank">${issueUrl}</a>
     `;
   }
+
+  // Save to recent submissions history
+  const projectSelect = document.getElementById('reviewProjectSelect');
+  const projectName = projectSelect ? projectSelect.options[projectSelect.selectedIndex]?.text : '';
+  saveRecentSubmission({
+    id: issue.id,
+    subject: issue.subject || document.getElementById('reviewSubjectInput')?.value || '',
+    project: projectName,
+    url: issueUrl,
+    timestamp: Date.now(),
+  });
 }
 
 // Populate review modal

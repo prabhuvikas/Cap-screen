@@ -500,6 +500,70 @@ main {
   display: none !important;
 }
 
+/* Recent Submissions */
+.recent-submissions {
+  margin-top: 16px;
+  border-top: 1px solid #e5e5e5;
+  padding-top: 12px;
+}
+
+.recent-submissions-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+
+.recent-submissions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.recent-submissions-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  transition: background-color 0.15s;
+}
+
+.recent-submissions-list li:hover {
+  background-color: #f5f5f5;
+}
+
+.recent-submissions-list li a {
+  color: #1976d2;
+  text-decoration: none;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.recent-submissions-list li a:hover {
+  text-decoration: underline;
+}
+
+.recent-submission-subject {
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.recent-submission-meta {
+  color: #999;
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* Footer */
 footer {
   font-family: 'JetBrains Mono', monospace;

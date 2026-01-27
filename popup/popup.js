@@ -71,6 +71,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Show initial section
   showSection('captureSection');
+
+  // Load recent submissions history
+  renderRecentSubmissions();
 });
 
 // Load settings from storage
@@ -1490,6 +1493,61 @@ function showSuccessScreen(issue) {
     <strong>Issue #${issue.id}</strong><br>
     <a href="${issueUrl}" target="_blank">${issueUrl}</a>
   `;
+
+  // Save to recent submissions history
+  const projectSelect = document.getElementById('reviewProjectSelect');
+  const projectName = projectSelect ? projectSelect.options[projectSelect.selectedIndex]?.text : '';
+  saveRecentSubmission({
+    id: issue.id,
+    subject: issue.subject || document.getElementById('reviewSubjectInput')?.value || '',
+    project: projectName,
+    url: issueUrl,
+    timestamp: Date.now(),
+  });
+}
+
+// Load and display recent submissions in the capture section
+async function renderRecentSubmissions() {
+  const submissions = await getRecentSubmissions();
+  const section = document.getElementById('recentSubmissionsSection');
+  const list = document.getElementById('recentSubmissionsList');
+
+  if (!submissions.length) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  list.innerHTML = '';
+  for (const entry of submissions) {
+    const li = document.createElement('li');
+
+    const link = document.createElement('a');
+    link.href = entry.url;
+    link.target = '_blank';
+    link.textContent = `#${entry.id}`;
+    li.appendChild(link);
+
+    const subject = document.createElement('span');
+    subject.className = 'recent-submission-subject';
+    subject.textContent = entry.subject;
+    subject.title = entry.subject;
+    li.appendChild(subject);
+
+    const meta = document.createElement('span');
+    meta.className = 'recent-submission-meta';
+    const parts = [];
+    if (entry.project) parts.push(entry.project);
+    if (entry.timestamp) {
+      const d = new Date(entry.timestamp);
+      parts.push(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+    }
+    meta.textContent = parts.join(' · ');
+    li.appendChild(meta);
+
+    list.appendChild(li);
+  }
+
+  section.classList.remove('hidden');
 }
 
 // Reset form for new report
