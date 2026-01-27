@@ -575,7 +575,7 @@ async function recordVideo() {
     console.log('[Annotate] Recording started successfully');
 
     // Show user feedback
-    alert('Recording started! Use the browser\'s "Stop Sharing" button when done. The annotation page will reopen automatically.');
+    alert('Recording started after countdown! Use the browser\'s "Stop Sharing" button when done. The annotation page will reopen automatically.');
 
     // Close this annotation tab - it will reopen when recording stops
     window.close();

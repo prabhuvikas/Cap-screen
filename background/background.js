@@ -110,6 +110,55 @@ async function closeOffscreenDocument() {
 }
 
 
+// Show a 3-2-1 countdown overlay on the given tab before recording starts.
+// Uses chrome.scripting.executeScript to inject and update the overlay.
+async function showCountdownOnTab(tabId) {
+  // Inject the countdown overlay container
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const overlay = document.createElement('div');
+      overlay.id = 'recording-countdown-overlay';
+      overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+      const counter = document.createElement('div');
+      counter.id = 'recording-countdown-number';
+      counter.style.cssText = 'color:white;font-size:120px;font-weight:700;text-shadow:0 4px 20px rgba(0,0,0,0.5);opacity:0;transition:transform 0.4s ease-out,opacity 0.4s ease-out;';
+      overlay.appendChild(counter);
+      document.body.appendChild(overlay);
+    }
+  });
+
+  // Show countdown: 3, 2, 1
+  for (const num of [3, 2, 1]) {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (n) => {
+        const el = document.getElementById('recording-countdown-number');
+        if (el) {
+          el.textContent = n;
+          el.style.transform = 'scale(1.5)';
+          el.style.opacity = '0';
+          // Trigger reflow to reset animation
+          void el.offsetWidth;
+          el.style.transform = 'scale(1)';
+          el.style.opacity = '1';
+        }
+      },
+      args: [num]
+    });
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
+  // Remove the overlay
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const overlay = document.getElementById('recording-countdown-overlay');
+      if (overlay) overlay.remove();
+    }
+  });
+}
+
 async function handleStartDisplayCapture() {
   try {
     console.log('[Background] Starting display capture (window/screen)');
@@ -117,17 +166,46 @@ async function handleStartDisplayCapture() {
     // Setup offscreen document
     await setupOffscreenDocument();
 
-    // Send message to offscreen document to start display recording
-    console.log('[Background] Sending startDisplayRecording message to offscreen document');
+    // Phase 1: Prepare the display recording (acquire stream + create recorder, but don't start)
+    console.log('[Background] Sending prepareDisplayRecording message to offscreen document');
     const response = await chrome.runtime.sendMessage({
-      action: 'startDisplayRecording'
+      action: 'prepareDisplayRecording'
     });
 
     if (!response || !response.success) {
-      throw new Error(response?.error || 'Failed to start display recording in offscreen document');
+      throw new Error(response?.error || 'Failed to prepare display recording in offscreen document');
     }
 
-    console.log('[Background] Display recording started in offscreen document');
+    console.log('[Background] Display recording prepared, starting countdown');
+
+    // Phase 2: Show 3-2-1 countdown on the recording tab (if available)
+    if (recordingTabId) {
+      try {
+        await showCountdownOnTab(recordingTabId);
+        console.log('[Background] Countdown completed on tab', recordingTabId);
+      } catch (countdownError) {
+        // Countdown failed (e.g. tab is chrome://, tab closed) — proceed without it
+        console.warn('[Background] Could not show countdown on tab:', countdownError.message);
+      }
+    }
+
+    // Phase 3: Begin recording
+    console.log('[Background] Sending beginRecording message to offscreen document');
+    const beginResponse = await chrome.runtime.sendMessage({
+      action: 'beginRecording'
+    });
+
+    if (!beginResponse || !beginResponse.success) {
+      throw new Error(beginResponse?.error || 'Failed to begin recording');
+    }
+
+    // Update recording start time to now (after countdown)
+    recordingStartTime = Date.now();
+    chrome.storage.session.set({ recordingStartTime }).catch(err =>
+      console.error('[Background] Error updating recording start time:', err)
+    );
+
+    console.log('[Background] Display recording started after countdown');
   } catch (error) {
     console.error('[Background] Error in handleStartDisplayCapture:', error);
     // Clean up offscreen document if there was an error

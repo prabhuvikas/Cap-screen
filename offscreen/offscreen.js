@@ -3,6 +3,7 @@
 
 let mediaRecorder = null;
 let recordedChunks = [];
+let displayStream = null;
 
 console.log('[Offscreen] Offscreen document loaded');
 
@@ -11,9 +12,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Offscreen] Received message:', request.action);
 
   if (request.action === 'startDisplayRecording') {
-    startDisplayRecording()
+    // Legacy: start recording immediately (prepare + begin in one step)
+    prepareDisplayRecording()
       .then(() => {
-        console.log('[Offscreen] Display recording started successfully');
+        mediaRecorder.start(10000);
+        console.log('[Offscreen] Display recording started successfully (legacy path)');
         sendResponse({ success: true });
       })
       .catch((error) => {
@@ -21,6 +24,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ success: false, error: error.message });
       });
     return true; // Keep channel open for async response
+  }
+
+  if (request.action === 'prepareDisplayRecording') {
+    prepareDisplayRecording()
+      .then(() => {
+        console.log('[Offscreen] Display recording prepared successfully');
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        console.error('[Offscreen] Error preparing display recording:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (request.action === 'beginRecording') {
+    try {
+      if (!mediaRecorder || mediaRecorder.state !== 'inactive') {
+        throw new Error('MediaRecorder not ready or already recording');
+      }
+      mediaRecorder.start(10000);
+      console.log('[Offscreen] MediaRecorder started for display media with 10s timeslice');
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('[Offscreen] Error beginning recording:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+    return true;
   }
 
   if (request.action === 'stitchScreenshots') {
@@ -52,13 +83,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return false;
 });
 
-async function startDisplayRecording() {
+// Phase 1: Acquire display media stream and create MediaRecorder, but don't start recording.
+// This allows the background to show a countdown before beginning capture.
+async function prepareDisplayRecording() {
   try {
     console.log('[Offscreen] Getting display media stream');
 
     // Get display media stream - this will show a picker dialog
     // User can choose: tab, window, or entire screen
-    const stream = await navigator.mediaDevices.getDisplayMedia({
+    displayStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         displaySurface: 'monitor', // Prefer entire screen/window
         cursor: 'always', // Always show cursor in recording
@@ -80,7 +113,7 @@ async function startDisplayRecording() {
     recordedChunks = [];
 
     // Create MediaRecorder with the stream
-    mediaRecorder = new MediaRecorder(stream, {
+    mediaRecorder = new MediaRecorder(displayStream, {
       mimeType: 'video/webm;codecs=vp9',
       videoBitsPerSecond: 2500000
     });
@@ -113,10 +146,13 @@ async function startDisplayRecording() {
         console.log('[Offscreen] Converted to data URL, length:', videoDataUrl.length, 'chars (', (videoDataUrl.length / 1024 / 1024).toFixed(2), 'MB)');
 
         // Stop all tracks
-        stream.getTracks().forEach(track => {
-          console.log('[Offscreen] Stopping track:', track.kind);
-          track.stop();
-        });
+        if (displayStream) {
+          displayStream.getTracks().forEach(track => {
+            console.log('[Offscreen] Stopping track:', track.kind);
+            track.stop();
+          });
+          displayStream = null;
+        }
 
         // For large videos (>5MB), use IndexedDB instead of chrome.runtime.sendMessage
         // chrome.runtime.sendMessage has size limits (~4MB) and chrome.storage.session has quota limits (~10MB)
@@ -159,7 +195,7 @@ async function startDisplayRecording() {
     };
 
     // Handle user stopping via browser UI (clicking "Stop sharing")
-    stream.getVideoTracks()[0].onended = () => {
+    displayStream.getVideoTracks()[0].onended = () => {
       console.log('[Offscreen] User stopped recording via browser UI');
       // The MediaRecorder.onstop will handle the rest
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
@@ -167,13 +203,12 @@ async function startDisplayRecording() {
       }
     };
 
-    // Start recording with timeslice to prevent memory issues with long recordings
-    // Collect data every 10 seconds instead of waiting until the end
-    mediaRecorder.start(10000);
-    console.log('[Offscreen] MediaRecorder started for display media with 10s timeslice');
+    // NOTE: Recording is NOT started here. The background will send a
+    // 'beginRecording' message after the countdown completes.
+    console.log('[Offscreen] MediaRecorder prepared and ready (not yet recording)');
 
   } catch (error) {
-    console.error('[Offscreen] Error in startDisplayRecording:', error);
+    console.error('[Offscreen] Error in prepareDisplayRecording:', error);
     throw error;
   }
 }

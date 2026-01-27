@@ -411,10 +411,11 @@ async function startVideoRecording() {
 
   try {
     startBtn.disabled = true;
-    showStatus('recordingStatus', 'Starting video recording...', 'info');
+    showStatus('recordingStatus', 'Select what to record... A countdown will follow.', 'info');
     console.log('[Popup] Starting video recording');
 
-    // Start display capture in background - browser will show picker
+    // Start display capture in background - browser will show picker,
+    // then a 3-2-1 countdown appears on the tab before recording begins
     console.log('[Popup] Sending startDisplayCapture message to background...');
     const response = await chrome.runtime.sendMessage({
       action: 'startDisplayCapture',
