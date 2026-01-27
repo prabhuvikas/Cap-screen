@@ -1146,13 +1146,11 @@ function buildDescription() {
   description += `- Title: ${sanitizeText(pageInfo.title || currentTab.title)}\n`;
   description += `- Timestamp: ${new Date().toISOString()}\n`;
 
-  // Reference attached files instead of embedding all details
-  description += '\n\n## Additional Information\n';
-  description += 'Detailed technical information (browser, system, network, performance data) ';
-  description += 'is available in the attached technical-data.json file.\n';
+  // Build additional information lines, only add section if there's content
+  let additionalInfo = '';
 
   if (videoDataUrl) {
-    description += '- Video recording of the issue is attached.\n';
+    additionalInfo += '- Video recording of the issue is attached.\n';
   }
 
   // Check if multi-tab capture was used
@@ -1162,15 +1160,26 @@ function buildDescription() {
       ...networkRequests.filter(req => req._tabId).map(req => req._tabId),
       ...consoleLogs.filter(log => log._tabId).map(log => log._tabId)
     ]);
-    description += `\n**Note:** Data captured from ${uniqueTabIds.size} tab(s).\n`;
+    additionalInfo += `\n**Note:** Data captured from ${uniqueTabIds.size} tab(s).\n`;
   }
 
-  if (settings.includeNetworkRequests && networkRequests.length > 0) {
-    description += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
+  const hasNetworkRequests = settings.includeNetworkRequests && networkRequests.length > 0;
+  const hasConsoleLogs = settings.includeConsoleLogs && consoleLogs.length > 0;
+
+  if (hasNetworkRequests) {
+    additionalInfo += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
   }
 
-  if (settings.includeConsoleLogs && consoleLogs.length > 0) {
-    description += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
+  if (hasConsoleLogs) {
+    additionalInfo += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
+  }
+
+  // Only add the Additional Information section if there's actual data
+  if (additionalInfo || hasNetworkRequests || hasConsoleLogs) {
+    description += '\n\n## Additional Information\n';
+    description += 'Detailed technical information (browser, system, network, performance data) ';
+    description += 'is available in the attached technical-data.json file.\n';
+    description += additionalInfo;
   }
 
   // Sanitize the entire description to remove any remaining unicode
