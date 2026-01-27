@@ -178,6 +178,155 @@ async function handleCaptureDisplayScreenshot() {
 }
 
 
+// Full-page screenshot: scroll through the page, capture each viewport, stitch together
+async function handleFullPageScreenshot(tabId) {
+  try {
+    // 1. Get page dimensions and current scroll position from the target tab
+    const [{ result: pageMetrics }] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        return {
+          scrollWidth: Math.max(
+            document.body.scrollWidth || 0,
+            document.documentElement.scrollWidth || 0
+          ),
+          scrollHeight: Math.max(
+            document.body.scrollHeight || 0,
+            document.documentElement.scrollHeight || 0
+          ),
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          devicePixelRatio: window.devicePixelRatio || 1,
+          originalScrollX: window.scrollX,
+          originalScrollY: window.scrollY,
+        };
+      },
+    });
+
+    console.log('[Background] Page metrics:', pageMetrics);
+
+    const {
+      scrollWidth, scrollHeight,
+      viewportWidth, viewportHeight,
+      devicePixelRatio,
+      originalScrollX, originalScrollY,
+    } = pageMetrics;
+
+    // Safety: cap canvas area to avoid browser crashes (~128M pixels limit)
+    const MAX_CANVAS_AREA = 128 * 1024 * 1024;
+    const fullPixelWidth = scrollWidth * devicePixelRatio;
+    const fullPixelHeight = scrollHeight * devicePixelRatio;
+
+    let scaleFactor = 1;
+    if (fullPixelWidth * fullPixelHeight > MAX_CANVAS_AREA) {
+      scaleFactor = Math.sqrt(MAX_CANVAS_AREA / (fullPixelWidth * fullPixelHeight));
+      console.log('[Background] Page is very large, scaling down by factor:', scaleFactor.toFixed(3));
+    }
+
+    // 2. Hide scrollbars so they don't appear in captures
+    await chrome.scripting.insertCSS({
+      target: { tabId },
+      css: 'html::-webkit-scrollbar { display: none !important; } html { scrollbar-width: none !important; overflow: -moz-scrollbars-none !important; }',
+    });
+
+    // 3. Capture each viewport segment
+    const numCols = Math.max(1, Math.ceil(scrollWidth / viewportWidth));
+    const numRows = Math.max(1, Math.ceil(scrollHeight / viewportHeight));
+    const captures = [];
+
+    console.log(`[Background] Capturing ${numRows} rows x ${numCols} cols = ${numRows * numCols} segments`);
+
+    // Get the tab's window id for captureVisibleTab
+    const tab = await chrome.tabs.get(tabId);
+    const windowId = tab.windowId;
+
+    for (let row = 0; row < numRows; row++) {
+      for (let col = 0; col < numCols; col++) {
+        const targetX = col * viewportWidth;
+        const targetY = row * viewportHeight;
+
+        // Scroll to target position
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          func: (sx, sy) => window.scrollTo(sx, sy),
+          args: [targetX, targetY],
+        });
+
+        // Wait for scroll to settle and repaint
+        await new Promise(r => setTimeout(r, 150));
+
+        // Read actual scroll position (browser clamps to valid range)
+        const [{ result: actualPos }] = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => ({ x: window.scrollX, y: window.scrollY }),
+        });
+
+        // Capture visible viewport
+        const dataUrl = await chrome.tabs.captureVisibleTab(windowId, {
+          format: 'png',
+          quality: 100,
+        });
+
+        captures.push({
+          dataUrl,
+          x: actualPos.x,
+          y: actualPos.y,
+        });
+      }
+    }
+
+    console.log(`[Background] Captured ${captures.length} viewport segments`);
+
+    // 4. Restore original scroll position and remove scrollbar hiding CSS
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (sx, sy) => window.scrollTo(sx, sy),
+      args: [originalScrollX, originalScrollY],
+    });
+
+    await chrome.scripting.removeCSS({
+      target: { tabId },
+      css: 'html::-webkit-scrollbar { display: none !important; } html { scrollbar-width: none !important; overflow: -moz-scrollbars-none !important; }',
+    });
+
+    // 5. Send captures to offscreen document for stitching
+    await setupOffscreenDocument();
+
+    const stitchResponse = await chrome.runtime.sendMessage({
+      action: 'stitchScreenshots',
+      captures,
+      fullWidth: scrollWidth,
+      fullHeight: scrollHeight,
+      viewportWidth,
+      viewportHeight,
+      devicePixelRatio,
+      scaleFactor,
+    });
+
+    await closeOffscreenDocument();
+
+    if (!stitchResponse || !stitchResponse.success) {
+      throw new Error(stitchResponse?.error || 'Failed to stitch screenshots');
+    }
+
+    return stitchResponse.screenshotDataUrl;
+
+  } catch (error) {
+    console.error('[Background] Error in handleFullPageScreenshot:', error);
+    // Best-effort cleanup: restore scrollbar CSS
+    try {
+      await chrome.scripting.removeCSS({
+        target: { tabId },
+        css: 'html::-webkit-scrollbar { display: none !important; } html { scrollbar-width: none !important; overflow: -moz-scrollbars-none !important; }',
+      });
+    } catch (e) { /* ignore cleanup errors */ }
+    try {
+      await closeOffscreenDocument();
+    } catch (e) { /* ignore cleanup errors */ }
+    throw error;
+  }
+}
+
 async function handleRecordingComplete(videoDataUrl, largeVideo = false, videoSizeMB = 0) {
   try {
     if (largeVideo) {
@@ -501,6 +650,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     });
     return true; // Keep channel open for async response
+  }
+
+  if (request.action === 'captureVisibleTab') {
+    // Capture the visible area of the sender's tab (used by content scripts)
+    const windowId = sender.tab ? sender.tab.windowId : null;
+    chrome.tabs.captureVisibleTab(windowId, {
+      format: 'png',
+      quality: 100
+    }).then(dataUrl => {
+      sendResponse({ success: true, dataUrl });
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'captureFullPageScreenshot') {
+    console.log('[Background] Starting full-page screenshot capture for tab', request.tabId);
+    handleFullPageScreenshot(request.tabId)
+      .then(screenshotDataUrl => {
+        console.log('[Background] Full-page screenshot complete, data length:', screenshotDataUrl.length);
+        sendResponse({ success: true, screenshotDataUrl });
+      })
+      .catch(error => {
+        console.error('[Background] Full-page screenshot failed:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
   }
 
   if (request.action === 'openAnnotationPage') {

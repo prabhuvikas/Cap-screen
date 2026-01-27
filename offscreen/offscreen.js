@@ -23,6 +23,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Keep channel open for async response
   }
 
+  if (request.action === 'stitchScreenshots') {
+    stitchScreenshots(request)
+      .then((screenshotDataUrl) => {
+        console.log('[Offscreen] Stitching complete, data length:', screenshotDataUrl.length);
+        sendResponse({ success: true, screenshotDataUrl });
+      })
+      .catch((error) => {
+        console.error('[Offscreen] Error stitching screenshots:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
   if (request.action === 'captureDisplayScreenshot') {
     captureDisplayScreenshot()
       .then((screenshotDataUrl) => {
@@ -225,5 +238,77 @@ async function captureDisplayScreenshot() {
     console.error('[Offscreen] Error in captureDisplayScreenshot:', error);
     throw error;
   }
+}
+
+// Stitch multiple viewport captures into a single full-page image
+async function stitchScreenshots({
+  captures,
+  fullWidth,
+  fullHeight,
+  viewportWidth,
+  viewportHeight,
+  devicePixelRatio,
+  scaleFactor,
+}) {
+  try {
+    const dpr = devicePixelRatio || 1;
+    const scale = scaleFactor || 1;
+
+    const canvasWidth = Math.round(fullWidth * dpr * scale);
+    const canvasHeight = Math.round(fullHeight * dpr * scale);
+
+    console.log(`[Offscreen] Stitching ${captures.length} captures into ${canvasWidth}x${canvasHeight} canvas (dpr=${dpr}, scale=${scale})`);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext('2d');
+
+    // White background (in case of gaps)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Load and draw each captured viewport
+    for (let i = 0; i < captures.length; i++) {
+      const capture = captures[i];
+      const img = await loadImage(capture.dataUrl);
+
+      // The captured image is at native device resolution (viewportWidth*dpr x viewportHeight*dpr).
+      // Draw at the position corresponding to the actual scroll offset, scaled by dpr and scaleFactor.
+      const dx = Math.round(capture.x * dpr * scale);
+      const dy = Math.round(capture.y * dpr * scale);
+      const dw = Math.round(img.naturalWidth * scale);
+      const dh = Math.round(img.naturalHeight * scale);
+
+      ctx.drawImage(img, dx, dy, dw, dh);
+      console.log(`[Offscreen] Drew segment ${i + 1}/${captures.length} at (${dx},${dy}) size ${dw}x${dh}`);
+    }
+
+    // Use JPEG for very large images to reduce data URL size, PNG otherwise
+    const pixelCount = canvasWidth * canvasHeight;
+    let dataUrl;
+    if (pixelCount > 25_000_000) {
+      console.log('[Offscreen] Large image, using JPEG encoding');
+      dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    } else {
+      dataUrl = canvas.toDataURL('image/png');
+    }
+
+    console.log('[Offscreen] Stitched data URL length:', dataUrl.length);
+    return dataUrl;
+  } catch (error) {
+    console.error('[Offscreen] Error in stitchScreenshots:', error);
+    throw error;
+  }
+}
+
+// Helper: load an image from a data URL
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Failed to load image for stitching'));
+    img.src = dataUrl;
+  });
 }
 

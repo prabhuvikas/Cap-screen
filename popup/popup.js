@@ -95,6 +95,7 @@ async function loadSettings() {
 function setupEventListeners() {
   // Screenshot capture
   document.getElementById('captureCurrentTab').addEventListener('click', captureCurrentTab);
+  document.getElementById('captureFullPage').addEventListener('click', captureFullPage);
   document.getElementById('captureScreenshot').addEventListener('click', captureScreenshot);
 
   // Video recording
@@ -160,20 +161,40 @@ function setupEventListeners() {
 }
 
 // Capture current tab screenshot quickly (no picker)
+// When autoFullPageScreenshot is enabled, captures the entire scrollable page.
 async function captureCurrentTab() {
   const button = document.getElementById('captureCurrentTab');
   const statusEl = document.getElementById('captureStatus');
 
   try {
     button.disabled = true;
-    showStatus('captureStatus', 'Capturing current tab...', 'info');
-    console.log('[Popup] Capturing current tab screenshot');
 
-    // Use chrome.tabs.captureVisibleTab for quick capture
-    const screenshotData = await chrome.tabs.captureVisibleTab(null, {
-      format: 'png',
-      quality: 100
-    });
+    let screenshotData;
+
+    if (settings.autoFullPageScreenshot) {
+      showStatus('captureStatus', 'Capturing full page (scrolling)...', 'info');
+      console.log('[Popup] Capturing full-page screenshot (autoFullPageScreenshot enabled)');
+
+      const response = await chrome.runtime.sendMessage({
+        action: 'captureFullPageScreenshot',
+        tabId: currentTab.id
+      });
+
+      if (!response || !response.success) {
+        throw new Error(response?.error || 'Full-page capture failed');
+      }
+
+      screenshotData = response.screenshotDataUrl;
+    } else {
+      showStatus('captureStatus', 'Capturing current tab...', 'info');
+      console.log('[Popup] Capturing current tab screenshot');
+
+      // Use chrome.tabs.captureVisibleTab for quick capture
+      screenshotData = await chrome.tabs.captureVisibleTab(null, {
+        format: 'png',
+        quality: 100
+      });
+    }
 
     if (!screenshotData) {
       throw new Error('Failed to capture screenshot');
@@ -223,6 +244,76 @@ async function captureCurrentTab() {
 
   } catch (error) {
     console.error('Error capturing current tab screenshot:', error);
+    showStatus('captureStatus', `Error: ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// Capture full page screenshot (scroll-and-stitch) explicitly via the button
+async function captureFullPage() {
+  const button = document.getElementById('captureFullPage');
+
+  try {
+    button.disabled = true;
+    showStatus('captureStatus', 'Capturing full page (scrolling)...', 'info');
+    console.log('[Popup] Starting explicit full-page screenshot capture');
+
+    const response = await chrome.runtime.sendMessage({
+      action: 'captureFullPageScreenshot',
+      tabId: currentTab.id
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Full-page capture failed');
+    }
+
+    screenshotDataUrl = response.screenshotDataUrl;
+
+    if (!screenshotDataUrl) {
+      throw new Error('Failed to capture full page screenshot');
+    }
+
+    showStatus('captureStatus', 'Full page captured successfully!', 'success');
+
+    // Save screenshot to session storage (use new multi-screenshot format)
+    const newScreenshot = {
+      id: Date.now().toString(36) + Math.random().toString(36).substring(2),
+      data: screenshotDataUrl,
+      annotations: null,
+      timestamp: Date.now(),
+      tabId: currentTab.id,
+      name: 'Full Page Screenshot 1'
+    };
+
+    try {
+      await chrome.storage.session.set({
+        screenshots: [newScreenshot],
+        currentScreenshotId: newScreenshot.id,
+        tabId: currentTab.id,
+        screenshotData: screenshotDataUrl
+      });
+    } catch (storageError) {
+      console.error('[Popup] Error saving full-page screenshot to storage:', storageError);
+      if (!storageError.message || !storageError.message.includes('quota')) {
+        throw storageError;
+      }
+    }
+
+    // Open annotation page in new tab
+    const annotateTab = await chrome.tabs.create({
+      url: chrome.runtime.getURL('annotate/annotate.html'),
+      active: true
+    });
+
+    console.log('[Popup] Opened annotation tab:', annotateTab.id);
+
+    setTimeout(() => {
+      window.close();
+    }, 300);
+
+  } catch (error) {
+    console.error('Error capturing full page screenshot:', error);
     showStatus('captureStatus', `Error: ${error.message}`, 'error');
   } finally {
     button.disabled = false;
