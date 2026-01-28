@@ -256,6 +256,35 @@ async function handleCaptureDisplayScreenshot() {
 }
 
 
+// Rate-limited wrapper for chrome.tabs.captureVisibleTab.
+// Chrome enforces MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND (2 calls/sec).
+// This function throttles calls and retries on rate-limit errors.
+let lastCaptureVisibleTabTime = 0;
+const MIN_CAPTURE_INTERVAL_MS = 550; // slightly over 500ms for safety margin
+
+async function captureVisibleTabThrottled(windowId, options) {
+  const elapsed = Date.now() - lastCaptureVisibleTabTime;
+  if (elapsed < MIN_CAPTURE_INTERVAL_MS) {
+    await new Promise(r => setTimeout(r, MIN_CAPTURE_INTERVAL_MS - elapsed));
+  }
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      lastCaptureVisibleTabTime = Date.now();
+      return await chrome.tabs.captureVisibleTab(windowId, options);
+    } catch (error) {
+      if (error.message && error.message.includes('MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND') && attempt < 3) {
+        const backoff = 600 * attempt;
+        console.warn(`[Background] captureVisibleTab rate limited (attempt ${attempt}/3), retrying in ${backoff}ms`);
+        await new Promise(r => setTimeout(r, backoff));
+      } else {
+        throw error;
+      }
+    }
+  }
+}
+
+
 // Full-page screenshot: scroll through the page, capture each viewport, stitch together
 async function handleFullPageScreenshot(tabId) {
   try {
@@ -339,8 +368,8 @@ async function handleFullPageScreenshot(tabId) {
           func: () => ({ x: window.scrollX, y: window.scrollY }),
         });
 
-        // Capture visible viewport
-        const dataUrl = await chrome.tabs.captureVisibleTab(windowId, {
+        // Capture visible viewport (throttled to respect Chrome's rate limit)
+        const dataUrl = await captureVisibleTabThrottled(windowId, {
           format: 'png',
           quality: 100,
         });
