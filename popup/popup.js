@@ -1569,10 +1569,14 @@ function renderDraftsList(drafts) {
     const li = document.createElement('li');
     li.dataset.draftId = draft.id;
 
+    // Content wrapper (clickable area)
+    const content = document.createElement('div');
+    content.className = 'draft-item-content';
+
     const name = document.createElement('div');
     name.className = 'draft-item-name';
     name.textContent = draft.name || 'Untitled Draft';
-    li.appendChild(name);
+    content.appendChild(name);
 
     const info = document.createElement('div');
     info.className = 'draft-item-info';
@@ -1590,10 +1594,27 @@ function renderDraftsList(drafts) {
     time.textContent = formatTimeAgoPopup(draft.updatedAt);
     info.appendChild(time);
 
-    li.appendChild(info);
+    content.appendChild(info);
+    li.appendChild(content);
 
-    // Click to continue editing
-    li.addEventListener('click', () => continueDraftFromPopup(draft.id));
+    // Actions wrapper
+    const actions = document.createElement('div');
+    actions.className = 'draft-item-actions';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'draft-delete-btn';
+    deleteBtn.title = 'Delete draft';
+    deleteBtn.textContent = '×';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteDraftFromPopup(draft.id, li);
+    });
+    actions.appendChild(deleteBtn);
+
+    li.appendChild(actions);
+
+    // Click on content to continue editing
+    content.addEventListener('click', () => continueDraftFromPopup(draft.id));
 
     list.appendChild(li);
   }
@@ -1693,6 +1714,39 @@ async function continueDraftFromPopup(draftId) {
   } catch (error) {
     console.error('[Popup] Error continuing draft:', error);
     showStatus('captureStatus', 'Failed to load draft', 'error');
+  }
+}
+
+// Delete a draft from the popup
+async function deleteDraftFromPopup(draftId, listItem) {
+  if (!confirm('Delete this draft?')) {
+    return;
+  }
+
+  try {
+    await draftStorage.deleteDraft(draftId);
+
+    // Remove from UI
+    listItem.remove();
+
+    // Update badge count
+    const badge = document.getElementById('draftsCountBadge');
+    const currentCount = parseInt(badge.textContent) || 0;
+    if (currentCount > 1) {
+      badge.textContent = currentCount - 1;
+    } else {
+      badge.classList.add('hidden');
+      // Show no drafts message if list is empty
+      const list = document.getElementById('draftsList');
+      if (list.children.length === 0) {
+        document.getElementById('noDraftsText').classList.remove('hidden');
+      }
+    }
+
+    console.log('[Popup] Draft deleted:', draftId);
+  } catch (error) {
+    console.error('[Popup] Error deleting draft:', error);
+    showStatus('captureStatus', 'Failed to delete draft', 'error');
   }
 }
 

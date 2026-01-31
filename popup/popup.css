@@ -1184,3 +1184,47 @@ footer {
   font-size: 12px;
   padding: 16px;
 }
+
+/* Draft item layout with delete button */
+.recent-drafts-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.draft-item-content {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.draft-item-actions {
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.recent-drafts-list li:hover .draft-item-actions {
+  opacity: 1;
+}
+
+.draft-delete-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: #f44336;
+  color: white;
+  border-radius: 4px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s;
+}
+
+.draft-delete-btn:hover {
+  background: #d32f2f;
+}
