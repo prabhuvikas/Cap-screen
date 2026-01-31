@@ -3477,10 +3477,10 @@ function getCurrentFormData() {
 // Build draft object from current state
 function buildDraftObject() {
   // Capture current annotation state if annotator exists
-  if (annotator) {
+  if (annotator && typeof annotator.getState === 'function') {
     const currentScreenshot = screenshots.find(s => s.id === currentScreenshotId);
     if (currentScreenshot && currentScreenshot.type !== 'video') {
-      currentScreenshot.annotations = annotator.captureState();
+      currentScreenshot.annotations = annotator.getState();
     }
   }
 
