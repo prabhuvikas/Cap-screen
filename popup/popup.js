@@ -202,41 +202,22 @@ function setupEventListeners() {
 }
 
 // Capture current tab screenshot quickly (no picker)
-// When autoFullPageScreenshot is enabled, captures the entire scrollable page.
+// Always captures just the visible viewport
 async function captureCurrentTab() {
   const button = document.getElementById('captureCurrentTab');
   const statusEl = document.getElementById('captureStatus');
 
   try {
     button.disabled = true;
+    showStatus('captureStatus', 'Capturing current tab...', 'info');
+    console.log('[Popup] Capturing current tab screenshot (visible viewport only)');
 
-    let screenshotData;
-
-    if (settings.autoFullPageScreenshot) {
-      showStatus('captureStatus', 'Capturing full page (scrolling)...', 'info');
-      console.log('[Popup] Capturing full-page screenshot (autoFullPageScreenshot enabled)');
-
-      const response = await chrome.runtime.sendMessage({
-        action: 'captureFullPageScreenshot',
-        tabId: currentTab.id
-      });
-
-      if (!response || !response.success) {
-        throw new Error(response?.error || 'Full-page capture failed');
-      }
-
-      screenshotData = response.screenshotDataUrl;
-    } else {
-      showStatus('captureStatus', 'Capturing current tab...', 'info');
-      console.log('[Popup] Capturing current tab screenshot');
-
-      // Use chrome.tabs.captureVisibleTab for quick capture
-      // Pass the specific window ID to ensure we capture the correct tab
-      screenshotData = await chrome.tabs.captureVisibleTab(currentTab.windowId, {
-        format: 'png',
-        quality: 100
-      });
-    }
+    // Use chrome.tabs.captureVisibleTab for quick capture
+    // Pass the specific window ID to ensure we capture the correct tab
+    const screenshotData = await chrome.tabs.captureVisibleTab(currentTab.windowId, {
+      format: 'png',
+      quality: 100
+    });
 
     if (!screenshotData) {
       throw new Error('Failed to capture screenshot');
