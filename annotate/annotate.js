@@ -83,7 +83,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     redmineAPI = new RedmineAPI(settings.redmineUrl, settings.apiKey);
 
     // Check if we're loading a draft from popup
-    const sessionData = await chrome.storage.session.get(['loadDraftId', 'screenshots', 'screenshotData', 'tabId', 'currentScreenshotId', 'videoRecording', 'hasVideoRecording', 'videoInIndexedDB', 'videoSizeMB', 'recordingTimeframe']);
+    const sessionData = await chrome.storage.session.get(['loadDraftId', 'screenshots', 'screenshotData', 'tabId', 'currentScreenshotId', 'videoRecording', 'hasVideoRecording', 'videoInIndexedDB', 'videoSizeMB', 'recordingTimeframe', 'screenshotsInIndexedDB']);
 
     if (sessionData.loadDraftId) {
       // Loading a draft - clear the flag and load the draft
@@ -129,8 +129,34 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Mark as new capture to skip draft recovery prompt
       isNewCapture = true;
 
-      // Check if we have the new multi-screenshot format or old single screenshot
-      if (result.screenshots && result.screenshots.length > 0) {
+      // Check if screenshots are stored in IndexedDB (large screenshots fallback)
+      if (result.screenshotsInIndexedDB) {
+        console.log('[Annotate] Screenshots stored in IndexedDB, loading...');
+        try {
+          const idbData = await screenshotStorage.getScreenshots();
+          if (idbData && idbData.screenshots && idbData.screenshots.length > 0) {
+            screenshots = idbData.screenshots;
+            screenshots.forEach((screenshot, index) => {
+              if (!screenshot.name) {
+                screenshot.name = `Screenshot ${index + 1}`;
+              }
+            });
+            currentScreenshotId = idbData.currentScreenshotId || screenshots[0].id;
+            currentTab = { id: idbData.tabId || result.tabId };
+            console.log('[Annotate] Loaded', screenshots.length, 'screenshot(s) from IndexedDB');
+            // Clear the flag
+            await chrome.storage.session.remove(['screenshotsInIndexedDB']);
+          } else {
+            showError('Failed to load screenshots from storage.');
+            return;
+          }
+        } catch (idbError) {
+          console.error('[Annotate] Error loading screenshots from IndexedDB:', idbError);
+          showError('Failed to load screenshots: ' + idbError.message);
+          return;
+        }
+      } else if (result.screenshots && result.screenshots.length > 0) {
+        // Check if we have the new multi-screenshot format or old single screenshot
         // Load existing screenshots array
         screenshots = result.screenshots;
         // Ensure all screenshots have a name field

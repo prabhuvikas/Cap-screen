@@ -44,6 +44,44 @@ function sanitizeText(text) {
   return sanitized;
 }
 
+// Save screenshots with IndexedDB fallback for large images
+async function saveScreenshotWithFallback(screenshots, tabId, screenshotDataUrl) {
+  try {
+    await chrome.storage.session.set({
+      screenshots: screenshots,
+      currentScreenshotId: screenshots[0].id,
+      tabId: tabId,
+      // Keep old format for backward compatibility
+      screenshotData: screenshotDataUrl
+    });
+    console.log('[Popup] Screenshots saved to session storage');
+  } catch (storageError) {
+    console.error('[Popup] Error saving screenshot to session storage:', storageError);
+    if (storageError.message && storageError.message.includes('quota')) {
+      // Session storage quota exceeded - use IndexedDB fallback
+      console.log('[Popup] Using IndexedDB fallback for large screenshot');
+      try {
+        await screenshotStorage.saveScreenshots(screenshots, {
+          currentScreenshotId: screenshots[0].id,
+          tabId: tabId
+        });
+        // Set flag to tell annotate page to load from IndexedDB
+        await chrome.storage.session.set({
+          screenshotsInIndexedDB: true,
+          currentScreenshotId: screenshots[0].id,
+          tabId: tabId
+        });
+        console.log('[Popup] Screenshots saved to IndexedDB successfully');
+      } catch (idbError) {
+        console.error('[Popup] IndexedDB fallback also failed:', idbError);
+        throw new Error('Failed to save screenshot: storage quota exceeded');
+      }
+    } else {
+      throw storageError;
+    }
+  }
+}
+
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
   // Get current tab
@@ -216,21 +254,7 @@ async function captureCurrentTab() {
       name: 'Screenshot 1'
     };
 
-    try {
-      await chrome.storage.session.set({
-        screenshots: [newScreenshot],
-        currentScreenshotId: newScreenshot.id,
-        tabId: currentTab.id,
-        // Keep old format for backward compatibility
-        screenshotData: screenshotDataUrl
-      });
-    } catch (storageError) {
-      console.error('[Popup] Error saving screenshot to storage:', storageError);
-      if (!storageError.message || !storageError.message.includes('quota')) {
-        throw storageError;
-      }
-      // Continue anyway - we still have the screenshot, annotation page will be blank but functional
-    }
+    await saveScreenshotWithFallback([newScreenshot], currentTab.id, screenshotDataUrl);
 
     // Open annotation page in new tab
     const annotateTab = await chrome.tabs.create({
@@ -289,19 +313,7 @@ async function captureFullPage() {
       name: 'Full Page Screenshot 1'
     };
 
-    try {
-      await chrome.storage.session.set({
-        screenshots: [newScreenshot],
-        currentScreenshotId: newScreenshot.id,
-        tabId: currentTab.id,
-        screenshotData: screenshotDataUrl
-      });
-    } catch (storageError) {
-      console.error('[Popup] Error saving full-page screenshot to storage:', storageError);
-      if (!storageError.message || !storageError.message.includes('quota')) {
-        throw storageError;
-      }
-    }
+    await saveScreenshotWithFallback([newScreenshot], currentTab.id, screenshotDataUrl);
 
     // Open annotation page in new tab
     const annotateTab = await chrome.tabs.create({
@@ -367,21 +379,7 @@ async function captureScreenshot() {
       name: 'Screenshot 1'
     };
 
-    try {
-      await chrome.storage.session.set({
-        screenshots: [newScreenshot],
-        currentScreenshotId: newScreenshot.id,
-        tabId: currentTab.id,
-        // Keep old format for backward compatibility
-        screenshotData: screenshotDataUrl
-      });
-    } catch (storageError) {
-      console.error('[Popup] Error saving screenshot to storage:', storageError);
-      if (!storageError.message || !storageError.message.includes('quota')) {
-        throw storageError;
-      }
-      // Continue anyway - we still have the screenshot, annotation page will be blank but functional
-    }
+    await saveScreenshotWithFallback([newScreenshot], currentTab.id, screenshotDataUrl);
 
     // Open annotation page in new tab
     const annotateTab = await chrome.tabs.create({
