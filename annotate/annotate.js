@@ -81,140 +81,212 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize Redmine API
     redmineAPI = new RedmineAPI(settings.redmineUrl, settings.apiKey);
 
-    // Load screenshot data and video recording from session storage
-    const result = await chrome.storage.session.get(['screenshots', 'screenshotData', 'tabId', 'currentScreenshotId', 'videoRecording', 'hasVideoRecording', 'videoInIndexedDB', 'videoSizeMB', 'recordingTimeframe']);
+    // Check if we're loading a draft from popup
+    const sessionData = await chrome.storage.session.get(['loadDraftId', 'screenshots', 'screenshotData', 'tabId', 'currentScreenshotId', 'videoRecording', 'hasVideoRecording', 'videoInIndexedDB', 'videoSizeMB', 'recordingTimeframe']);
 
-    // Check if we have the new multi-screenshot format or old single screenshot
-    if (result.screenshots && result.screenshots.length > 0) {
-      // Load existing screenshots array
-      screenshots = result.screenshots;
-      // Ensure all screenshots have a name field
-      screenshots.forEach((screenshot, index) => {
-        if (!screenshot.name) {
-          screenshot.name = `Screenshot ${index + 1}`;
-        }
-      });
-      currentScreenshotId = result.currentScreenshotId || screenshots[0].id;
-      currentTab = { id: result.tabId || screenshots[0].tabId };
-      console.log('[Annotate] Loaded', screenshots.length, 'media item(s) from storage');
-    } else if (result.screenshotData) {
-      // Convert old single screenshot format to new array format
-      const newScreenshot = {
-        id: generateId(),
-        data: result.screenshotData,
-        annotations: null,
-        timestamp: Date.now(),
-        tabId: result.tabId,
-        name: 'Screenshot 1'
-      };
-      screenshots = [newScreenshot];
-      currentScreenshotId = newScreenshot.id;
-      currentTab = { id: result.tabId };
+    if (sessionData.loadDraftId) {
+      // Loading a draft - clear the flag and load the draft
+      console.log('[Annotate] Loading draft from popup:', sessionData.loadDraftId);
+      await chrome.storage.session.remove(['loadDraftId']);
 
-      // Save in new format
+      // Load the draft
+      isLoadingDraft = true;
       try {
-        await chrome.storage.session.set({
-          screenshots: screenshots,
-          currentScreenshotId: currentScreenshotId,
-          tabId: result.tabId
-        });
-        console.log('[Annotate] Converted single screenshot to multi-screenshot format');
-      } catch (error) {
-        console.error('[Annotate] Error saving converted screenshot:', error);
-        // Continue anyway - we have the data in memory
-      }
-    } else if (!result.hasVideoRecording) {
-      // No screenshots and no video - error
-      showError('No media found. Please capture a screenshot or record a video first.');
-      return;
-    } else {
-      // No screenshots, but we have a video - that's okay, we'll add it below
-      screenshots = [];
-      currentTab = { id: result.tabId };
-      console.log('[Annotate] No screenshots found, but video recording is available');
-    }
-
-    console.log('[Annotate] Media data loaded successfully');
-
-    // Load video recording if available
-    if (result.hasVideoRecording) {
-      // Check if video is in IndexedDB (for large videos) or session storage (for small videos)
-      if (result.videoInIndexedDB) {
-        console.log('[Annotate] Loading large video from IndexedDB (', result.videoSizeMB.toFixed(2), 'MB)...');
-        try {
-          const videoData = await videoStorage.getVideo();
-          if (videoData && videoData.dataUrl) {
-            videoDataUrl = videoData.dataUrl;
-            console.log('[Annotate] Large video loaded successfully from IndexedDB');
-            // Clean up IndexedDB after loading
-            await videoStorage.deleteVideo();
+        const draft = await draftStorage.getDraft(sessionData.loadDraftId);
+        if (draft) {
+          // Restore screenshots from draft
+          if (draft.screenshots && draft.screenshots.length > 0) {
+            screenshots = draft.screenshots;
+            currentScreenshotId = screenshots[0].id;
           } else {
-            console.error('[Annotate] No video found in IndexedDB');
-            showError('Video recording not found in storage. Please try recording again.');
-            return;
+            // Draft has no media - create a placeholder
+            screenshots = [];
           }
-        } catch (error) {
-          console.error('[Annotate] Error loading video from IndexedDB:', error);
-          showError('Failed to load video recording: ' + error.message);
+
+          // Restore form data will happen after UI is initialized
+          currentDraftId = sessionData.loadDraftId;
+
+          // Store draft for later restoration of form data
+          window._pendingDraftRestore = draft;
+
+          console.log('[Annotate] Draft loaded with', screenshots.length, 'media items');
+        } else {
+          showError('Draft not found. It may have been deleted.');
           return;
         }
-      } else if (result.videoRecording) {
-        videoDataUrl = result.videoRecording;
-        console.log('[Annotate] Small video loaded successfully from session storage');
-      } else {
-        console.error('[Annotate] Video recording flag set but no video data found');
-        showError('Video recording not found in storage. Please try recording again.');
+      } catch (error) {
+        console.error('[Annotate] Error loading draft:', error);
+        showError('Failed to load draft: ' + error.message);
         return;
+      } finally {
+        isLoadingDraft = false;
+      }
+    } else {
+      // Normal flow - load from session storage
+      const result = sessionData;
+
+      // Check if we have the new multi-screenshot format or old single screenshot
+      if (result.screenshots && result.screenshots.length > 0) {
+        // Load existing screenshots array
+        screenshots = result.screenshots;
+        // Ensure all screenshots have a name field
+        screenshots.forEach((screenshot, index) => {
+          if (!screenshot.name) {
+            screenshot.name = `Screenshot ${index + 1}`;
+          }
+        });
+        currentScreenshotId = result.currentScreenshotId || screenshots[0].id;
+        currentTab = { id: result.tabId || screenshots[0].tabId };
+        console.log('[Annotate] Loaded', screenshots.length, 'media item(s) from storage');
+      } else if (result.screenshotData) {
+        // Convert old single screenshot format to new array format
+        const newScreenshot = {
+          id: generateId(),
+          data: result.screenshotData,
+          annotations: null,
+          timestamp: Date.now(),
+          tabId: result.tabId,
+          name: 'Screenshot 1'
+        };
+        screenshots = [newScreenshot];
+        currentScreenshotId = newScreenshot.id;
+        currentTab = { id: result.tabId };
+
+        // Save in new format
+        try {
+          await chrome.storage.session.set({
+            screenshots: screenshots,
+            currentScreenshotId: currentScreenshotId,
+            tabId: result.tabId
+          });
+          console.log('[Annotate] Converted single screenshot to multi-screenshot format');
+        } catch (error) {
+          console.error('[Annotate] Error saving converted screenshot:', error);
+          // Continue anyway - we have the data in memory
+        }
+      } else if (!result.hasVideoRecording) {
+        // No screenshots and no video - error
+        showError('No media found. Please capture a screenshot or record a video first.');
+        return;
+      } else {
+        // No screenshots, but we have a video - that's okay, we'll add it below
+        screenshots = [];
+        currentTab = { id: result.tabId };
+        console.log('[Annotate] No screenshots found, but video recording is available');
       }
 
-      // Load recording timeframe for this video
-      let videoTimeframe = null;
-      if (result.recordingTimeframe) {
-        videoTimeframe = result.recordingTimeframe;
-        console.log('[Annotate] Recording timeframe loaded:', {
-          tabId: videoTimeframe.tabId,
-          start: new Date(videoTimeframe.startTime).toISOString(),
-          end: new Date(videoTimeframe.endTime).toISOString(),
-          duration: `${(videoTimeframe.duration / 1000).toFixed(2)}s`
+      console.log('[Annotate] Media data loaded successfully');
+
+      // Load video recording if available
+      if (result.hasVideoRecording) {
+        // Check if video is in IndexedDB (for large videos) or session storage (for small videos)
+        if (result.videoInIndexedDB) {
+          console.log('[Annotate] Loading large video from IndexedDB (', result.videoSizeMB.toFixed(2), 'MB)...');
+          try {
+            const videoData = await videoStorage.getVideo();
+            if (videoData && videoData.dataUrl) {
+              videoDataUrl = videoData.dataUrl;
+              console.log('[Annotate] Large video loaded successfully from IndexedDB');
+              // Clean up IndexedDB after loading
+              await videoStorage.deleteVideo();
+            } else {
+              console.error('[Annotate] No video found in IndexedDB');
+              showError('Video recording not found in storage. Please try recording again.');
+              return;
+            }
+          } catch (error) {
+            console.error('[Annotate] Error loading video from IndexedDB:', error);
+            showError('Failed to load video recording: ' + error.message);
+            return;
+          }
+        } else if (result.videoRecording) {
+          videoDataUrl = result.videoRecording;
+          console.log('[Annotate] Small video loaded successfully from session storage');
+        } else {
+          console.error('[Annotate] Video recording flag set but no video data found');
+          showError('Video recording not found in storage. Please try recording again.');
+          return;
+        }
+
+        // Load recording timeframe for this video
+        let videoTimeframe = null;
+        if (result.recordingTimeframe) {
+          videoTimeframe = result.recordingTimeframe;
+          console.log('[Annotate] Recording timeframe loaded:', {
+            tabId: videoTimeframe.tabId,
+            start: new Date(videoTimeframe.startTime).toISOString(),
+            end: new Date(videoTimeframe.endTime).toISOString(),
+            duration: `${(videoTimeframe.duration / 1000).toFixed(2)}s`
+          });
+        }
+
+        // Clear from session storage after loading
+        await chrome.storage.session.remove(['videoRecording', 'hasVideoRecording', 'videoInIndexedDB', 'videoSizeMB', 'recordingTimeframe']);
+
+        // Count existing videos to number this one
+        const existingVideos = screenshots.filter(s => s.type === 'video');
+        const videoNumber = existingVideos.length + 1;
+
+        // Add video to media items WITH its recording timeframe
+        const videoItem = {
+          id: 'video-' + Date.now().toString(36),
+          type: 'video',
+          data: videoDataUrl,
+          timestamp: Date.now(),
+          name: `Video Recording ${videoNumber}`,
+          recordingTimeframe: videoTimeframe // Attach timeframe to this specific video
+        };
+        screenshots.push(videoItem);
+        currentScreenshotId = videoItem.id;
+
+        console.log(`[Annotate] Added video ${videoNumber} with timeframe attached`);
+
+        // Save updated media list
+        await chrome.storage.session.set({
+          screenshots: screenshots,
+          currentScreenshotId: currentScreenshotId
         });
       }
-
-      // Clear from session storage after loading
-      await chrome.storage.session.remove(['videoRecording', 'hasVideoRecording', 'videoInIndexedDB', 'videoSizeMB', 'recordingTimeframe']);
-
-      // Count existing videos to number this one
-      const existingVideos = screenshots.filter(s => s.type === 'video');
-      const videoNumber = existingVideos.length + 1;
-
-      // Add video to media items WITH its recording timeframe
-      const videoItem = {
-        id: 'video-' + Date.now().toString(36),
-        type: 'video',
-        data: videoDataUrl,
-        timestamp: Date.now(),
-        name: `Video Recording ${videoNumber}`,
-        recordingTimeframe: videoTimeframe // Attach timeframe to this specific video
-      };
-      screenshots.push(videoItem);
-      currentScreenshotId = videoItem.id;
-
-      console.log(`[Annotate] Added video ${videoNumber} with timeframe attached`);
-
-      // Save updated media list
-      await chrome.storage.session.set({
-        screenshots: screenshots,
-        currentScreenshotId: currentScreenshotId
-      });
-    }
+    } // End of else block (normal flow)
 
     // Setup event listeners
     setupEventListeners();
 
     // Initialize annotation with current media item (screenshot or video)
-    initializeAnnotation();
+    if (screenshots.length > 0) {
+      initializeAnnotation();
+    }
 
     // Update media list UI
     updateScreenshotsList();
+
+    // Restore form data if we loaded a draft
+    if (window._pendingDraftRestore) {
+      const draft = window._pendingDraftRestore;
+      delete window._pendingDraftRestore;
+
+      // Wait a bit for the form to be ready, then restore data
+      setTimeout(() => {
+        if (draft.formData) {
+          restoreFormData(draft.formData);
+        }
+        if (draft.mode) {
+          currentIssueMode = draft.mode;
+          const modeRadio = document.getElementById(draft.mode === 'update' ? 'issueModeUpdate' : 'issueModeCreate');
+          if (modeRadio) {
+            modeRadio.checked = true;
+            // Trigger change event to update UI
+            modeRadio.dispatchEvent(new Event('change'));
+          }
+        }
+        if (draft.selectedTabIds) {
+          selectedTabIds = draft.selectedTabIds;
+        }
+        isDirty = false;
+        updateDraftStatusIndicator('saved');
+        console.log('[Annotate] Draft form data restored');
+      }, 100);
+    }
 
   } catch (error) {
     console.error('[Annotate] Initialization error:', error);
@@ -3621,17 +3693,13 @@ async function checkForExistingDrafts() {
     // Clean up expired drafts first
     await draftStorage.cleanupExpiredDrafts();
 
-    // Check if we were asked to load a specific draft from popup
-    const sessionData = await chrome.storage.session.get(['loadDraftId']);
-    if (sessionData.loadDraftId) {
-      // Clear the flag
-      await chrome.storage.session.remove(['loadDraftId']);
-      // Load the requested draft
-      await loadDraft(sessionData.loadDraftId);
+    // If we already loaded a draft (from popup), don't show recovery modal
+    if (currentDraftId) {
+      console.log('[Draft] Already loaded draft:', currentDraftId);
       return;
     }
 
-    // Otherwise, check for recent draft to offer recovery
+    // Check for recent draft to offer recovery
     const recentDraft = await draftStorage.getMostRecentDraft();
     if (recentDraft) {
       showDraftRecoveryModal(recentDraft);
