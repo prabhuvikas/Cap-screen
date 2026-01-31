@@ -142,8 +142,10 @@ document.addEventListener('DOMContentLoaded', async () => {
               }
             });
             currentScreenshotId = idbData.currentScreenshotId || screenshots[0].id;
-            currentTab = { id: idbData.tabId || result.tabId };
-            console.log('[Annotate] Loaded', screenshots.length, 'screenshot(s) from IndexedDB');
+            // Get tabId from multiple sources: IndexedDB metadata, session storage, or embedded in screenshot
+            const tabId = idbData.tabId || result.tabId || screenshots[0].tabId;
+            currentTab = { id: tabId };
+            console.log('[Annotate] Loaded', screenshots.length, 'screenshot(s) from IndexedDB, tabId:', tabId);
             // Clear the flag
             await chrome.storage.session.remove(['screenshotsInIndexedDB']);
           } else {
@@ -1214,7 +1216,9 @@ async function collectTechnicalData() {
     } else {
       // Collect from current tab only (original behavior)
       if (!currentTab || !currentTab.id) {
-        console.warn('[Annotate] No tab ID available for data collection');
+        // This is expected when loading a draft - the original tab may no longer exist
+        // We'll use the pageInfo that was saved with the draft instead
+        console.log('[Annotate] No tab ID available - using saved page info from draft if available');
         return;
       }
       await collectTechnicalDataFromSingleTab(currentTab.id);

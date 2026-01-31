@@ -56,10 +56,9 @@ async function saveScreenshotWithFallback(screenshots, tabId, screenshotDataUrl)
     });
     console.log('[Popup] Screenshots saved to session storage');
   } catch (storageError) {
-    console.error('[Popup] Error saving screenshot to session storage:', storageError);
     if (storageError.message && storageError.message.includes('quota')) {
-      // Session storage quota exceeded - use IndexedDB fallback
-      console.log('[Popup] Using IndexedDB fallback for large screenshot');
+      // Session storage quota exceeded - use IndexedDB fallback (this is expected for large screenshots)
+      console.log('[Popup] Session storage quota exceeded, using IndexedDB fallback for large screenshot');
       try {
         await screenshotStorage.saveScreenshots(screenshots, {
           currentScreenshotId: screenshots[0].id,
