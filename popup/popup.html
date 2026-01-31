@@ -63,10 +63,24 @@
         <div id="recordingStatus" class="status-message"></div>
         <div id="captureStatus" class="status-message"></div>
 
-        <!-- Recent Submissions -->
-        <div id="recentSubmissionsSection" class="recent-submissions hidden">
-          <h3 class="recent-submissions-title">Recent Submissions</h3>
-          <ul id="recentSubmissionsList" class="recent-submissions-list"></ul>
+        <!-- Recent Activity Section -->
+        <div id="recentActivitySection" class="recent-activity hidden">
+          <div class="recent-activity-tabs">
+            <button id="draftsTabBtn" class="activity-tab-btn active" data-tab="drafts">
+              Drafts <span id="draftsCountBadge" class="count-badge hidden">0</span>
+            </button>
+            <button id="submissionsTabBtn" class="activity-tab-btn" data-tab="submissions">
+              Submissions
+            </button>
+          </div>
+          <div id="draftsPane" class="activity-pane active">
+            <ul id="draftsList" class="recent-drafts-list"></ul>
+            <p id="noDraftsText" class="no-items-text hidden">No saved drafts</p>
+          </div>
+          <div id="submissionsPane" class="activity-pane hidden">
+            <ul id="recentSubmissionsList" class="recent-submissions-list"></ul>
+            <p id="noSubmissionsText" class="no-items-text hidden">No recent submissions</p>
+          </div>
         </div>
       </section>
 
@@ -381,6 +395,7 @@
 
   <script src="../lib/utils.js"></script>
   <script src="../lib/redmine-api.js"></script>
+  <script src="../lib/draft-storage.js"></script>
   <script src="../content/annotator.js"></script>
   <script src="popup.js"></script>
 </body>

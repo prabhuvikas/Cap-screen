@@ -72,8 +72,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Show initial section
   showSection('captureSection');
 
-  // Load recent submissions history
-  renderRecentSubmissions();
+  // Load recent activity (drafts and submissions)
+  renderRecentActivity();
 });
 
 // Load settings from storage
@@ -1507,18 +1507,112 @@ function showSuccessScreen(issue) {
   });
 }
 
-// Load and display recent submissions in the capture section
-async function renderRecentSubmissions() {
-  const submissions = await getRecentSubmissions();
-  const section = document.getElementById('recentSubmissionsSection');
-  const list = document.getElementById('recentSubmissionsList');
+// Load and display recent activity (drafts and submissions)
+async function renderRecentActivity() {
+  const section = document.getElementById('recentActivitySection');
 
-  if (!submissions.length) {
+  // Load both drafts and submissions
+  const [drafts, submissions] = await Promise.all([
+    draftStorage.listDrafts(),
+    getRecentSubmissions()
+  ]);
+
+  // If neither has items, hide the section
+  if (!drafts.length && !submissions.length) {
     section.classList.add('hidden');
     return;
   }
 
+  section.classList.remove('hidden');
+
+  // Render drafts
+  renderDraftsList(drafts);
+
+  // Render submissions
+  renderSubmissionsList(submissions);
+
+  // Update drafts count badge
+  const badge = document.getElementById('draftsCountBadge');
+  if (drafts.length > 0) {
+    badge.textContent = drafts.length;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+
+  // Setup tab switching
+  setupActivityTabs();
+
+  // If drafts exist, show drafts tab by default; otherwise show submissions
+  if (drafts.length > 0) {
+    switchActivityTab('drafts');
+  } else if (submissions.length > 0) {
+    switchActivityTab('submissions');
+  }
+}
+
+// Render drafts list
+function renderDraftsList(drafts) {
+  const list = document.getElementById('draftsList');
+  const noText = document.getElementById('noDraftsText');
+
   list.innerHTML = '';
+
+  if (!drafts.length) {
+    noText.classList.remove('hidden');
+    return;
+  }
+
+  noText.classList.add('hidden');
+
+  for (const draft of drafts) {
+    const li = document.createElement('li');
+    li.dataset.draftId = draft.id;
+
+    const name = document.createElement('div');
+    name.className = 'draft-item-name';
+    name.textContent = draft.name || 'Untitled Draft';
+    li.appendChild(name);
+
+    const info = document.createElement('div');
+    info.className = 'draft-item-info';
+
+    const meta = document.createElement('span');
+    meta.className = 'draft-item-meta';
+    const parts = [];
+    if (draft.screenshotCount > 0) parts.push(`${draft.screenshotCount} screenshot(s)`);
+    if (draft.videoCount > 0) parts.push(`${draft.videoCount} video(s)`);
+    meta.textContent = parts.join(', ') || 'No media';
+    info.appendChild(meta);
+
+    const time = document.createElement('span');
+    time.className = 'draft-item-time';
+    time.textContent = formatTimeAgoPopup(draft.updatedAt);
+    info.appendChild(time);
+
+    li.appendChild(info);
+
+    // Click to continue editing
+    li.addEventListener('click', () => continueDraftFromPopup(draft.id));
+
+    list.appendChild(li);
+  }
+}
+
+// Render submissions list
+function renderSubmissionsList(submissions) {
+  const list = document.getElementById('recentSubmissionsList');
+  const noText = document.getElementById('noSubmissionsText');
+
+  list.innerHTML = '';
+
+  if (!submissions.length) {
+    noText.classList.remove('hidden');
+    return;
+  }
+
+  noText.classList.add('hidden');
+
   for (const entry of submissions) {
     const li = document.createElement('li');
 
@@ -1547,8 +1641,78 @@ async function renderRecentSubmissions() {
 
     list.appendChild(li);
   }
+}
 
-  section.classList.remove('hidden');
+// Setup activity tabs
+function setupActivityTabs() {
+  const draftsBtn = document.getElementById('draftsTabBtn');
+  const submissionsBtn = document.getElementById('submissionsTabBtn');
+
+  draftsBtn.addEventListener('click', () => switchActivityTab('drafts'));
+  submissionsBtn.addEventListener('click', () => switchActivityTab('submissions'));
+}
+
+// Switch activity tab
+function switchActivityTab(tab) {
+  const draftsBtn = document.getElementById('draftsTabBtn');
+  const submissionsBtn = document.getElementById('submissionsTabBtn');
+  const draftsPane = document.getElementById('draftsPane');
+  const submissionsPane = document.getElementById('submissionsPane');
+
+  if (tab === 'drafts') {
+    draftsBtn.classList.add('active');
+    submissionsBtn.classList.remove('active');
+    draftsPane.classList.add('active');
+    submissionsPane.classList.remove('active');
+  } else {
+    draftsBtn.classList.remove('active');
+    submissionsBtn.classList.add('active');
+    draftsPane.classList.remove('active');
+    submissionsPane.classList.add('active');
+  }
+}
+
+// Continue editing a draft from the popup
+async function continueDraftFromPopup(draftId) {
+  try {
+    // Store draft ID in session storage so annotate page knows to load it
+    await chrome.storage.session.set({
+      loadDraftId: draftId,
+      // Clear any existing screenshot data since we're loading a draft
+      screenshots: [],
+      screenshotData: null
+    });
+
+    // Open annotate page
+    chrome.tabs.create({
+      url: chrome.runtime.getURL('annotate/annotate.html')
+    });
+
+    // Close popup
+    window.close();
+  } catch (error) {
+    console.error('[Popup] Error continuing draft:', error);
+    showStatus('captureStatus', 'Failed to load draft', 'error');
+  }
+}
+
+// Format time ago for popup
+function formatTimeAgoPopup(timestamp) {
+  if (!timestamp) return '';
+
+  const now = Date.now();
+  const diff = now - timestamp;
+
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+
+  return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 // Reset form for new report

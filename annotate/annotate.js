@@ -19,6 +19,16 @@ let recordingTimeframe = null; // Store recording timeframe {tabId, startTime, e
 let selectedIssue = null; // Store selected issue for update mode
 let currentIssueMode = 'create'; // Track current mode: 'create' or 'update'
 
+// Draft-related variables
+let currentDraftId = null; // Current draft being edited
+let isDirty = false; // Track if there are unsaved changes
+let autoSaveTimer = null; // Timer for debounced auto-save
+let periodicSaveTimer = null; // Timer for periodic backup
+let lastSavedState = null; // Last saved state for comparison
+let isLoadingDraft = false; // Flag to prevent auto-save during draft load
+const AUTO_SAVE_DEBOUNCE_MS = 3000; // 3 seconds after last change
+const PERIODIC_SAVE_MS = 120000; // 2 minutes periodic backup
+
 // Sanitize text to remove unicode/emoji characters that cause 500 errors
 function sanitizeText(text) {
   if (!text) return text;
@@ -378,6 +388,9 @@ function setupEventListeners() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', (e) => switchTab(e.currentTarget.dataset.tab));
   });
+
+  // Draft functionality
+  setupDraftEventListeners();
 }
 
 // Initialize annotation
@@ -2156,6 +2169,9 @@ function buildConsoleLogsFile(logs = null) {
 
 // Show success screen
 function showSuccessScreen(issue) {
+  // Clear draft after successful submission
+  clearDraftAfterSubmission();
+
   showSection('successSection');
 
   const issueLink = document.getElementById('issueLink');
@@ -3289,4 +3305,700 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// =====================================================
+// DRAFT FUNCTIONALITY
+// =====================================================
+
+// Setup draft event listeners
+function setupDraftEventListeners() {
+  // Draft dropdown toggle
+  const saveDraftBtn = document.getElementById('saveDraftBtn');
+  const draftDropdownMenu = document.getElementById('draftDropdownMenu');
+
+  saveDraftBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    draftDropdownMenu.classList.toggle('hidden');
+  });
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.draft-dropdown')) {
+      draftDropdownMenu.classList.add('hidden');
+    }
+  });
+
+  // Dropdown menu items
+  document.getElementById('saveDraftNow').addEventListener('click', () => {
+    draftDropdownMenu.classList.add('hidden');
+    saveDraftManual();
+  });
+
+  document.getElementById('saveDraftAs').addEventListener('click', () => {
+    draftDropdownMenu.classList.add('hidden');
+    saveDraftAs();
+  });
+
+  document.getElementById('loadDraft').addEventListener('click', () => {
+    draftDropdownMenu.classList.add('hidden');
+    openDraftManager();
+  });
+
+  document.getElementById('deleteDraft').addEventListener('click', () => {
+    draftDropdownMenu.classList.add('hidden');
+    deleteCurrentDraft();
+  });
+
+  // Draft recovery modal
+  document.getElementById('closeDraftRecoveryModal').addEventListener('click', closeDraftRecoveryModal);
+  document.getElementById('draftRecoveryOverlay').addEventListener('click', closeDraftRecoveryModal);
+  document.getElementById('draftStartFresh').addEventListener('click', startFreshFromRecovery);
+  document.getElementById('draftViewAll').addEventListener('click', viewAllDraftsFromRecovery);
+  document.getElementById('draftContinue').addEventListener('click', continueDraftFromRecovery);
+
+  // Draft manager modal
+  document.getElementById('closeDraftManagerModal').addEventListener('click', closeDraftManagerModal);
+  document.getElementById('draftManagerOverlay').addEventListener('click', closeDraftManagerModal);
+  document.getElementById('clearAllDrafts').addEventListener('click', clearAllDraftsConfirm);
+  document.getElementById('closeDraftManager').addEventListener('click', closeDraftManagerModal);
+
+  // Unsaved changes modal
+  document.getElementById('closeUnsavedChangesModal').addEventListener('click', closeUnsavedChangesModal);
+  document.getElementById('unsavedChangesOverlay').addEventListener('click', closeUnsavedChangesModal);
+  document.getElementById('discardChanges').addEventListener('click', discardChangesAndClose);
+  document.getElementById('cancelClose').addEventListener('click', closeUnsavedChangesModal);
+  document.getElementById('saveAndClose').addEventListener('click', saveAndCloseTab);
+
+  // Track form changes for auto-save
+  setupFormChangeTracking();
+
+  // Setup periodic backup
+  startPeriodicSave();
+
+  // Setup beforeunload warning
+  window.addEventListener('beforeunload', handleBeforeUnload);
+
+  // Check for existing drafts on load
+  checkForExistingDrafts();
+}
+
+// Setup form change tracking for auto-save
+function setupFormChangeTracking() {
+  const formFields = [
+    'project', 'tracker', 'subject', 'description', 'priority',
+    'assignee', 'dueDate', 'category', 'version', 'stepsToReproduce',
+    'expectedBehavior', 'actualBehavior', 'noteText'
+  ];
+
+  formFields.forEach(fieldId => {
+    const element = document.getElementById(fieldId);
+    if (element) {
+      element.addEventListener('input', () => markDirtyAndScheduleSave());
+      element.addEventListener('change', () => markDirtyAndScheduleSave());
+    }
+  });
+
+  // Track checkbox changes
+  const checkboxes = ['attachTechnicalData', 'captureFromOtherTabs'];
+  checkboxes.forEach(id => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.addEventListener('change', () => markDirtyAndScheduleSave());
+    }
+  });
+
+  // Track issue mode changes
+  document.querySelectorAll('input[name="issueMode"]').forEach(radio => {
+    radio.addEventListener('change', () => markDirtyAndScheduleSave());
+  });
+}
+
+// Mark as dirty and schedule auto-save
+function markDirtyAndScheduleSave() {
+  if (isLoadingDraft) return; // Don't trigger save while loading
+
+  isDirty = true;
+  updateDraftStatusIndicator('unsaved');
+
+  // Clear existing timer
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer);
+  }
+
+  // Schedule auto-save
+  autoSaveTimer = setTimeout(() => {
+    autoSaveDraft();
+  }, AUTO_SAVE_DEBOUNCE_MS);
+}
+
+// Start periodic backup timer
+function startPeriodicSave() {
+  if (periodicSaveTimer) {
+    clearInterval(periodicSaveTimer);
+  }
+
+  periodicSaveTimer = setInterval(() => {
+    if (isDirty) {
+      autoSaveDraft();
+    }
+  }, PERIODIC_SAVE_MS);
+}
+
+// Update draft status indicator
+function updateDraftStatusIndicator(status) {
+  const indicator = document.querySelector('.draft-status-indicator');
+  if (indicator) {
+    indicator.className = 'draft-status-indicator ' + status;
+  }
+}
+
+// Get current form data for draft
+function getCurrentFormData() {
+  return {
+    project_id: document.getElementById('project')?.value || '',
+    tracker_id: document.getElementById('tracker')?.value || '',
+    subject: document.getElementById('subject')?.value || '',
+    description: document.getElementById('description')?.value || '',
+    priority_id: document.getElementById('priority')?.value || '',
+    assigned_to_id: document.getElementById('assignee')?.value || '',
+    due_date: document.getElementById('dueDate')?.value || '',
+    category_id: document.getElementById('category')?.value || '',
+    fixed_version_id: document.getElementById('version')?.value || '',
+    stepsToReproduce: document.getElementById('stepsToReproduce')?.value || '',
+    expectedBehavior: document.getElementById('expectedBehavior')?.value || '',
+    actualBehavior: document.getElementById('actualBehavior')?.value || '',
+    attachTechnicalData: document.getElementById('attachTechnicalData')?.checked || false,
+    captureFromOtherTabs: document.getElementById('captureFromOtherTabs')?.checked || false,
+    noteText: document.getElementById('noteText')?.value || ''
+  };
+}
+
+// Build draft object from current state
+function buildDraftObject() {
+  // Capture current annotation state if annotator exists
+  if (annotator) {
+    const currentScreenshot = screenshots.find(s => s.id === currentScreenshotId);
+    if (currentScreenshot && currentScreenshot.type !== 'video') {
+      currentScreenshot.annotations = annotator.captureState();
+    }
+  }
+
+  return {
+    id: currentDraftId,
+    formData: getCurrentFormData(),
+    mode: currentIssueMode,
+    existingIssueId: selectedIssue?.id || null,
+    screenshots: screenshots,
+    additionalDocuments: accumulatedFiles.map(f => ({
+      id: generateId(),
+      name: f.name,
+      type: f.type,
+      size: f.size
+    })),
+    technicalData: {
+      pageInfo: pageInfo,
+      networkRequests: networkRequests,
+      consoleLogs: consoleLogs
+    },
+    selectedTabIds: selectedTabIds,
+    sourceUrl: pageInfo?.url || '',
+    sourceTitle: pageInfo?.title || ''
+  };
+}
+
+// Auto-save draft
+async function autoSaveDraft() {
+  if (isLoadingDraft) return;
+
+  try {
+    updateDraftStatusIndicator('saving');
+    const draft = buildDraftObject();
+    currentDraftId = await draftStorage.saveDraft(draft);
+    isDirty = false;
+    lastSavedState = JSON.stringify(draft.formData);
+    updateDraftStatusIndicator('saved');
+    console.log('[Draft] Auto-saved draft:', currentDraftId);
+
+    // Show brief toast notification
+    showAutoSaveToast('Draft saved');
+  } catch (error) {
+    console.error('[Draft] Auto-save failed:', error);
+    updateDraftStatusIndicator('unsaved');
+    showAutoSaveToast('Failed to save draft', 'error');
+  }
+}
+
+// Manual save draft
+async function saveDraftManual() {
+  try {
+    updateDraftStatusIndicator('saving');
+    const draft = buildDraftObject();
+    currentDraftId = await draftStorage.saveDraft(draft);
+    isDirty = false;
+    lastSavedState = JSON.stringify(draft.formData);
+    updateDraftStatusIndicator('saved');
+    showAutoSaveToast('Draft saved successfully', 'success');
+  } catch (error) {
+    console.error('[Draft] Manual save failed:', error);
+    updateDraftStatusIndicator('unsaved');
+    showAutoSaveToast('Failed to save draft', 'error');
+  }
+}
+
+// Save draft with custom name
+async function saveDraftAs() {
+  const name = prompt('Enter a name for this draft:', document.getElementById('subject')?.value || 'Untitled Draft');
+  if (name === null) return; // User cancelled
+
+  try {
+    updateDraftStatusIndicator('saving');
+    const draft = buildDraftObject();
+    draft.name = name;
+    draft.id = null; // Create new draft
+    currentDraftId = await draftStorage.saveDraft(draft);
+    isDirty = false;
+    updateDraftStatusIndicator('saved');
+    showAutoSaveToast('Draft saved as "' + name + '"', 'success');
+  } catch (error) {
+    console.error('[Draft] Save as failed:', error);
+    showAutoSaveToast('Failed to save draft', 'error');
+  }
+}
+
+// Delete current draft
+async function deleteCurrentDraft() {
+  if (!currentDraftId) {
+    showAutoSaveToast('No draft to delete', 'error');
+    return;
+  }
+
+  if (!confirm('Are you sure you want to delete this draft?')) {
+    return;
+  }
+
+  try {
+    await draftStorage.deleteDraft(currentDraftId);
+    currentDraftId = null;
+    isDirty = true; // Mark as unsaved since we deleted the draft
+    updateDraftStatusIndicator('unsaved');
+    showAutoSaveToast('Draft deleted');
+  } catch (error) {
+    console.error('[Draft] Delete failed:', error);
+    showAutoSaveToast('Failed to delete draft', 'error');
+  }
+}
+
+// Show auto-save toast notification
+function showAutoSaveToast(message, type = '') {
+  // Remove existing toast
+  const existingToast = document.querySelector('.autosave-toast');
+  if (existingToast) {
+    existingToast.remove();
+  }
+
+  // Create toast
+  const toast = document.createElement('div');
+  toast.className = 'autosave-toast' + (type ? ' ' + type : '');
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  // Show toast
+  requestAnimationFrame(() => {
+    toast.classList.add('show');
+  });
+
+  // Hide and remove toast after delay
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 2000);
+}
+
+// Check for existing drafts on page load
+async function checkForExistingDrafts() {
+  try {
+    // Clean up expired drafts first
+    await draftStorage.cleanupExpiredDrafts();
+
+    // Check if we were asked to load a specific draft from popup
+    const sessionData = await chrome.storage.session.get(['loadDraftId']);
+    if (sessionData.loadDraftId) {
+      // Clear the flag
+      await chrome.storage.session.remove(['loadDraftId']);
+      // Load the requested draft
+      await loadDraft(sessionData.loadDraftId);
+      return;
+    }
+
+    // Otherwise, check for recent draft to offer recovery
+    const recentDraft = await draftStorage.getMostRecentDraft();
+    if (recentDraft) {
+      showDraftRecoveryModal(recentDraft);
+    }
+  } catch (error) {
+    console.error('[Draft] Error checking for drafts:', error);
+  }
+}
+
+// Show draft recovery modal
+function showDraftRecoveryModal(draft) {
+  const modal = document.getElementById('draftRecoveryModal');
+  const nameEl = document.getElementById('draftRecoveryName');
+  const detailsEl = document.getElementById('draftRecoveryDetails');
+
+  nameEl.textContent = draft.name || 'Untitled Draft';
+
+  const timeAgo = formatTimeAgo(draft.updatedAt);
+  const mediaCount = (draft.screenshots || []).length;
+  const hasForm = draft.formData?.subject || draft.formData?.description;
+
+  let details = `Last edited: ${timeAgo}`;
+  if (mediaCount > 0) {
+    const screenshots = (draft.screenshots || []).filter(s => s.type !== 'video').length;
+    const videos = (draft.screenshots || []).filter(s => s.type === 'video').length;
+    details += `\n${screenshots} screenshot(s)`;
+    if (videos > 0) details += `, ${videos} video(s)`;
+  }
+  if (hasForm) {
+    details += '\nForm data saved';
+  }
+
+  detailsEl.textContent = details;
+
+  // Store draft ID for recovery
+  modal.dataset.draftId = draft.id;
+
+  modal.classList.remove('hidden');
+}
+
+// Close draft recovery modal
+function closeDraftRecoveryModal() {
+  document.getElementById('draftRecoveryModal').classList.add('hidden');
+}
+
+// Start fresh from recovery modal
+function startFreshFromRecovery() {
+  closeDraftRecoveryModal();
+  // Don't load the draft, just continue with current state
+  currentDraftId = null;
+}
+
+// View all drafts from recovery modal
+function viewAllDraftsFromRecovery() {
+  closeDraftRecoveryModal();
+  openDraftManager();
+}
+
+// Continue editing draft from recovery modal
+async function continueDraftFromRecovery() {
+  const modal = document.getElementById('draftRecoveryModal');
+  const draftId = modal.dataset.draftId;
+
+  if (draftId) {
+    await loadDraft(draftId);
+  }
+
+  closeDraftRecoveryModal();
+}
+
+// Load a draft
+async function loadDraft(draftId) {
+  try {
+    isLoadingDraft = true;
+    const draft = await draftStorage.getDraft(draftId);
+
+    if (!draft) {
+      showAutoSaveToast('Draft not found', 'error');
+      return;
+    }
+
+    // Restore form data
+    if (draft.formData) {
+      restoreFormData(draft.formData);
+    }
+
+    // Restore mode
+    if (draft.mode) {
+      currentIssueMode = draft.mode;
+      const modeRadio = document.getElementById(draft.mode === 'update' ? 'issueModeUpdate' : 'issueModeCreate');
+      if (modeRadio) {
+        modeRadio.checked = true;
+        onIssueModeChange();
+      }
+    }
+
+    // Restore screenshots (if draft has them and they should replace current)
+    if (draft.screenshots && draft.screenshots.length > 0) {
+      // Merge with current screenshots or replace based on context
+      // For now, we keep the current screenshots and restore annotations
+      for (const draftScreenshot of draft.screenshots) {
+        const existing = screenshots.find(s => s.id === draftScreenshot.id);
+        if (existing && draftScreenshot.annotations) {
+          existing.annotations = draftScreenshot.annotations;
+        }
+      }
+
+      // Restore annotations to current canvas if applicable
+      if (annotator) {
+        const currentScreenshot = screenshots.find(s => s.id === currentScreenshotId);
+        if (currentScreenshot && currentScreenshot.annotations) {
+          annotator.restoreState(currentScreenshot.annotations);
+        }
+      }
+    }
+
+    // Restore selected tabs
+    if (draft.selectedTabIds) {
+      selectedTabIds = draft.selectedTabIds;
+    }
+
+    currentDraftId = draftId;
+    isDirty = false;
+    updateDraftStatusIndicator('saved');
+    showAutoSaveToast('Draft loaded', 'success');
+
+    console.log('[Draft] Loaded draft:', draftId);
+  } catch (error) {
+    console.error('[Draft] Error loading draft:', error);
+    showAutoSaveToast('Failed to load draft', 'error');
+  } finally {
+    isLoadingDraft = false;
+  }
+}
+
+// Restore form data from draft
+function restoreFormData(formData) {
+  const fieldMappings = {
+    project_id: 'project',
+    tracker_id: 'tracker',
+    subject: 'subject',
+    description: 'description',
+    priority_id: 'priority',
+    assigned_to_id: 'assignee',
+    due_date: 'dueDate',
+    category_id: 'category',
+    fixed_version_id: 'version',
+    stepsToReproduce: 'stepsToReproduce',
+    expectedBehavior: 'expectedBehavior',
+    actualBehavior: 'actualBehavior',
+    noteText: 'noteText'
+  };
+
+  for (const [dataKey, elementId] of Object.entries(fieldMappings)) {
+    const element = document.getElementById(elementId);
+    if (element && formData[dataKey] !== undefined) {
+      element.value = formData[dataKey];
+    }
+  }
+
+  // Restore checkboxes
+  if (formData.attachTechnicalData !== undefined) {
+    const el = document.getElementById('attachTechnicalData');
+    if (el) el.checked = formData.attachTechnicalData;
+  }
+  if (formData.captureFromOtherTabs !== undefined) {
+    const el = document.getElementById('captureFromOtherTabs');
+    if (el) el.checked = formData.captureFromOtherTabs;
+  }
+}
+
+// Open draft manager modal
+async function openDraftManager() {
+  const modal = document.getElementById('draftManagerModal');
+  const listEl = document.getElementById('draftsList');
+  const noMessage = document.getElementById('noDraftsMessage');
+
+  // Clear existing list
+  listEl.innerHTML = '';
+
+  try {
+    const drafts = await draftStorage.listDrafts();
+
+    if (drafts.length === 0) {
+      noMessage.classList.remove('hidden');
+      listEl.classList.add('hidden');
+    } else {
+      noMessage.classList.add('hidden');
+      listEl.classList.remove('hidden');
+
+      for (const draft of drafts) {
+        const item = createDraftListItem(draft);
+        listEl.appendChild(item);
+      }
+    }
+  } catch (error) {
+    console.error('[Draft] Error loading drafts:', error);
+    listEl.innerHTML = '<p class="error">Failed to load drafts</p>';
+  }
+
+  modal.classList.remove('hidden');
+}
+
+// Create draft list item element
+function createDraftListItem(draft) {
+  const item = document.createElement('div');
+  item.className = 'draft-item';
+  item.dataset.draftId = draft.id;
+
+  const isCurrent = draft.id === currentDraftId;
+
+  item.innerHTML = `
+    <div class="draft-item-header">
+      <h4 class="draft-item-title">${escapeHtml(draft.name || 'Untitled Draft')}${isCurrent ? ' (current)' : ''}</h4>
+      <span class="draft-item-time">${formatTimeAgo(draft.updatedAt)}</span>
+    </div>
+    <div class="draft-item-meta">
+      ${draft.screenshotCount > 0 ? `<span>📷 ${draft.screenshotCount} screenshot(s)</span>` : ''}
+      ${draft.videoCount > 0 ? `<span>🎥 ${draft.videoCount} video(s)</span>` : ''}
+      ${draft.sourceUrl ? `<span>🔗 ${escapeHtml(truncateUrl(draft.sourceUrl, 40))}</span>` : ''}
+    </div>
+    <div class="draft-item-actions">
+      <button class="btn btn-secondary btn-small draft-delete-btn">Delete</button>
+      <button class="btn btn-primary btn-small draft-load-btn">Load</button>
+    </div>
+  `;
+
+  // Add event listeners
+  item.querySelector('.draft-load-btn').addEventListener('click', async () => {
+    closeDraftManagerModal();
+    await loadDraft(draft.id);
+  });
+
+  item.querySelector('.draft-delete-btn').addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (confirm('Delete this draft?')) {
+      await draftStorage.deleteDraft(draft.id);
+      item.remove();
+
+      // Check if list is now empty
+      const remaining = document.querySelectorAll('.draft-item');
+      if (remaining.length === 0) {
+        document.getElementById('noDraftsMessage').classList.remove('hidden');
+        document.getElementById('draftsList').classList.add('hidden');
+      }
+
+      // If we deleted the current draft, clear the reference
+      if (draft.id === currentDraftId) {
+        currentDraftId = null;
+        isDirty = true;
+        updateDraftStatusIndicator('unsaved');
+      }
+    }
+  });
+
+  return item;
+}
+
+// Close draft manager modal
+function closeDraftManagerModal() {
+  document.getElementById('draftManagerModal').classList.add('hidden');
+}
+
+// Clear all drafts with confirmation
+async function clearAllDraftsConfirm() {
+  if (!confirm('Are you sure you want to delete ALL saved drafts? This cannot be undone.')) {
+    return;
+  }
+
+  try {
+    await draftStorage.clearAllDrafts();
+    currentDraftId = null;
+    isDirty = true;
+    updateDraftStatusIndicator('unsaved');
+
+    // Update UI
+    document.getElementById('draftsList').innerHTML = '';
+    document.getElementById('noDraftsMessage').classList.remove('hidden');
+    document.getElementById('draftsList').classList.add('hidden');
+
+    showAutoSaveToast('All drafts cleared');
+  } catch (error) {
+    console.error('[Draft] Error clearing drafts:', error);
+    showAutoSaveToast('Failed to clear drafts', 'error');
+  }
+}
+
+// Handle beforeunload event
+function handleBeforeUnload(e) {
+  if (isDirty) {
+    // Try to save draft synchronously (best effort)
+    // Note: This may not always work in modern browsers
+    e.preventDefault();
+    e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+    return e.returnValue;
+  }
+}
+
+// Close tab with confirmation (override existing function)
+function closeTabWithConfirmation() {
+  if (isDirty) {
+    openUnsavedChangesModal();
+  } else {
+    window.close();
+  }
+}
+
+// Open unsaved changes modal
+function openUnsavedChangesModal() {
+  document.getElementById('unsavedChangesModal').classList.remove('hidden');
+}
+
+// Close unsaved changes modal
+function closeUnsavedChangesModal() {
+  document.getElementById('unsavedChangesModal').classList.add('hidden');
+}
+
+// Discard changes and close
+function discardChangesAndClose() {
+  isDirty = false; // Prevent beforeunload warning
+  window.close();
+}
+
+// Save draft and close tab
+async function saveAndCloseTab() {
+  try {
+    await saveDraftManual();
+    isDirty = false;
+    window.close();
+  } catch (error) {
+    console.error('[Draft] Error saving before close:', error);
+    if (confirm('Failed to save draft. Close anyway?')) {
+      isDirty = false;
+      window.close();
+    }
+  }
+}
+
+// Format time ago helper
+function formatTimeAgo(timestamp) {
+  if (!timestamp) return 'Unknown';
+
+  const now = Date.now();
+  const diff = now - timestamp;
+
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+  if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+  if (days < 7) return `${days} day${days !== 1 ? 's' : ''} ago`;
+
+  return new Date(timestamp).toLocaleDateString();
+}
+
+// Clear draft after successful submission
+async function clearDraftAfterSubmission() {
+  if (currentDraftId) {
+    try {
+      await draftStorage.deleteDraft(currentDraftId);
+      currentDraftId = null;
+      isDirty = false;
+      console.log('[Draft] Cleared draft after successful submission');
+    } catch (error) {
+      console.error('[Draft] Error clearing draft after submission:', error);
+    }
+  }
 }

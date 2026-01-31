@@ -15,6 +15,18 @@
     <header>
       <h1>Cred Issue Reporter - Annotate & Submit</h1>
       <div class="header-actions">
+        <div class="draft-dropdown">
+          <button id="saveDraftBtn" class="icon-btn" title="Save Draft">
+            💾 <span class="draft-status-indicator"></span>
+          </button>
+          <div id="draftDropdownMenu" class="dropdown-menu hidden">
+            <button id="saveDraftNow" class="dropdown-item">Save Draft</button>
+            <button id="saveDraftAs" class="dropdown-item">Save Draft As...</button>
+            <div class="dropdown-divider"></div>
+            <button id="loadDraft" class="dropdown-item">Load Draft...</button>
+            <button id="deleteDraft" class="dropdown-item">Delete Current Draft</button>
+          </div>
+        </div>
         <button id="helpBtn" class="icon-btn" title="Help & User Guide">
           ❓ Help
         </button>
@@ -546,9 +558,76 @@
     </div>
   </div>
 
+  <!-- Draft Recovery Modal -->
+  <div id="draftRecoveryModal" class="modal hidden">
+    <div class="modal-overlay" id="draftRecoveryOverlay"></div>
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Unsaved Draft Found</h2>
+        <button id="closeDraftRecoveryModal" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="draft-recovery-message">You have an unsaved draft:</p>
+        <div id="draftRecoveryInfo" class="draft-info-card">
+          <h4 id="draftRecoveryName"></h4>
+          <p id="draftRecoveryDetails"></p>
+        </div>
+        <p class="draft-recovery-hint">Would you like to continue editing this draft or start fresh?</p>
+      </div>
+      <div class="modal-footer">
+        <button id="draftStartFresh" class="btn btn-secondary">Start Fresh</button>
+        <button id="draftViewAll" class="btn btn-secondary">View All Drafts</button>
+        <button id="draftContinue" class="btn btn-primary">Continue Editing</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Draft Manager Modal -->
+  <div id="draftManagerModal" class="modal hidden">
+    <div class="modal-overlay" id="draftManagerOverlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Saved Drafts</h2>
+        <button id="closeDraftManagerModal" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="draftsList" class="drafts-list">
+          <!-- Drafts will be dynamically populated here -->
+        </div>
+        <div id="noDraftsMessage" class="no-drafts-message hidden">
+          <p>No saved drafts found.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="clearAllDrafts" class="btn btn-danger">Clear All Drafts</button>
+        <button id="closeDraftManager" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unsaved Changes Warning Modal -->
+  <div id="unsavedChangesModal" class="modal hidden">
+    <div class="modal-overlay" id="unsavedChangesOverlay"></div>
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Unsaved Changes</h2>
+        <button id="closeUnsavedChangesModal" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>You have unsaved changes. Would you like to save them as a draft before leaving?</p>
+      </div>
+      <div class="modal-footer">
+        <button id="discardChanges" class="btn btn-danger">Discard</button>
+        <button id="cancelClose" class="btn btn-secondary">Cancel</button>
+        <button id="saveAndClose" class="btn btn-primary">Save Draft & Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="../lib/utils.js"></script>
   <script src="../lib/redmine-api.js"></script>
   <script src="../lib/video-storage.js"></script>
+  <script src="../lib/draft-storage.js"></script>
   <script src="../content/annotator.js"></script>
   <script src="annotate.js"></script>
 </body>
