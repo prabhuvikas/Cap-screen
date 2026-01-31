@@ -110,6 +110,55 @@ async function closeOffscreenDocument() {
 }
 
 
+// Show a 3-2-1 countdown overlay on the given tab before recording starts.
+// Uses chrome.scripting.executeScript to inject and update the overlay.
+async function showCountdownOnTab(tabId) {
+  // Inject the countdown overlay container
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const overlay = document.createElement('div');
+      overlay.id = 'recording-countdown-overlay';
+      overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+      const counter = document.createElement('div');
+      counter.id = 'recording-countdown-number';
+      counter.style.cssText = 'color:white;font-size:120px;font-weight:700;text-shadow:0 4px 20px rgba(0,0,0,0.5);opacity:0;transition:transform 0.4s ease-out,opacity 0.4s ease-out;';
+      overlay.appendChild(counter);
+      document.body.appendChild(overlay);
+    }
+  });
+
+  // Show countdown: 3, 2, 1
+  for (const num of [3, 2, 1]) {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (n) => {
+        const el = document.getElementById('recording-countdown-number');
+        if (el) {
+          el.textContent = n;
+          el.style.transform = 'scale(1.5)';
+          el.style.opacity = '0';
+          // Trigger reflow to reset animation
+          void el.offsetWidth;
+          el.style.transform = 'scale(1)';
+          el.style.opacity = '1';
+        }
+      },
+      args: [num]
+    });
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
+  // Remove the overlay
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const overlay = document.getElementById('recording-countdown-overlay');
+      if (overlay) overlay.remove();
+    }
+  });
+}
+
 async function handleStartDisplayCapture() {
   try {
     console.log('[Background] Starting display capture (window/screen)');
@@ -117,17 +166,46 @@ async function handleStartDisplayCapture() {
     // Setup offscreen document
     await setupOffscreenDocument();
 
-    // Send message to offscreen document to start display recording
-    console.log('[Background] Sending startDisplayRecording message to offscreen document');
+    // Phase 1: Prepare the display recording (acquire stream + create recorder, but don't start)
+    console.log('[Background] Sending prepareDisplayRecording message to offscreen document');
     const response = await chrome.runtime.sendMessage({
-      action: 'startDisplayRecording'
+      action: 'prepareDisplayRecording'
     });
 
     if (!response || !response.success) {
-      throw new Error(response?.error || 'Failed to start display recording in offscreen document');
+      throw new Error(response?.error || 'Failed to prepare display recording in offscreen document');
     }
 
-    console.log('[Background] Display recording started in offscreen document');
+    console.log('[Background] Display recording prepared, starting countdown');
+
+    // Phase 2: Show 3-2-1 countdown on the recording tab (if available)
+    if (recordingTabId) {
+      try {
+        await showCountdownOnTab(recordingTabId);
+        console.log('[Background] Countdown completed on tab', recordingTabId);
+      } catch (countdownError) {
+        // Countdown failed (e.g. tab is chrome://, tab closed) — proceed without it
+        console.warn('[Background] Could not show countdown on tab:', countdownError.message);
+      }
+    }
+
+    // Phase 3: Begin recording
+    console.log('[Background] Sending beginRecording message to offscreen document');
+    const beginResponse = await chrome.runtime.sendMessage({
+      action: 'beginRecording'
+    });
+
+    if (!beginResponse || !beginResponse.success) {
+      throw new Error(beginResponse?.error || 'Failed to begin recording');
+    }
+
+    // Update recording start time to now (after countdown)
+    recordingStartTime = Date.now();
+    chrome.storage.session.set({ recordingStartTime }).catch(err =>
+      console.error('[Background] Error updating recording start time:', err)
+    );
+
+    console.log('[Background] Display recording started after countdown');
   } catch (error) {
     console.error('[Background] Error in handleStartDisplayCapture:', error);
     // Clean up offscreen document if there was an error
@@ -177,6 +255,184 @@ async function handleCaptureDisplayScreenshot() {
   }
 }
 
+
+// Rate-limited wrapper for chrome.tabs.captureVisibleTab.
+// Chrome enforces MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND (2 calls/sec).
+// This function throttles calls and retries on rate-limit errors.
+let lastCaptureVisibleTabTime = 0;
+const MIN_CAPTURE_INTERVAL_MS = 550; // slightly over 500ms for safety margin
+
+async function captureVisibleTabThrottled(windowId, options) {
+  const elapsed = Date.now() - lastCaptureVisibleTabTime;
+  if (elapsed < MIN_CAPTURE_INTERVAL_MS) {
+    await new Promise(r => setTimeout(r, MIN_CAPTURE_INTERVAL_MS - elapsed));
+  }
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      lastCaptureVisibleTabTime = Date.now();
+      return await chrome.tabs.captureVisibleTab(windowId, options);
+    } catch (error) {
+      if (error.message && error.message.includes('MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND') && attempt < 3) {
+        const backoff = 600 * attempt;
+        console.warn(`[Background] captureVisibleTab rate limited (attempt ${attempt}/3), retrying in ${backoff}ms`);
+        await new Promise(r => setTimeout(r, backoff));
+      } else {
+        throw error;
+      }
+    }
+  }
+}
+
+
+// Full-page screenshot: scroll through the page, capture each viewport, stitch together
+async function handleFullPageScreenshot(tabId) {
+  try {
+    // 1. Get page dimensions and current scroll position from the target tab
+    const [{ result: pageMetrics }] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        return {
+          scrollWidth: Math.max(
+            document.body.scrollWidth || 0,
+            document.documentElement.scrollWidth || 0
+          ),
+          scrollHeight: Math.max(
+            document.body.scrollHeight || 0,
+            document.documentElement.scrollHeight || 0
+          ),
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          devicePixelRatio: window.devicePixelRatio || 1,
+          originalScrollX: window.scrollX,
+          originalScrollY: window.scrollY,
+        };
+      },
+    });
+
+    console.log('[Background] Page metrics:', pageMetrics);
+
+    const {
+      scrollWidth, scrollHeight,
+      viewportWidth, viewportHeight,
+      devicePixelRatio,
+      originalScrollX, originalScrollY,
+    } = pageMetrics;
+
+    // Safety: cap canvas area to avoid browser crashes (~128M pixels limit)
+    const MAX_CANVAS_AREA = 128 * 1024 * 1024;
+    const fullPixelWidth = scrollWidth * devicePixelRatio;
+    const fullPixelHeight = scrollHeight * devicePixelRatio;
+
+    let scaleFactor = 1;
+    if (fullPixelWidth * fullPixelHeight > MAX_CANVAS_AREA) {
+      scaleFactor = Math.sqrt(MAX_CANVAS_AREA / (fullPixelWidth * fullPixelHeight));
+      console.log('[Background] Page is very large, scaling down by factor:', scaleFactor.toFixed(3));
+    }
+
+    // 2. Hide scrollbars so they don't appear in captures
+    await chrome.scripting.insertCSS({
+      target: { tabId },
+      css: 'html::-webkit-scrollbar { display: none !important; } html { scrollbar-width: none !important; overflow: -moz-scrollbars-none !important; }',
+    });
+
+    // 3. Capture each viewport segment
+    const numCols = Math.max(1, Math.ceil(scrollWidth / viewportWidth));
+    const numRows = Math.max(1, Math.ceil(scrollHeight / viewportHeight));
+    const captures = [];
+
+    console.log(`[Background] Capturing ${numRows} rows x ${numCols} cols = ${numRows * numCols} segments`);
+
+    // Get the tab's window id for captureVisibleTab
+    const tab = await chrome.tabs.get(tabId);
+    const windowId = tab.windowId;
+
+    for (let row = 0; row < numRows; row++) {
+      for (let col = 0; col < numCols; col++) {
+        const targetX = col * viewportWidth;
+        const targetY = row * viewportHeight;
+
+        // Scroll to target position
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          func: (sx, sy) => window.scrollTo(sx, sy),
+          args: [targetX, targetY],
+        });
+
+        // Wait for scroll to settle and repaint
+        await new Promise(r => setTimeout(r, 150));
+
+        // Read actual scroll position (browser clamps to valid range)
+        const [{ result: actualPos }] = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => ({ x: window.scrollX, y: window.scrollY }),
+        });
+
+        // Capture visible viewport (throttled to respect Chrome's rate limit)
+        const dataUrl = await captureVisibleTabThrottled(windowId, {
+          format: 'png',
+          quality: 100,
+        });
+
+        captures.push({
+          dataUrl,
+          x: actualPos.x,
+          y: actualPos.y,
+        });
+      }
+    }
+
+    console.log(`[Background] Captured ${captures.length} viewport segments`);
+
+    // 4. Restore original scroll position and remove scrollbar hiding CSS
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (sx, sy) => window.scrollTo(sx, sy),
+      args: [originalScrollX, originalScrollY],
+    });
+
+    await chrome.scripting.removeCSS({
+      target: { tabId },
+      css: 'html::-webkit-scrollbar { display: none !important; } html { scrollbar-width: none !important; overflow: -moz-scrollbars-none !important; }',
+    });
+
+    // 5. Send captures to offscreen document for stitching
+    await setupOffscreenDocument();
+
+    const stitchResponse = await chrome.runtime.sendMessage({
+      action: 'stitchScreenshots',
+      captures,
+      fullWidth: scrollWidth,
+      fullHeight: scrollHeight,
+      viewportWidth,
+      viewportHeight,
+      devicePixelRatio,
+      scaleFactor,
+    });
+
+    await closeOffscreenDocument();
+
+    if (!stitchResponse || !stitchResponse.success) {
+      throw new Error(stitchResponse?.error || 'Failed to stitch screenshots');
+    }
+
+    return stitchResponse.screenshotDataUrl;
+
+  } catch (error) {
+    console.error('[Background] Error in handleFullPageScreenshot:', error);
+    // Best-effort cleanup: restore scrollbar CSS
+    try {
+      await chrome.scripting.removeCSS({
+        target: { tabId },
+        css: 'html::-webkit-scrollbar { display: none !important; } html { scrollbar-width: none !important; overflow: -moz-scrollbars-none !important; }',
+      });
+    } catch (e) { /* ignore cleanup errors */ }
+    try {
+      await closeOffscreenDocument();
+    } catch (e) { /* ignore cleanup errors */ }
+    throw error;
+  }
+}
 
 async function handleRecordingComplete(videoDataUrl, largeVideo = false, videoSizeMB = 0) {
   try {
@@ -501,6 +757,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     });
     return true; // Keep channel open for async response
+  }
+
+  if (request.action === 'captureVisibleTab') {
+    // Capture the visible area of the sender's tab (used by content scripts)
+    const windowId = sender.tab ? sender.tab.windowId : null;
+    chrome.tabs.captureVisibleTab(windowId, {
+      format: 'png',
+      quality: 100
+    }).then(dataUrl => {
+      sendResponse({ success: true, dataUrl });
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'captureFullPageScreenshot') {
+    console.log('[Background] Starting full-page screenshot capture for tab', request.tabId);
+    handleFullPageScreenshot(request.tabId)
+      .then(screenshotDataUrl => {
+        console.log('[Background] Full-page screenshot complete, data length:', screenshotDataUrl.length);
+        sendResponse({ success: true, screenshotDataUrl });
+      })
+      .catch(error => {
+        console.error('[Background] Full-page screenshot failed:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
   }
 
   if (request.action === 'openAnnotationPage') {

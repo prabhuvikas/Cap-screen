@@ -38,11 +38,14 @@
               <button id="captureCurrentTab" class="btn btn-primary btn-block">
                 📸 Capture Current Tab
               </button>
+              <button id="captureFullPage" class="btn btn-primary btn-block">
+                📜 Capture Full Page
+              </button>
               <button id="captureScreenshot" class="btn btn-secondary btn-block">
                 🖥️ Choose What to Capture
               </button>
             </div>
-            <p class="card-hint">Quick capture for current tab, or choose any tab/window/screen</p>
+            <p class="card-hint">Quick capture for current tab, full page scroll-stitch, or choose any tab/window/screen</p>
           </div>
 
           <!-- Video Recording Option -->
@@ -59,6 +62,12 @@
 
         <div id="recordingStatus" class="status-message"></div>
         <div id="captureStatus" class="status-message"></div>
+
+        <!-- Recent Submissions -->
+        <div id="recentSubmissionsSection" class="recent-submissions hidden">
+          <h3 class="recent-submissions-title">Recent Submissions</h3>
+          <ul id="recentSubmissionsList" class="recent-submissions-list"></ul>
+        </div>
       </section>
 
       <!-- Step 2: Annotate Screenshot -->

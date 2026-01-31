@@ -3,6 +3,7 @@
 
 let mediaRecorder = null;
 let recordedChunks = [];
+let displayStream = null;
 
 console.log('[Offscreen] Offscreen document loaded');
 
@@ -11,9 +12,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[Offscreen] Received message:', request.action);
 
   if (request.action === 'startDisplayRecording') {
-    startDisplayRecording()
+    // Legacy: start recording immediately (prepare + begin in one step)
+    prepareDisplayRecording()
       .then(() => {
-        console.log('[Offscreen] Display recording started successfully');
+        mediaRecorder.start(10000);
+        console.log('[Offscreen] Display recording started successfully (legacy path)');
         sendResponse({ success: true });
       })
       .catch((error) => {
@@ -21,6 +24,47 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ success: false, error: error.message });
       });
     return true; // Keep channel open for async response
+  }
+
+  if (request.action === 'prepareDisplayRecording') {
+    prepareDisplayRecording()
+      .then(() => {
+        console.log('[Offscreen] Display recording prepared successfully');
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        console.error('[Offscreen] Error preparing display recording:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (request.action === 'beginRecording') {
+    try {
+      if (!mediaRecorder || mediaRecorder.state !== 'inactive') {
+        throw new Error('MediaRecorder not ready or already recording');
+      }
+      mediaRecorder.start(10000);
+      console.log('[Offscreen] MediaRecorder started for display media with 10s timeslice');
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('[Offscreen] Error beginning recording:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (request.action === 'stitchScreenshots') {
+    stitchScreenshots(request)
+      .then((screenshotDataUrl) => {
+        console.log('[Offscreen] Stitching complete, data length:', screenshotDataUrl.length);
+        sendResponse({ success: true, screenshotDataUrl });
+      })
+      .catch((error) => {
+        console.error('[Offscreen] Error stitching screenshots:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
   }
 
   if (request.action === 'captureDisplayScreenshot') {
@@ -39,13 +83,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return false;
 });
 
-async function startDisplayRecording() {
+// Phase 1: Acquire display media stream and create MediaRecorder, but don't start recording.
+// This allows the background to show a countdown before beginning capture.
+async function prepareDisplayRecording() {
   try {
     console.log('[Offscreen] Getting display media stream');
 
     // Get display media stream - this will show a picker dialog
     // User can choose: tab, window, or entire screen
-    const stream = await navigator.mediaDevices.getDisplayMedia({
+    displayStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         displaySurface: 'monitor', // Prefer entire screen/window
         cursor: 'always', // Always show cursor in recording
@@ -67,7 +113,7 @@ async function startDisplayRecording() {
     recordedChunks = [];
 
     // Create MediaRecorder with the stream
-    mediaRecorder = new MediaRecorder(stream, {
+    mediaRecorder = new MediaRecorder(displayStream, {
       mimeType: 'video/webm;codecs=vp9',
       videoBitsPerSecond: 2500000
     });
@@ -100,10 +146,13 @@ async function startDisplayRecording() {
         console.log('[Offscreen] Converted to data URL, length:', videoDataUrl.length, 'chars (', (videoDataUrl.length / 1024 / 1024).toFixed(2), 'MB)');
 
         // Stop all tracks
-        stream.getTracks().forEach(track => {
-          console.log('[Offscreen] Stopping track:', track.kind);
-          track.stop();
-        });
+        if (displayStream) {
+          displayStream.getTracks().forEach(track => {
+            console.log('[Offscreen] Stopping track:', track.kind);
+            track.stop();
+          });
+          displayStream = null;
+        }
 
         // For large videos (>5MB), use IndexedDB instead of chrome.runtime.sendMessage
         // chrome.runtime.sendMessage has size limits (~4MB) and chrome.storage.session has quota limits (~10MB)
@@ -146,7 +195,7 @@ async function startDisplayRecording() {
     };
 
     // Handle user stopping via browser UI (clicking "Stop sharing")
-    stream.getVideoTracks()[0].onended = () => {
+    displayStream.getVideoTracks()[0].onended = () => {
       console.log('[Offscreen] User stopped recording via browser UI');
       // The MediaRecorder.onstop will handle the rest
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
@@ -154,13 +203,12 @@ async function startDisplayRecording() {
       }
     };
 
-    // Start recording with timeslice to prevent memory issues with long recordings
-    // Collect data every 10 seconds instead of waiting until the end
-    mediaRecorder.start(10000);
-    console.log('[Offscreen] MediaRecorder started for display media with 10s timeslice');
+    // NOTE: Recording is NOT started here. The background will send a
+    // 'beginRecording' message after the countdown completes.
+    console.log('[Offscreen] MediaRecorder prepared and ready (not yet recording)');
 
   } catch (error) {
-    console.error('[Offscreen] Error in startDisplayRecording:', error);
+    console.error('[Offscreen] Error in prepareDisplayRecording:', error);
     throw error;
   }
 }
@@ -225,5 +273,77 @@ async function captureDisplayScreenshot() {
     console.error('[Offscreen] Error in captureDisplayScreenshot:', error);
     throw error;
   }
+}
+
+// Stitch multiple viewport captures into a single full-page image
+async function stitchScreenshots({
+  captures,
+  fullWidth,
+  fullHeight,
+  viewportWidth,
+  viewportHeight,
+  devicePixelRatio,
+  scaleFactor,
+}) {
+  try {
+    const dpr = devicePixelRatio || 1;
+    const scale = scaleFactor || 1;
+
+    const canvasWidth = Math.round(fullWidth * dpr * scale);
+    const canvasHeight = Math.round(fullHeight * dpr * scale);
+
+    console.log(`[Offscreen] Stitching ${captures.length} captures into ${canvasWidth}x${canvasHeight} canvas (dpr=${dpr}, scale=${scale})`);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const ctx = canvas.getContext('2d');
+
+    // White background (in case of gaps)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Load and draw each captured viewport
+    for (let i = 0; i < captures.length; i++) {
+      const capture = captures[i];
+      const img = await loadImage(capture.dataUrl);
+
+      // The captured image is at native device resolution (viewportWidth*dpr x viewportHeight*dpr).
+      // Draw at the position corresponding to the actual scroll offset, scaled by dpr and scaleFactor.
+      const dx = Math.round(capture.x * dpr * scale);
+      const dy = Math.round(capture.y * dpr * scale);
+      const dw = Math.round(img.naturalWidth * scale);
+      const dh = Math.round(img.naturalHeight * scale);
+
+      ctx.drawImage(img, dx, dy, dw, dh);
+      console.log(`[Offscreen] Drew segment ${i + 1}/${captures.length} at (${dx},${dy}) size ${dw}x${dh}`);
+    }
+
+    // Use JPEG for very large images to reduce data URL size, PNG otherwise
+    const pixelCount = canvasWidth * canvasHeight;
+    let dataUrl;
+    if (pixelCount > 25_000_000) {
+      console.log('[Offscreen] Large image, using JPEG encoding');
+      dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    } else {
+      dataUrl = canvas.toDataURL('image/png');
+    }
+
+    console.log('[Offscreen] Stitched data URL length:', dataUrl.length);
+    return dataUrl;
+  } catch (error) {
+    console.error('[Offscreen] Error in stitchScreenshots:', error);
+    throw error;
+  }
+}
+
+// Helper: load an image from a data URL
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Failed to load image for stitching'));
+    img.src = dataUrl;
+  });
 }
 

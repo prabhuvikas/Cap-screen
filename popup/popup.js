@@ -71,6 +71,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Show initial section
   showSection('captureSection');
+
+  // Load recent submissions history
+  renderRecentSubmissions();
 });
 
 // Load settings from storage
@@ -95,6 +98,7 @@ async function loadSettings() {
 function setupEventListeners() {
   // Screenshot capture
   document.getElementById('captureCurrentTab').addEventListener('click', captureCurrentTab);
+  document.getElementById('captureFullPage').addEventListener('click', captureFullPage);
   document.getElementById('captureScreenshot').addEventListener('click', captureScreenshot);
 
   // Video recording
@@ -160,20 +164,40 @@ function setupEventListeners() {
 }
 
 // Capture current tab screenshot quickly (no picker)
+// When autoFullPageScreenshot is enabled, captures the entire scrollable page.
 async function captureCurrentTab() {
   const button = document.getElementById('captureCurrentTab');
   const statusEl = document.getElementById('captureStatus');
 
   try {
     button.disabled = true;
-    showStatus('captureStatus', 'Capturing current tab...', 'info');
-    console.log('[Popup] Capturing current tab screenshot');
 
-    // Use chrome.tabs.captureVisibleTab for quick capture
-    const screenshotData = await chrome.tabs.captureVisibleTab(null, {
-      format: 'png',
-      quality: 100
-    });
+    let screenshotData;
+
+    if (settings.autoFullPageScreenshot) {
+      showStatus('captureStatus', 'Capturing full page (scrolling)...', 'info');
+      console.log('[Popup] Capturing full-page screenshot (autoFullPageScreenshot enabled)');
+
+      const response = await chrome.runtime.sendMessage({
+        action: 'captureFullPageScreenshot',
+        tabId: currentTab.id
+      });
+
+      if (!response || !response.success) {
+        throw new Error(response?.error || 'Full-page capture failed');
+      }
+
+      screenshotData = response.screenshotDataUrl;
+    } else {
+      showStatus('captureStatus', 'Capturing current tab...', 'info');
+      console.log('[Popup] Capturing current tab screenshot');
+
+      // Use chrome.tabs.captureVisibleTab for quick capture
+      screenshotData = await chrome.tabs.captureVisibleTab(null, {
+        format: 'png',
+        quality: 100
+      });
+    }
 
     if (!screenshotData) {
       throw new Error('Failed to capture screenshot');
@@ -223,6 +247,76 @@ async function captureCurrentTab() {
 
   } catch (error) {
     console.error('Error capturing current tab screenshot:', error);
+    showStatus('captureStatus', `Error: ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// Capture full page screenshot (scroll-and-stitch) explicitly via the button
+async function captureFullPage() {
+  const button = document.getElementById('captureFullPage');
+
+  try {
+    button.disabled = true;
+    showStatus('captureStatus', 'Capturing full page (scrolling)...', 'info');
+    console.log('[Popup] Starting explicit full-page screenshot capture');
+
+    const response = await chrome.runtime.sendMessage({
+      action: 'captureFullPageScreenshot',
+      tabId: currentTab.id
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Full-page capture failed');
+    }
+
+    screenshotDataUrl = response.screenshotDataUrl;
+
+    if (!screenshotDataUrl) {
+      throw new Error('Failed to capture full page screenshot');
+    }
+
+    showStatus('captureStatus', 'Full page captured successfully!', 'success');
+
+    // Save screenshot to session storage (use new multi-screenshot format)
+    const newScreenshot = {
+      id: Date.now().toString(36) + Math.random().toString(36).substring(2),
+      data: screenshotDataUrl,
+      annotations: null,
+      timestamp: Date.now(),
+      tabId: currentTab.id,
+      name: 'Full Page Screenshot 1'
+    };
+
+    try {
+      await chrome.storage.session.set({
+        screenshots: [newScreenshot],
+        currentScreenshotId: newScreenshot.id,
+        tabId: currentTab.id,
+        screenshotData: screenshotDataUrl
+      });
+    } catch (storageError) {
+      console.error('[Popup] Error saving full-page screenshot to storage:', storageError);
+      if (!storageError.message || !storageError.message.includes('quota')) {
+        throw storageError;
+      }
+    }
+
+    // Open annotation page in new tab
+    const annotateTab = await chrome.tabs.create({
+      url: chrome.runtime.getURL('annotate/annotate.html'),
+      active: true
+    });
+
+    console.log('[Popup] Opened annotation tab:', annotateTab.id);
+
+    setTimeout(() => {
+      window.close();
+    }, 300);
+
+  } catch (error) {
+    console.error('Error capturing full page screenshot:', error);
     showStatus('captureStatus', `Error: ${error.message}`, 'error');
   } finally {
     button.disabled = false;
@@ -317,10 +411,11 @@ async function startVideoRecording() {
 
   try {
     startBtn.disabled = true;
-    showStatus('recordingStatus', 'Starting video recording...', 'info');
+    showStatus('recordingStatus', 'Select what to record... A countdown will follow.', 'info');
     console.log('[Popup] Starting video recording');
 
-    // Start display capture in background - browser will show picker
+    // Start display capture in background - browser will show picker,
+    // then a 3-2-1 countdown appears on the tab before recording begins
     console.log('[Popup] Sending startDisplayCapture message to background...');
     const response = await chrome.runtime.sendMessage({
       action: 'startDisplayCapture',
@@ -1146,13 +1241,11 @@ function buildDescription() {
   description += `- Title: ${sanitizeText(pageInfo.title || currentTab.title)}\n`;
   description += `- Timestamp: ${new Date().toISOString()}\n`;
 
-  // Reference attached files instead of embedding all details
-  description += '\n\n## Additional Information\n';
-  description += 'Detailed technical information (browser, system, network, performance data) ';
-  description += 'is available in the attached technical-data.json file.\n';
+  // Build additional information lines, only add section if there's content
+  let additionalInfo = '';
 
   if (videoDataUrl) {
-    description += '- Video recording of the issue is attached.\n';
+    additionalInfo += '- Video recording of the issue is attached.\n';
   }
 
   // Check if multi-tab capture was used
@@ -1162,15 +1255,26 @@ function buildDescription() {
       ...networkRequests.filter(req => req._tabId).map(req => req._tabId),
       ...consoleLogs.filter(log => log._tabId).map(log => log._tabId)
     ]);
-    description += `\n**Note:** Data captured from ${uniqueTabIds.size} tab(s).\n`;
+    additionalInfo += `\n**Note:** Data captured from ${uniqueTabIds.size} tab(s).\n`;
   }
 
-  if (settings.includeNetworkRequests && networkRequests.length > 0) {
-    description += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
+  const hasNetworkRequests = settings.includeNetworkRequests && networkRequests.length > 0;
+  const hasConsoleLogs = settings.includeConsoleLogs && consoleLogs.length > 0;
+
+  if (hasNetworkRequests) {
+    additionalInfo += `- Network requests (${networkRequests.length} captured) are in the attached HAR file.\n`;
   }
 
-  if (settings.includeConsoleLogs && consoleLogs.length > 0) {
-    description += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
+  if (hasConsoleLogs) {
+    additionalInfo += `- Console logs (${consoleLogs.length} entries) are in the attached console logs file.\n`;
+  }
+
+  // Only add the Additional Information section if there's actual data
+  if (additionalInfo || hasNetworkRequests || hasConsoleLogs) {
+    description += '\n\n## Additional Information\n';
+    description += 'Detailed technical information (browser, system, network, performance data) ';
+    description += 'is available in the attached technical-data.json file.\n';
+    description += additionalInfo;
   }
 
   // Sanitize the entire description to remove any remaining unicode
@@ -1390,6 +1494,61 @@ function showSuccessScreen(issue) {
     <strong>Issue #${issue.id}</strong><br>
     <a href="${issueUrl}" target="_blank">${issueUrl}</a>
   `;
+
+  // Save to recent submissions history
+  const projectSelect = document.getElementById('reviewProjectSelect');
+  const projectName = projectSelect ? projectSelect.options[projectSelect.selectedIndex]?.text : '';
+  saveRecentSubmission({
+    id: issue.id,
+    subject: issue.subject || document.getElementById('reviewSubjectInput')?.value || '',
+    project: projectName,
+    url: issueUrl,
+    timestamp: Date.now(),
+  });
+}
+
+// Load and display recent submissions in the capture section
+async function renderRecentSubmissions() {
+  const submissions = await getRecentSubmissions();
+  const section = document.getElementById('recentSubmissionsSection');
+  const list = document.getElementById('recentSubmissionsList');
+
+  if (!submissions.length) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  list.innerHTML = '';
+  for (const entry of submissions) {
+    const li = document.createElement('li');
+
+    const link = document.createElement('a');
+    link.href = entry.url;
+    link.target = '_blank';
+    link.textContent = `#${entry.id}`;
+    li.appendChild(link);
+
+    const subject = document.createElement('span');
+    subject.className = 'recent-submission-subject';
+    subject.textContent = entry.subject;
+    subject.title = entry.subject;
+    li.appendChild(subject);
+
+    const meta = document.createElement('span');
+    meta.className = 'recent-submission-meta';
+    const parts = [];
+    if (entry.project) parts.push(entry.project);
+    if (entry.timestamp) {
+      const d = new Date(entry.timestamp);
+      parts.push(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+    }
+    meta.textContent = parts.join(' · ');
+    li.appendChild(meta);
+
+    list.appendChild(li);
+  }
+
+  section.classList.remove('hidden');
 }
 
 // Reset form for new report
