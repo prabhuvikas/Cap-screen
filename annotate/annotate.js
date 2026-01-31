@@ -312,6 +312,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (draft.selectedTabIds) {
           selectedTabIds = draft.selectedTabIds;
         }
+        // Restore page info from draft
+        if (draft.pageInfo) {
+          pageInfo = draft.pageInfo;
+          console.log('[Annotate] Page info restored from draft:', pageInfo.url);
+        }
         isDirty = false;
         updateDraftStatusIndicator('saved');
         console.log('[Annotate] Draft form data restored');
@@ -3855,6 +3860,12 @@ async function loadDraft(draftId) {
     // Restore selected tabs
     if (draft.selectedTabIds) {
       selectedTabIds = draft.selectedTabIds;
+    }
+
+    // Restore page info from draft
+    if (draft.pageInfo) {
+      pageInfo = draft.pageInfo;
+      console.log('[Draft] Page info restored:', pageInfo.url);
     }
 
     currentDraftId = draftId;
