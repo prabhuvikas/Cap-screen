@@ -1117,11 +1117,14 @@ async function loadAllTabs() {
     // Clear the list
     tabListEl.innerHTML = '';
 
+    // Get current tab ID (may be null when loading a draft)
+    const currentTabId = currentTab?.id;
+
     // Add each tab as a checkbox item
     allTabs.forEach(tab => {
       const tabItem = document.createElement('div');
       tabItem.className = 'tab-item';
-      if (tab.id === currentTab.id) {
+      if (currentTabId && tab.id === currentTabId) {
         tabItem.classList.add('tab-item-current');
       }
 
@@ -1129,8 +1132,8 @@ async function loadAllTabs() {
       checkbox.type = 'checkbox';
       checkbox.id = `tab-${tab.id}`;
       checkbox.value = tab.id;
-      // Auto-select current tab
-      if (tab.id === currentTab.id) {
+      // Auto-select current tab if available
+      if (currentTabId && tab.id === currentTabId) {
         checkbox.checked = true;
         selectedTabIds.push(tab.id);
       }
@@ -1156,7 +1159,7 @@ async function loadAllTabs() {
       label.appendChild(info);
 
       // Add current tab badge
-      if (tab.id === currentTab.id) {
+      if (currentTabId && tab.id === currentTabId) {
         const badge = document.createElement('span');
         badge.className = 'tab-item-badge';
         badge.textContent = 'Current';
