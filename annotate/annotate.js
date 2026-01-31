@@ -314,10 +314,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (draft.selectedTabIds) {
           selectedTabIds = draft.selectedTabIds;
         }
-        // Restore page info from draft
-        if (draft.pageInfo) {
-          pageInfo = draft.pageInfo;
-          console.log('[Annotate] Page info restored from draft:', pageInfo.url);
+        // Restore technical data from draft (pageInfo, networkRequests, consoleLogs)
+        if (draft.technicalData) {
+          if (draft.technicalData.pageInfo) {
+            pageInfo = draft.technicalData.pageInfo;
+            console.log('[Annotate] Page info restored from draft:', pageInfo.url);
+          }
+          if (draft.technicalData.networkRequests) {
+            networkRequests = draft.technicalData.networkRequests;
+            console.log('[Annotate] Network requests restored from draft:', networkRequests.length);
+          }
+          if (draft.technicalData.consoleLogs) {
+            consoleLogs = draft.technicalData.consoleLogs;
+            console.log('[Annotate] Console logs restored from draft:', consoleLogs.length);
+          }
         }
         isDirty = false;
         updateDraftStatusIndicator('saved');
@@ -3866,10 +3876,20 @@ async function loadDraft(draftId) {
       selectedTabIds = draft.selectedTabIds;
     }
 
-    // Restore page info from draft
-    if (draft.pageInfo) {
-      pageInfo = draft.pageInfo;
-      console.log('[Draft] Page info restored:', pageInfo.url);
+    // Restore technical data from draft (pageInfo, networkRequests, consoleLogs)
+    if (draft.technicalData) {
+      if (draft.technicalData.pageInfo) {
+        pageInfo = draft.technicalData.pageInfo;
+        console.log('[Draft] Page info restored:', pageInfo.url);
+      }
+      if (draft.technicalData.networkRequests) {
+        networkRequests = draft.technicalData.networkRequests;
+        console.log('[Draft] Network requests restored:', networkRequests.length);
+      }
+      if (draft.technicalData.consoleLogs) {
+        consoleLogs = draft.technicalData.consoleLogs;
+        console.log('[Draft] Console logs restored:', consoleLogs.length);
+      }
     }
 
     currentDraftId = draftId;
