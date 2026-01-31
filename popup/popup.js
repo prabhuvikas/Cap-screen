@@ -231,7 +231,8 @@ async function captureCurrentTab() {
       console.log('[Popup] Capturing current tab screenshot');
 
       // Use chrome.tabs.captureVisibleTab for quick capture
-      screenshotData = await chrome.tabs.captureVisibleTab(null, {
+      // Pass the specific window ID to ensure we capture the correct tab
+      screenshotData = await chrome.tabs.captureVisibleTab(currentTab.windowId, {
         format: 'png',
         quality: 100
       });
