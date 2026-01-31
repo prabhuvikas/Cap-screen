@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.0] - January 31, 2026
+
+### Added
+- Add countdown timer, full-page screenshots, and recent submissions
+  - This PR enhances the bug reporting workflow with three major features: a 3-2-1 countdown overlay before video recording starts, full-page screenshot capture via scroll-and-stitch, and a recent submissions history panel in the popup.
+  - Added  in background.js that displays a 3-2-1 countdown overlay on the recording tab before capture begins
+  - Split display recording into two phases:  (acquire stream) and  (start capture)
+  - Updated alert message to indicate Recording
+
+_Merged PR #started by @after_
+
+---
+
+
+
 ## [2.1.7] - January 25, 2026
 
 ### Changed
