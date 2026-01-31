@@ -26,6 +26,7 @@ let autoSaveTimer = null; // Timer for debounced auto-save
 let periodicSaveTimer = null; // Timer for periodic backup
 let lastSavedState = null; // Last saved state for comparison
 let isLoadingDraft = false; // Flag to prevent auto-save during draft load
+let isNewCapture = false; // Flag to track if this is a new capture (skip draft recovery)
 const AUTO_SAVE_DEBOUNCE_MS = 3000; // 3 seconds after last change
 const PERIODIC_SAVE_MS = 120000; // 2 minutes periodic backup
 
@@ -124,6 +125,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       // Normal flow - load from session storage
       const result = sessionData;
+
+      // Mark as new capture to skip draft recovery prompt
+      isNewCapture = true;
 
       // Check if we have the new multi-screenshot format or old single screenshot
       if (result.screenshots && result.screenshots.length > 0) {
@@ -3696,6 +3700,12 @@ async function checkForExistingDrafts() {
     // If we already loaded a draft (from popup), don't show recovery modal
     if (currentDraftId) {
       console.log('[Draft] Already loaded draft:', currentDraftId);
+      return;
+    }
+
+    // If this is a new capture (user just took screenshot/video), don't show recovery modal
+    if (isNewCapture) {
+      console.log('[Draft] New capture detected, skipping draft recovery prompt');
       return;
     }
 
