@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.0.0] - February 1, 2026
+
+### Added
+- docs: add save draft feature implementation plan
+  - Redesign overall reporting
+  - Implement save draft feature with auto-save, manual save, and Save
+
+_Merged PR #As options                                                                   
+- Add Photoshop-inspired vertical toolbar layout with left tool palette
+- Add keyboard shortcuts for annotation tools (A/R/C/P/T/X/V/K)
+- Add download button for media items on hover
+- See latest reports submission for quick access on popover screen by @42_
+
+---
+
+
+
 ## [2.2.0] - January 31, 2026
 
 ### Added
