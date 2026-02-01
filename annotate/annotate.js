@@ -366,86 +366,135 @@ function setupEventListeners() {
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('closeTab').addEventListener('click', closeTabWithConfirmation);
 
-  // Screenshot and video management
+  // Screenshot and video management (new media strip buttons)
   document.getElementById('captureAnotherBtn').addEventListener('click', captureAnotherScreenshot);
   document.getElementById('recordVideoBtn').addEventListener('click', recordVideo);
 
-  // Annotation tools
-  document.querySelectorAll('.tool-btn').forEach(btn => {
+  // Annotation tools (both old and new vertical toolbar)
+  document.querySelectorAll('.tool-btn, .vtool-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const tool = e.currentTarget.dataset.tool;
       selectTool(tool, e.currentTarget);
     });
   });
 
-  document.getElementById('colorPicker').addEventListener('change', (e) => {
-    if (annotator) annotator.setColor(e.target.value);
-  });
+  // Color picker (top options bar)
+  const colorPickerTop = document.getElementById('colorPickerTop');
+  if (colorPickerTop) {
+    colorPickerTop.addEventListener('change', (e) => {
+      if (annotator) annotator.setColor(e.target.value);
+    });
+  }
 
-  document.getElementById('lineWidth').addEventListener('change', (e) => {
-    if (annotator) annotator.setLineWidth(parseInt(e.target.value));
-  });
+  // Line width (top options bar)
+  const lineWidthTop = document.getElementById('lineWidthTop');
+  if (lineWidthTop) {
+    lineWidthTop.addEventListener('change', (e) => {
+      if (annotator) annotator.setLineWidth(parseInt(e.target.value));
+    });
+  }
 
-  document.getElementById('undoBtn').addEventListener('click', () => {
-    if (annotator) annotator.undo();
-  });
+  // Undo/Redo/Clear (top options bar)
+  const undoBtnTop = document.getElementById('undoBtnTop');
+  const redoBtnTop = document.getElementById('redoBtnTop');
+  const clearBtnTop = document.getElementById('clearAnnotationsTop');
 
-  document.getElementById('redoBtn').addEventListener('click', () => {
-    if (annotator) annotator.redo();
-  });
+  if (undoBtnTop) undoBtnTop.addEventListener('click', () => { if (annotator) annotator.undo(); });
+  if (redoBtnTop) redoBtnTop.addEventListener('click', () => { if (annotator) annotator.redo(); });
+  if (clearBtnTop) clearBtnTop.addEventListener('click', () => { if (annotator && confirm('Clear all annotations?')) annotator.clear(); });
 
-  document.getElementById('clearAnnotations').addEventListener('click', () => {
-    if (annotator && confirm('Clear all annotations?')) {
-      annotator.clear();
-    }
-  });
+  // Zoom controls (media strip)
+  const zoomInBtn = document.getElementById('zoomInBtn');
+  const zoomOutBtn = document.getElementById('zoomOutBtn');
+  const zoomResetBtn = document.getElementById('zoomResetBtn');
 
-  // Zoom controls
-  document.getElementById('zoomInBtn').addEventListener('click', () => {
-    if (annotator) {
-      const newZoom = annotator.zoomIn();
-      updateZoomDisplay(newZoom);
-    }
-  });
+  if (zoomInBtn) {
+    zoomInBtn.addEventListener('click', () => {
+      if (annotator) {
+        const newZoom = annotator.zoomIn();
+        updateZoomDisplay(newZoom);
+      }
+    });
+  }
 
-  document.getElementById('zoomOutBtn').addEventListener('click', () => {
-    if (annotator) {
-      const newZoom = annotator.zoomOut();
-      updateZoomDisplay(newZoom);
-    }
-  });
+  if (zoomOutBtn) {
+    zoomOutBtn.addEventListener('click', () => {
+      if (annotator) {
+        const newZoom = annotator.zoomOut();
+        updateZoomDisplay(newZoom);
+      }
+    });
+  }
 
-  document.getElementById('zoomResetBtn').addEventListener('click', () => {
-    if (annotator) {
-      const newZoom = annotator.zoomReset();
-      updateZoomDisplay(newZoom);
-    }
-  });
+  if (zoomResetBtn) {
+    zoomResetBtn.addEventListener('click', () => {
+      if (annotator) {
+        const newZoom = annotator.zoomReset();
+        updateZoomDisplay(newZoom);
+      }
+    });
+  }
 
-  // Crop controls
-  document.getElementById('applyCrop').addEventListener('click', async () => {
-    if (annotator) {
-      const success = await annotator.applyCrop();
-      if (success) {
-        // Update the current screenshot data with cropped image
-        const currentScreenshot = screenshots.find(s => s.id === currentScreenshotId);
-        if (currentScreenshot) {
-          currentScreenshot.data = annotator.imageDataUrl;
-          await chrome.storage.session.set({ screenshots: screenshots });
+  // Crop controls (top options bar)
+  const applyCropTop = document.getElementById('applyCropTop');
+  const cancelCropTop = document.getElementById('cancelCropTop');
+
+  if (applyCropTop) {
+    applyCropTop.addEventListener('click', async () => {
+      if (annotator) {
+        const success = await annotator.applyCrop();
+        if (success) {
+          // Update the current screenshot data with cropped image
+          const currentScreenshot = screenshots.find(s => s.id === currentScreenshotId);
+          if (currentScreenshot) {
+            currentScreenshot.data = annotator.imageDataUrl;
+            await chrome.storage.session.set({ screenshots: screenshots });
+          }
         }
       }
-    }
-  });
+    });
+  }
 
-  document.getElementById('cancelCrop').addEventListener('click', () => {
-    if (annotator) {
-      annotator.cancelCrop();
-    }
-  });
+  if (cancelCropTop) {
+    cancelCropTop.addEventListener('click', () => { if (annotator) annotator.cancelCrop(); });
+  }
 
-  // Keyboard shortcuts for zoom
+  // Footer continue button
+  const continueFooterBtn = document.getElementById('continueToReportFooter');
+  if (continueFooterBtn) {
+    continueFooterBtn.addEventListener('click', continueToReport);
+  }
+
+  // Keyboard shortcuts for tools and zoom
   document.addEventListener('keydown', (e) => {
     if (!annotator) return;
+
+    // Skip if user is typing in an input or textarea
+    const activeElement = document.activeElement;
+    if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable)) {
+      return;
+    }
+
+    // Tool shortcuts (single keys, no modifiers)
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      const toolShortcuts = {
+        'a': 'arrow',
+        'r': 'rectangle',
+        'c': 'circle',
+        'p': 'pen',
+        't': 'text',
+        'x': 'blackout',
+        'v': 'move',
+        'k': 'crop'
+      };
+
+      const tool = toolShortcuts[e.key.toLowerCase()];
+      if (tool) {
+        e.preventDefault();
+        selectTool(tool);
+        return;
+      }
+    }
 
     // Ctrl/Cmd + Plus/Equals for zoom in
     if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '=')) {
@@ -540,9 +589,16 @@ async function initializeAnnotation() {
 
 // Show video player
 function showVideoPlayer(videoData) {
-  // Hide canvas and annotation toolbar
+  // Hide canvas
   document.getElementById('annotationCanvas').style.display = 'none';
-  document.querySelector('.annotation-toolbar-bottom').style.display = 'none';
+
+  // Hide tool options bar (annotation controls not needed for video)
+  const toolOptionsBar = document.querySelector('.tool-options-bar');
+  if (toolOptionsBar) toolOptionsBar.style.display = 'none';
+
+  // Hide vertical toolbar (not needed for video)
+  const verticalToolbar = document.querySelector('.vertical-toolbar');
+  if (verticalToolbar) verticalToolbar.style.display = 'none';
 
   // Get or create video player container
   let videoContainer = document.getElementById('videoPlayerContainer');
@@ -571,9 +627,16 @@ async function showAnnotationCanvas(screenshot) {
     videoContainer.style.display = 'none';
   }
 
-  // Show canvas and annotation toolbar
+  // Show canvas
   document.getElementById('annotationCanvas').style.display = 'block';
-  document.querySelector('.annotation-toolbar-bottom').style.display = 'flex';
+
+  // Show tool options bar
+  const toolOptionsBar = document.querySelector('.tool-options-bar');
+  if (toolOptionsBar) toolOptionsBar.style.display = 'flex';
+
+  // Show vertical toolbar
+  const verticalToolbar = document.querySelector('.vertical-toolbar');
+  if (verticalToolbar) verticalToolbar.style.display = 'flex';
 
   screenshotDataUrl = screenshot.data;
 
@@ -619,9 +682,17 @@ async function initializeAnnotationSilent() {
 
 // Select annotation tool
 function selectTool(tool, buttonElement) {
-  document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+  // Remove active class from all tool buttons (both old and new vertical toolbar)
+  document.querySelectorAll('.tool-btn, .vtool-btn').forEach(btn => btn.classList.remove('active'));
+
   if (buttonElement) {
     buttonElement.classList.add('active');
+  } else {
+    // If no button element provided (e.g., keyboard shortcut), find and activate the matching button
+    const matchingBtn = document.querySelector(`.vtool-btn[data-tool="${tool}"], .tool-btn[data-tool="${tool}"]`);
+    if (matchingBtn) {
+      matchingBtn.classList.add('active');
+    }
   }
 
   if (annotator) {
@@ -647,35 +718,27 @@ function selectTool(tool, buttonElement) {
   // All other tools (pen, rectangle, circle, arrow, blackout) will use the default crosshair cursor
 }
 
-// Update zoom display
+// Update zoom display (update all zoom level displays)
 function updateZoomDisplay(zoomLevel) {
-  const display = document.getElementById('zoomLevel');
-  if (display) {
+  const displays = document.querySelectorAll('#zoomLevel');
+  displays.forEach(display => {
     display.textContent = Math.round(zoomLevel * 100) + '%';
-  }
+  });
 }
 
 // Show crop controls
 window.showCropControls = function() {
-  const cropControls = document.getElementById('cropControls');
-  const cropDivider = document.getElementById('cropDivider');
-  if (cropControls) {
-    cropControls.style.display = 'flex';
-  }
-  if (cropDivider) {
-    cropDivider.style.display = 'block';
+  const cropControlsTop = document.getElementById('cropControlsTop');
+  if (cropControlsTop) {
+    cropControlsTop.style.display = 'inline-flex';
   }
 }
 
 // Hide crop controls
 window.hideCropControls = function() {
-  const cropControls = document.getElementById('cropControls');
-  const cropDivider = document.getElementById('cropDivider');
-  if (cropControls) {
-    cropControls.style.display = 'none';
-  }
-  if (cropDivider) {
-    cropDivider.style.display = 'none';
+  const cropControlsTop = document.getElementById('cropControlsTop');
+  if (cropControlsTop) {
+    cropControlsTop.style.display = 'none';
   }
 }
 
@@ -920,6 +983,45 @@ async function deleteScreenshot(screenshotId) {
   }
 }
 
+// Download media item (screenshot or video)
+async function downloadMedia(item) {
+  try {
+    const isVideo = item.type === 'video';
+    const extension = isVideo ? 'webm' : 'png';
+    const filename = `${item.name || (isVideo ? 'video' : 'screenshot')}.${extension}`;
+
+    // For screenshots, get annotated image if available
+    let dataUrl = item.data;
+
+    if (!isVideo && item.id === currentScreenshotId && annotator) {
+      // Get the current annotated version
+      dataUrl = annotator.getAnnotatedImage();
+    } else if (!isVideo && item.annotations) {
+      // Render annotations for non-current screenshots
+      const tempCanvas = document.createElement('canvas');
+      const tempAnnotator = new Annotator(tempCanvas, item.data);
+      await tempAnnotator.initPromise;
+      if (tempAnnotator.restoreState) {
+        await tempAnnotator.restoreState(item.annotations);
+      }
+      dataUrl = tempAnnotator.getAnnotatedImage();
+    }
+
+    // Create download link
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    console.log('[Annotate] Downloaded:', filename);
+  } catch (error) {
+    console.error('[Annotate] Error downloading media:', error);
+    alert('Error downloading media: ' + error.message);
+  }
+}
+
 // Rename screenshot
 async function renameScreenshot(screenshotId, newName) {
   const screenshot = screenshots.find(s => s.id === screenshotId);
@@ -940,67 +1042,84 @@ function updateScreenshotsList() {
   const listContainer = document.getElementById('screenshotsList');
   listContainer.innerHTML = '';
 
-  screenshots.forEach((item, index) => {
-    const itemElement = document.createElement('div');
-    itemElement.className = 'screenshot-item' + (item.id === currentScreenshotId ? ' active' : '');
+  // Update media count in header
+  const mediaCountEl = document.getElementById('mediaCount');
+  if (mediaCountEl) {
+    const count = screenshots.length;
+    mediaCountEl.textContent = `${count} item${count !== 1 ? 's' : ''}`;
+  }
 
-    const content = document.createElement('div');
-    content.className = 'screenshot-item-content';
+  screenshots.forEach((item, index) => {
+    // Create compact thumbnail item for media strip
+    const itemElement = document.createElement('div');
+    itemElement.className = 'media-thumb-item' + (item.id === currentScreenshotId ? ' active' : '');
 
     // Create thumbnail based on type
     if (item.type === 'video') {
       // Video thumbnail - show video icon
       const videoThumbnail = document.createElement('div');
-      videoThumbnail.className = 'screenshot-thumbnail video-thumbnail';
-      videoThumbnail.innerHTML = '<span style="font-size: 48px;">🎥</span>';
-      content.appendChild(videoThumbnail);
+      videoThumbnail.className = 'media-thumb-video';
+      videoThumbnail.innerHTML = '🎥';
+      itemElement.appendChild(videoThumbnail);
     } else {
       // Screenshot thumbnail
       const thumbnail = document.createElement('img');
-      thumbnail.className = 'screenshot-thumbnail';
+      thumbnail.className = 'media-thumb-img';
       thumbnail.src = item.data;
       thumbnail.alt = item.name || `Screenshot ${index + 1}`;
-      content.appendChild(thumbnail);
+      itemElement.appendChild(thumbnail);
     }
 
-    const info = document.createElement('div');
-    info.className = 'screenshot-info';
+    // Add hover action buttons container
+    const actionBtns = document.createElement('div');
+    actionBtns.className = 'media-thumb-actions';
 
-    // Editable name input
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.className = 'screenshot-name-input';
-    nameInput.value = item.name || (item.type === 'video' ? `Video ${index + 1}` : `Screenshot ${index + 1}`);
-    nameInput.onclick = (e) => {
+    // Download button
+    const downloadBtn = document.createElement('button');
+    downloadBtn.className = 'media-thumb-action-btn media-thumb-download';
+    downloadBtn.innerHTML = '⬇';
+    downloadBtn.title = 'Download';
+    downloadBtn.onclick = (e) => {
       e.stopPropagation();
+      downloadMedia(item);
     };
-    nameInput.onblur = (e) => {
+    actionBtns.appendChild(downloadBtn);
+
+    // Delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'media-thumb-action-btn media-thumb-delete';
+    deleteBtn.innerHTML = '×';
+    deleteBtn.title = 'Delete';
+    deleteBtn.onclick = (e) => {
+      e.stopPropagation();
+      deleteScreenshot(item.id);
+    };
+    actionBtns.appendChild(deleteBtn);
+
+    itemElement.appendChild(actionBtns);
+
+    // Add editable name label below thumbnail
+    const nameLabel = document.createElement('input');
+    nameLabel.type = 'text';
+    nameLabel.className = 'media-thumb-name';
+    nameLabel.value = item.name || (item.type === 'video' ? `Video ${index + 1}` : `Screenshot ${index + 1}`);
+    nameLabel.title = 'Click to rename';
+    nameLabel.onclick = (e) => {
+      e.stopPropagation();
+      nameLabel.select();
+    };
+    nameLabel.onblur = (e) => {
       renameScreenshot(item.id, e.target.value);
     };
-    nameInput.onkeydown = (e) => {
+    nameLabel.onkeydown = (e) => {
       if (e.key === 'Enter') {
         e.target.blur();
       }
       e.stopPropagation();
     };
+    itemElement.appendChild(nameLabel);
 
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'screenshot-delete';
-    deleteBtn.textContent = '✕';
-    deleteBtn.onclick = (e) => {
-      e.stopPropagation();
-      deleteScreenshot(item.id);
-    };
-
-    info.appendChild(nameInput);
-    if (screenshots.length > 1) {
-      info.appendChild(deleteBtn);
-    }
-
-    content.appendChild(info);
-
-    itemElement.appendChild(content);
-
+    // Click to switch screenshot
     itemElement.onclick = () => switchScreenshot(item.id);
 
     listContainer.appendChild(itemElement);

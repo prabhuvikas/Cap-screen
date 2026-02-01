@@ -94,6 +94,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('openSettings').addEventListener('click', openSettings);
 
+  // Help button
+  const helpBtn = document.getElementById('helpBtn');
+  if (helpBtn) {
+    helpBtn.addEventListener('click', openHelp);
+  }
+
   // Check if Redmine is configured
   if (!settings.redmineUrl || !settings.apiKey) {
     showSection('noConfigSection');
@@ -111,6 +117,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load recent activity (drafts and submissions)
   renderRecentActivity();
+
+  // Update footer stats
+  updateFooterStats();
 });
 
 // Load settings from storage
@@ -1776,6 +1785,32 @@ function openSettings() {
   });
 }
 
+// Open help page
+function openHelp() {
+  chrome.tabs.create({
+    url: chrome.runtime.getURL('annotate/help.html')
+  });
+}
+
+// Update footer stats with weekly submission count
+async function updateFooterStats() {
+  try {
+    const result = await chrome.storage.local.get('recentSubmissions');
+    const submissions = result.recentSubmissions || [];
+
+    // Count submissions from the last 7 days
+    const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const weeklyCount = submissions.filter(s => s.timestamp > oneWeekAgo).length;
+
+    const footerStats = document.getElementById('footerStats');
+    if (footerStats && weeklyCount > 0) {
+      footerStats.innerHTML = `<span>📊</span> ${weeklyCount} issue${weeklyCount !== 1 ? 's' : ''} this week`;
+    }
+  } catch (error) {
+    console.log('[Popup] Could not load footer stats:', error);
+  }
+}
+
 // Show section
 function showSection(sectionId) {
   document.querySelectorAll('.section').forEach(section => {
@@ -1788,10 +1823,25 @@ function showSection(sectionId) {
 }
 
 // Show status message
-function showStatus(elementId, message, type) {
+function showStatus(elementId, message, type, autoHideMs = 0) {
   const element = document.getElementById(elementId);
   element.textContent = message;
   element.className = `status-message ${type}`;
+
+  // Auto-hide error messages after specified duration (default 10 seconds for errors)
+  if (type === 'error' && autoHideMs === 0) {
+    autoHideMs = 10000; // 10 seconds default for errors
+  }
+
+  if (autoHideMs > 0) {
+    setTimeout(() => {
+      // Only clear if the message hasn't changed
+      if (element.textContent === message) {
+        element.textContent = '';
+        element.className = 'status-message';
+      }
+    }, autoHideMs);
+  }
 }
 
 // Populate review modal with all data
