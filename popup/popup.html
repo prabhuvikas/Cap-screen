@@ -13,60 +13,88 @@
   <div class="container">
     <!-- Header -->
     <header>
-      <h1>Cred Issue Reporter</h1>
-      <button id="settingsBtn" class="icon-btn" title="Settings">
-        ⚙️
-      </button>
+      <div class="header-left">
+        <span class="header-icon">🐛</span>
+        <h1>Cred Issue Reporter</h1>
+      </div>
+      <div class="header-actions">
+        <button id="helpBtn" class="icon-btn" title="Help">
+          ?
+        </button>
+        <button id="settingsBtn" class="icon-btn" title="Settings">
+          ⚙️
+        </button>
+      </div>
     </header>
 
     <!-- Main Content -->
     <main id="mainContent">
       <!-- Step 1: Capture Screenshot -->
       <section id="captureSection" class="section active">
-        <div class="welcome-header">
-          <h2>Create Issue Report</h2>
-          <p class="welcome-text">Choose how you want to capture the issue</p>
-        </div>
+        <div class="section-label">QUICK CAPTURE</div>
 
-        <div class="capture-options">
-          <!-- Screenshot Options -->
-          <div class="capture-card">
-            <div class="card-icon">📸</div>
-            <h3>Take Screenshot</h3>
-            <p class="card-description">Capture a screenshot with annotation tools</p>
-            <div class="card-buttons">
-              <button id="captureCurrentTab" class="btn btn-primary btn-block">
-                📸 Capture Current Tab
-              </button>
-              <button id="captureFullPage" class="btn btn-primary btn-block">
-                📜 Capture Full Page
-              </button>
-              <button id="captureScreenshot" class="btn btn-secondary btn-block">
-                🖥️ Choose What to Capture
-              </button>
-            </div>
-            <p class="card-hint">Quick capture for current tab, full page scroll-stitch, or choose any tab/window/screen</p>
-          </div>
-
-          <!-- Video Recording Option -->
-          <div class="capture-card">
-            <div class="card-icon">🎥</div>
-            <h3>Record Video</h3>
-            <p class="card-description">Record screen activity to demonstrate the issue. Choose what to capture: current tab, browser window, entire screen, or any application.</p>
-            <button id="startRecording" class="btn btn-primary btn-block">
-              🎥 Start Video Recording
-            </button>
-            <p class="card-hint">Browser will show a picker to choose what to record. Stop by clicking the browser's "Stop Sharing" button.</p>
-          </div>
+        <div class="capture-grid">
+          <button id="captureCurrentTab" class="capture-btn" title="Capture current tab (Alt+Shift+S)">
+            <span class="capture-btn-icon">📸</span>
+            <span class="capture-btn-label">Current</span>
+            <span class="capture-btn-sublabel">Tab</span>
+          </button>
+          <button id="captureFullPage" class="capture-btn" title="Capture full page with scroll">
+            <span class="capture-btn-icon">📜</span>
+            <span class="capture-btn-label">Full Page</span>
+            <span class="capture-btn-sublabel"></span>
+          </button>
+          <button id="captureScreenshot" class="capture-btn" title="Choose what to capture">
+            <span class="capture-btn-icon">🖥️</span>
+            <span class="capture-btn-label">Select</span>
+            <span class="capture-btn-sublabel">Source</span>
+          </button>
+          <button id="startRecording" class="capture-btn capture-btn-video" title="Start video recording (Alt+Shift+V)">
+            <span class="capture-btn-icon">🎥</span>
+            <span class="capture-btn-label">Video</span>
+            <span class="capture-btn-sublabel">Record</span>
+          </button>
         </div>
 
         <div id="recordingStatus" class="status-message"></div>
         <div id="captureStatus" class="status-message"></div>
 
-        <!-- Recent Submissions -->
-        <div id="recentSubmissionsSection" class="recent-submissions hidden">
-          <h3 class="recent-submissions-title">Recent Submissions</h3>
-          <ul id="recentSubmissionsList" class="recent-submissions-list"></ul>
+        <!-- Recent Activity Section -->
+        <div id="recentActivitySection" class="recent-activity hidden">
+          <div class="section-label">RECENT</div>
+          <div class="recent-activity-tabs">
+            <button id="draftsTabBtn" class="activity-tab-btn active" data-tab="drafts">
+              <span class="tab-indicator active"></span>
+              Drafts <span id="draftsCountBadge" class="count-badge hidden">0</span>
+            </button>
+            <button id="submissionsTabBtn" class="activity-tab-btn" data-tab="submissions">
+              <span class="tab-indicator"></span>
+              Submitted
+            </button>
+          </div>
+          <div id="draftsPane" class="activity-pane active">
+            <ul id="draftsList" class="recent-drafts-list"></ul>
+            <p id="noDraftsText" class="no-items-text hidden">No saved drafts</p>
+          </div>
+          <div id="submissionsPane" class="activity-pane hidden">
+            <ul id="recentSubmissionsList" class="recent-submissions-list"></ul>
+            <p id="noSubmissionsText" class="no-items-text hidden">No recent submissions</p>
+          </div>
+        </div>
+
+        <!-- Keyboard Shortcuts -->
+        <div class="shortcuts-section">
+          <div class="section-label">KEYBOARD SHORTCUTS</div>
+          <div class="shortcuts-grid">
+            <div class="shortcut-item">
+              <kbd>Alt+Shift+S</kbd>
+              <span>Quick screenshot</span>
+            </div>
+            <div class="shortcut-item">
+              <kbd>Alt+Shift+V</kbd>
+              <span>Start video</span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -375,12 +403,15 @@
 
     <!-- Footer -->
     <footer>
-      <small>Cred Issue Reporter v2.1.1</small>
+      <span class="footer-version">v2.2.0</span>
+      <span class="footer-stats" id="footerStats"></span>
     </footer>
   </div>
 
   <script src="../lib/utils.js"></script>
   <script src="../lib/redmine-api.js"></script>
+  <script src="../lib/draft-storage.js"></script>
+  <script src="../lib/screenshot-storage.js"></script>
   <script src="../content/annotator.js"></script>
   <script src="popup.js"></script>
 </body>

@@ -44,6 +44,43 @@ function sanitizeText(text) {
   return sanitized;
 }
 
+// Save screenshots with IndexedDB fallback for large images
+async function saveScreenshotWithFallback(screenshots, tabId, screenshotDataUrl) {
+  try {
+    await chrome.storage.session.set({
+      screenshots: screenshots,
+      currentScreenshotId: screenshots[0].id,
+      tabId: tabId,
+      // Keep old format for backward compatibility
+      screenshotData: screenshotDataUrl
+    });
+    console.log('[Popup] Screenshots saved to session storage');
+  } catch (storageError) {
+    if (storageError.message && storageError.message.includes('quota')) {
+      // Session storage quota exceeded - use IndexedDB fallback (this is expected for large screenshots)
+      console.log('[Popup] Session storage quota exceeded, using IndexedDB fallback for large screenshot');
+      try {
+        await screenshotStorage.saveScreenshots(screenshots, {
+          currentScreenshotId: screenshots[0].id,
+          tabId: tabId
+        });
+        // Set flag to tell annotate page to load from IndexedDB
+        await chrome.storage.session.set({
+          screenshotsInIndexedDB: true,
+          currentScreenshotId: screenshots[0].id,
+          tabId: tabId
+        });
+        console.log('[Popup] Screenshots saved to IndexedDB successfully');
+      } catch (idbError) {
+        console.error('[Popup] IndexedDB fallback also failed:', idbError);
+        throw new Error('Failed to save screenshot: storage quota exceeded');
+      }
+    } else {
+      throw storageError;
+    }
+  }
+}
+
 // Initialize popup
 document.addEventListener('DOMContentLoaded', async () => {
   // Get current tab
@@ -56,6 +93,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Setup settings button listeners (must be set up before early return)
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('openSettings').addEventListener('click', openSettings);
+
+  // Help button
+  const helpBtn = document.getElementById('helpBtn');
+  if (helpBtn) {
+    helpBtn.addEventListener('click', openHelp);
+  }
 
   // Check if Redmine is configured
   if (!settings.redmineUrl || !settings.apiKey) {
@@ -72,8 +115,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Show initial section
   showSection('captureSection');
 
-  // Load recent submissions history
-  renderRecentSubmissions();
+  // Load recent activity (drafts and submissions)
+  renderRecentActivity();
+
+  // Update footer stats
+  updateFooterStats();
 });
 
 // Load settings from storage
@@ -164,40 +210,22 @@ function setupEventListeners() {
 }
 
 // Capture current tab screenshot quickly (no picker)
-// When autoFullPageScreenshot is enabled, captures the entire scrollable page.
+// Always captures just the visible viewport
 async function captureCurrentTab() {
   const button = document.getElementById('captureCurrentTab');
   const statusEl = document.getElementById('captureStatus');
 
   try {
     button.disabled = true;
+    showStatus('captureStatus', 'Capturing current tab...', 'info');
+    console.log('[Popup] Capturing current tab screenshot (visible viewport only)');
 
-    let screenshotData;
-
-    if (settings.autoFullPageScreenshot) {
-      showStatus('captureStatus', 'Capturing full page (scrolling)...', 'info');
-      console.log('[Popup] Capturing full-page screenshot (autoFullPageScreenshot enabled)');
-
-      const response = await chrome.runtime.sendMessage({
-        action: 'captureFullPageScreenshot',
-        tabId: currentTab.id
-      });
-
-      if (!response || !response.success) {
-        throw new Error(response?.error || 'Full-page capture failed');
-      }
-
-      screenshotData = response.screenshotDataUrl;
-    } else {
-      showStatus('captureStatus', 'Capturing current tab...', 'info');
-      console.log('[Popup] Capturing current tab screenshot');
-
-      // Use chrome.tabs.captureVisibleTab for quick capture
-      screenshotData = await chrome.tabs.captureVisibleTab(null, {
-        format: 'png',
-        quality: 100
-      });
-    }
+    // Use chrome.tabs.captureVisibleTab for quick capture
+    // Pass the specific window ID to ensure we capture the correct tab
+    const screenshotData = await chrome.tabs.captureVisibleTab(currentTab.windowId, {
+      format: 'png',
+      quality: 100
+    });
 
     if (!screenshotData) {
       throw new Error('Failed to capture screenshot');
@@ -216,21 +244,7 @@ async function captureCurrentTab() {
       name: 'Screenshot 1'
     };
 
-    try {
-      await chrome.storage.session.set({
-        screenshots: [newScreenshot],
-        currentScreenshotId: newScreenshot.id,
-        tabId: currentTab.id,
-        // Keep old format for backward compatibility
-        screenshotData: screenshotDataUrl
-      });
-    } catch (storageError) {
-      console.error('[Popup] Error saving screenshot to storage:', storageError);
-      if (!storageError.message || !storageError.message.includes('quota')) {
-        throw storageError;
-      }
-      // Continue anyway - we still have the screenshot, annotation page will be blank but functional
-    }
+    await saveScreenshotWithFallback([newScreenshot], currentTab.id, screenshotDataUrl);
 
     // Open annotation page in new tab
     const annotateTab = await chrome.tabs.create({
@@ -289,19 +303,7 @@ async function captureFullPage() {
       name: 'Full Page Screenshot 1'
     };
 
-    try {
-      await chrome.storage.session.set({
-        screenshots: [newScreenshot],
-        currentScreenshotId: newScreenshot.id,
-        tabId: currentTab.id,
-        screenshotData: screenshotDataUrl
-      });
-    } catch (storageError) {
-      console.error('[Popup] Error saving full-page screenshot to storage:', storageError);
-      if (!storageError.message || !storageError.message.includes('quota')) {
-        throw storageError;
-      }
-    }
+    await saveScreenshotWithFallback([newScreenshot], currentTab.id, screenshotDataUrl);
 
     // Open annotation page in new tab
     const annotateTab = await chrome.tabs.create({
@@ -367,21 +369,7 @@ async function captureScreenshot() {
       name: 'Screenshot 1'
     };
 
-    try {
-      await chrome.storage.session.set({
-        screenshots: [newScreenshot],
-        currentScreenshotId: newScreenshot.id,
-        tabId: currentTab.id,
-        // Keep old format for backward compatibility
-        screenshotData: screenshotDataUrl
-      });
-    } catch (storageError) {
-      console.error('[Popup] Error saving screenshot to storage:', storageError);
-      if (!storageError.message || !storageError.message.includes('quota')) {
-        throw storageError;
-      }
-      // Continue anyway - we still have the screenshot, annotation page will be blank but functional
-    }
+    await saveScreenshotWithFallback([newScreenshot], currentTab.id, screenshotDataUrl);
 
     // Open annotation page in new tab
     const annotateTab = await chrome.tabs.create({
@@ -1507,18 +1495,133 @@ function showSuccessScreen(issue) {
   });
 }
 
-// Load and display recent submissions in the capture section
-async function renderRecentSubmissions() {
-  const submissions = await getRecentSubmissions();
-  const section = document.getElementById('recentSubmissionsSection');
-  const list = document.getElementById('recentSubmissionsList');
+// Load and display recent activity (drafts and submissions)
+async function renderRecentActivity() {
+  const section = document.getElementById('recentActivitySection');
 
-  if (!submissions.length) {
+  // Load both drafts and submissions
+  const [drafts, submissions] = await Promise.all([
+    draftStorage.listDrafts(),
+    getRecentSubmissions()
+  ]);
+
+  // If neither has items, hide the section
+  if (!drafts.length && !submissions.length) {
     section.classList.add('hidden');
     return;
   }
 
+  section.classList.remove('hidden');
+
+  // Render drafts
+  renderDraftsList(drafts);
+
+  // Render submissions
+  renderSubmissionsList(submissions);
+
+  // Update drafts count badge
+  const badge = document.getElementById('draftsCountBadge');
+  if (drafts.length > 0) {
+    badge.textContent = drafts.length;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+
+  // Setup tab switching
+  setupActivityTabs();
+
+  // If drafts exist, show drafts tab by default; otherwise show submissions
+  if (drafts.length > 0) {
+    switchActivityTab('drafts');
+  } else if (submissions.length > 0) {
+    switchActivityTab('submissions');
+  }
+}
+
+// Render drafts list
+function renderDraftsList(drafts) {
+  const list = document.getElementById('draftsList');
+  const noText = document.getElementById('noDraftsText');
+
   list.innerHTML = '';
+
+  if (!drafts.length) {
+    noText.classList.remove('hidden');
+    return;
+  }
+
+  noText.classList.add('hidden');
+
+  for (const draft of drafts) {
+    const li = document.createElement('li');
+    li.dataset.draftId = draft.id;
+
+    // Content wrapper (clickable area)
+    const content = document.createElement('div');
+    content.className = 'draft-item-content';
+
+    const name = document.createElement('div');
+    name.className = 'draft-item-name';
+    name.textContent = draft.name || 'Untitled Draft';
+    content.appendChild(name);
+
+    const info = document.createElement('div');
+    info.className = 'draft-item-info';
+
+    const meta = document.createElement('span');
+    meta.className = 'draft-item-meta';
+    const parts = [];
+    if (draft.screenshotCount > 0) parts.push(`${draft.screenshotCount} screenshot(s)`);
+    if (draft.videoCount > 0) parts.push(`${draft.videoCount} video(s)`);
+    meta.textContent = parts.join(', ') || 'No media';
+    info.appendChild(meta);
+
+    const time = document.createElement('span');
+    time.className = 'draft-item-time';
+    time.textContent = formatTimeAgoPopup(draft.updatedAt);
+    info.appendChild(time);
+
+    content.appendChild(info);
+    li.appendChild(content);
+
+    // Actions wrapper
+    const actions = document.createElement('div');
+    actions.className = 'draft-item-actions';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'draft-delete-btn';
+    deleteBtn.title = 'Delete draft';
+    deleteBtn.textContent = '×';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteDraftFromPopup(draft.id, li);
+    });
+    actions.appendChild(deleteBtn);
+
+    li.appendChild(actions);
+
+    // Click on content to continue editing
+    content.addEventListener('click', () => continueDraftFromPopup(draft.id));
+
+    list.appendChild(li);
+  }
+}
+
+// Render submissions list
+function renderSubmissionsList(submissions) {
+  const list = document.getElementById('recentSubmissionsList');
+  const noText = document.getElementById('noSubmissionsText');
+
+  list.innerHTML = '';
+
+  if (!submissions.length) {
+    noText.classList.remove('hidden');
+    return;
+  }
+
+  noText.classList.add('hidden');
+
   for (const entry of submissions) {
     const li = document.createElement('li');
 
@@ -1547,8 +1650,111 @@ async function renderRecentSubmissions() {
 
     list.appendChild(li);
   }
+}
 
-  section.classList.remove('hidden');
+// Setup activity tabs
+function setupActivityTabs() {
+  const draftsBtn = document.getElementById('draftsTabBtn');
+  const submissionsBtn = document.getElementById('submissionsTabBtn');
+
+  draftsBtn.addEventListener('click', () => switchActivityTab('drafts'));
+  submissionsBtn.addEventListener('click', () => switchActivityTab('submissions'));
+}
+
+// Switch activity tab
+function switchActivityTab(tab) {
+  const draftsBtn = document.getElementById('draftsTabBtn');
+  const submissionsBtn = document.getElementById('submissionsTabBtn');
+  const draftsPane = document.getElementById('draftsPane');
+  const submissionsPane = document.getElementById('submissionsPane');
+
+  if (tab === 'drafts') {
+    draftsBtn.classList.add('active');
+    submissionsBtn.classList.remove('active');
+    draftsPane.classList.add('active');
+    submissionsPane.classList.remove('active');
+  } else {
+    draftsBtn.classList.remove('active');
+    submissionsBtn.classList.add('active');
+    draftsPane.classList.remove('active');
+    submissionsPane.classList.add('active');
+  }
+}
+
+// Continue editing a draft from the popup
+async function continueDraftFromPopup(draftId) {
+  try {
+    // Store draft ID in session storage so annotate page knows to load it
+    await chrome.storage.session.set({
+      loadDraftId: draftId,
+      // Clear any existing screenshot data since we're loading a draft
+      screenshots: [],
+      screenshotData: null
+    });
+
+    // Open annotate page
+    chrome.tabs.create({
+      url: chrome.runtime.getURL('annotate/annotate.html')
+    });
+
+    // Close popup
+    window.close();
+  } catch (error) {
+    console.error('[Popup] Error continuing draft:', error);
+    showStatus('captureStatus', 'Failed to load draft', 'error');
+  }
+}
+
+// Delete a draft from the popup
+async function deleteDraftFromPopup(draftId, listItem) {
+  if (!confirm('Delete this draft?')) {
+    return;
+  }
+
+  try {
+    await draftStorage.deleteDraft(draftId);
+
+    // Remove from UI
+    listItem.remove();
+
+    // Update badge count
+    const badge = document.getElementById('draftsCountBadge');
+    const currentCount = parseInt(badge.textContent) || 0;
+    if (currentCount > 1) {
+      badge.textContent = currentCount - 1;
+    } else {
+      badge.classList.add('hidden');
+      // Show no drafts message if list is empty
+      const list = document.getElementById('draftsList');
+      if (list.children.length === 0) {
+        document.getElementById('noDraftsText').classList.remove('hidden');
+      }
+    }
+
+    console.log('[Popup] Draft deleted:', draftId);
+  } catch (error) {
+    console.error('[Popup] Error deleting draft:', error);
+    showStatus('captureStatus', 'Failed to delete draft', 'error');
+  }
+}
+
+// Format time ago for popup
+function formatTimeAgoPopup(timestamp) {
+  if (!timestamp) return '';
+
+  const now = Date.now();
+  const diff = now - timestamp;
+
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+
+  return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 // Reset form for new report
@@ -1579,6 +1785,32 @@ function openSettings() {
   });
 }
 
+// Open help page
+function openHelp() {
+  chrome.tabs.create({
+    url: chrome.runtime.getURL('annotate/help.html')
+  });
+}
+
+// Update footer stats with weekly submission count
+async function updateFooterStats() {
+  try {
+    const result = await chrome.storage.local.get('recentSubmissions');
+    const submissions = result.recentSubmissions || [];
+
+    // Count submissions from the last 7 days
+    const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const weeklyCount = submissions.filter(s => s.timestamp > oneWeekAgo).length;
+
+    const footerStats = document.getElementById('footerStats');
+    if (footerStats && weeklyCount > 0) {
+      footerStats.innerHTML = `<span>📊</span> ${weeklyCount} issue${weeklyCount !== 1 ? 's' : ''} this week`;
+    }
+  } catch (error) {
+    console.log('[Popup] Could not load footer stats:', error);
+  }
+}
+
 // Show section
 function showSection(sectionId) {
   document.querySelectorAll('.section').forEach(section => {
@@ -1591,10 +1823,25 @@ function showSection(sectionId) {
 }
 
 // Show status message
-function showStatus(elementId, message, type) {
+function showStatus(elementId, message, type, autoHideMs = 0) {
   const element = document.getElementById(elementId);
   element.textContent = message;
   element.className = `status-message ${type}`;
+
+  // Auto-hide error messages after specified duration (default 10 seconds for errors)
+  if (type === 'error' && autoHideMs === 0) {
+    autoHideMs = 10000; // 10 seconds default for errors
+  }
+
+  if (autoHideMs > 0) {
+    setTimeout(() => {
+      // Only clear if the message hasn't changed
+      if (element.textContent === message) {
+        element.textContent = '';
+        element.className = 'status-message';
+      }
+    }, autoHideMs);
+  }
 }
 
 // Populate review modal with all data

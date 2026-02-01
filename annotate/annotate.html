@@ -15,6 +15,18 @@
     <header>
       <h1>Cred Issue Reporter - Annotate & Submit</h1>
       <div class="header-actions">
+        <div class="draft-dropdown">
+          <button id="saveDraftBtn" class="icon-btn" title="Save Draft">
+            💾 <span class="draft-status-indicator"></span>
+          </button>
+          <div id="draftDropdownMenu" class="dropdown-menu hidden">
+            <button id="saveDraftNow" class="dropdown-item">Save Draft</button>
+            <button id="saveDraftAs" class="dropdown-item">Save Draft As...</button>
+            <div class="dropdown-divider"></div>
+            <button id="loadDraft" class="dropdown-item">Load Draft...</button>
+            <button id="deleteDraft" class="dropdown-item">Delete Current Draft</button>
+          </div>
+        </div>
         <button id="helpBtn" class="icon-btn" title="Help & User Guide">
           ❓ Help
         </button>
@@ -38,20 +50,82 @@
           </button>
         </div>
 
+        <!-- Tool Options Bar (Photoshop-style top bar) -->
+        <div class="tool-options-bar">
+          <div class="options-group">
+            <label for="colorPickerTop">Color</label>
+            <input type="color" id="colorPickerTop" value="#ff0000">
+          </div>
+          <div class="options-group">
+            <label for="lineWidthTop">Width</label>
+            <select id="lineWidthTop" class="width-selector">
+              <option value="1">1px</option>
+              <option value="2">2px</option>
+              <option value="3" selected>3px</option>
+              <option value="4">4px</option>
+              <option value="5">5px</option>
+              <option value="6">6px</option>
+              <option value="8">8px</option>
+              <option value="10">10px</option>
+            </select>
+          </div>
+          <div class="options-divider"></div>
+          <button id="undoBtnTop" class="options-btn" title="Undo (Ctrl+Z)">↶ Undo</button>
+          <button id="redoBtnTop" class="options-btn" title="Redo (Ctrl+Y)">↷ Redo</button>
+          <div class="options-divider"></div>
+          <button id="clearAnnotationsTop" class="options-btn options-btn-danger" title="Clear All">🗑️ Clear</button>
+          <div id="cropControlsTop" style="display: none;">
+            <div class="options-divider" style="display: inline-block; vertical-align: middle;"></div>
+            <button id="applyCropTop" class="options-btn options-btn-primary">✓ Apply</button>
+            <button id="cancelCropTop" class="options-btn">✕ Cancel</button>
+          </div>
+          <div class="options-divider"></div>
+          <!-- Zoom Controls -->
+          <div class="options-group zoom-options">
+            <button id="zoomOutBtn" class="options-btn" title="Zoom Out (Ctrl+-)">−</button>
+            <span id="zoomLevel" class="zoom-level-display">100%</span>
+            <button id="zoomInBtn" class="options-btn" title="Zoom In (Ctrl++)">+</button>
+            <button id="zoomResetBtn" class="options-btn" title="Reset Zoom (Ctrl+0)">⟲</button>
+          </div>
+        </div>
+
         <div class="content-wrapper">
-          <!-- Screenshots sidebar on the left -->
-          <div class="screenshots-sidebar">
-            <div class="toolbar-section">
-              <h3>Media</h3>
-              <div class="screenshots-section">
-                <button id="captureAnotherBtn" class="btn btn-primary btn-small">
-                  📸 Capture Screenshot
-                </button>
-                <button id="recordVideoBtn" class="btn btn-primary btn-small">
-                  🎥 Record Video
-                </button>
-                <div id="screenshotsList" class="screenshots-list"></div>
-              </div>
+          <!-- Vertical Toolbar (Photoshop-style left sidebar) -->
+          <div class="vertical-toolbar">
+            <div class="vtool-group">
+              <button class="vtool-btn" data-tool="arrow" title="Arrow (A)">
+                <span class="vtool-icon">➜</span><span class="vtool-key">A</span>
+              </button>
+              <button class="vtool-btn" data-tool="rectangle" title="Rectangle (R)">
+                <span class="vtool-icon">▭</span><span class="vtool-key">R</span>
+              </button>
+              <button class="vtool-btn" data-tool="circle" title="Circle (C)">
+                <span class="vtool-icon">⭕</span><span class="vtool-key">C</span>
+              </button>
+              <button class="vtool-btn active" data-tool="pen" title="Pen (P)">
+                <span class="vtool-icon">✏️</span><span class="vtool-key">P</span>
+              </button>
+              <button class="vtool-btn" data-tool="text" title="Text (T)">
+                <span class="vtool-icon">T</span><span class="vtool-key">T</span>
+              </button>
+              <button class="vtool-btn" data-tool="blackout" title="Redact (X)">
+                <span class="vtool-icon">⬛</span><span class="vtool-key">X</span>
+              </button>
+            </div>
+            <div class="vtool-divider"></div>
+            <div class="vtool-group">
+              <button class="vtool-btn" data-tool="move" title="Move (V)">
+                <span class="vtool-icon">✋</span><span class="vtool-key">V</span>
+              </button>
+              <button class="vtool-btn" data-tool="crop" title="Crop (K)">
+                <span class="vtool-icon">✂️</span><span class="vtool-key">K</span>
+              </button>
+            </div>
+            <div class="vtool-divider"></div>
+            <div class="vtool-group">
+              <button class="vtool-btn" data-tool="pan" title="Pan (hold Space)">
+                <span class="vtool-icon">👆</span>
+              </button>
             </div>
           </div>
 
@@ -60,127 +134,37 @@
             <div class="canvas-container">
               <canvas id="annotationCanvas"></canvas>
             </div>
+          </div>
 
-            <!-- Annotation toolbar at bottom -->
-            <div class="annotation-toolbar-bottom">
-              <div class="toolbar-section-horizontal">
-
-                <!-- Draw Tools Section -->
-                <div class="tool-group">
-                  <div class="tool-grid-horizontal">
-                    <button class="tool-btn active" data-tool="pen" title="Pen">
-                      <span class="tool-icon">✏️</span>
-                    </button>
-                    <button class="tool-btn" data-tool="rectangle" title="Rectangle">
-                      <span class="tool-icon">▭</span>
-                    </button>
-                    <button class="tool-btn" data-tool="circle" title="Circle">
-                      <span class="tool-icon">⭕</span>
-                    </button>
-                    <button class="tool-btn" data-tool="arrow" title="Arrow">
-                      <span class="tool-icon">➜</span>
-                    </button>
-                    <button class="tool-btn" data-tool="text" title="Text">
-                      <span class="tool-icon">T</span>
-                    </button>
-                    <button class="tool-btn" data-tool="blackout" title="Blackout/Redact">
-                      <span class="tool-icon">⬛</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div class="toolbar-divider"></div>
-
-                <!-- Edit Tools Section -->
-                <div class="tool-group">
-                  <div class="tool-grid-horizontal">
-                    <button class="tool-btn" data-tool="move" title="Move/Select Annotation">
-                      <span class="tool-icon">✋</span>
-                    </button>
-                    <button class="tool-btn" data-tool="crop" title="Crop Screenshot">
-                      <span class="tool-icon">✂️</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div class="toolbar-divider" id="cropDivider" style="display: none;"></div>
-
-                <div id="cropControls" class="crop-controls-horizontal" style="display: none;">
-                  <button id="applyCrop" class="btn btn-primary btn-small">
-                    ✓ Apply Crop
-                  </button>
-                  <button id="cancelCrop" class="btn btn-secondary btn-small">
-                    ✕ Cancel
-                  </button>
-                </div>
-
-                <div class="toolbar-divider"></div>
-
-                <!-- Color & Width Controls -->
-                <div class="tool-controls-horizontal">
-                  <div class="control-group">
-                    <label for="colorPicker">Color</label>
-                    <input type="color" id="colorPicker" value="#ff0000">
-                  </div>
-
-                  <div class="control-group">
-                    <label for="lineWidth">Width</label>
-                    <select id="lineWidth" class="width-selector">
-                      <option value="1">1px</option>
-                      <option value="2">2px</option>
-                      <option value="3" selected>3px</option>
-                      <option value="4">4px</option>
-                      <option value="5">5px</option>
-                      <option value="6">6px</option>
-                      <option value="8">8px</option>
-                      <option value="10">10px</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div class="toolbar-divider"></div>
-
-                <!-- Actions Section -->
-                <div class="tool-actions-horizontal">
-                  <button id="undoBtn" class="btn btn-secondary btn-small">
-                    ↶ Undo
-                  </button>
-                  <button id="redoBtn" class="btn btn-secondary btn-small">
-                    ↷ Redo
-                  </button>
-                  <button id="clearAnnotations" class="btn btn-secondary btn-small">
-                    🗑️ Clear
-                  </button>
-                </div>
-
-                <div class="toolbar-divider"></div>
-
-                <!-- View Section -->
-                <div class="tool-group">
-                  <div class="tool-grid-horizontal">
-                    <button class="tool-btn" data-tool="pan" title="Pan Canvas">
-                      <span class="tool-icon">👆</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div class="toolbar-divider"></div>
-
-                <!-- Zoom Controls -->
-                <div class="zoom-controls-horizontal">
-                  <button id="zoomOutBtn" class="btn btn-secondary btn-small" title="Zoom Out (Ctrl+-)">
-                    − Zoom Out
-                  </button>
-                  <span id="zoomLevel" class="zoom-level-display">100%</span>
-                  <button id="zoomInBtn" class="btn btn-secondary btn-small" title="Zoom In (Ctrl++)">
-                    + Zoom In
-                  </button>
-                  <button id="zoomResetBtn" class="btn btn-secondary btn-small" title="Reset Zoom (Ctrl+0)">
-                    ⟲ Reset Zoom
-                  </button>
-                </div>
-              </div>
+          <!-- Media Strip (Photoshop-style right sidebar) -->
+          <div class="media-strip">
+            <div class="media-strip-header">
+              <span id="mediaCount">0 items</span>
             </div>
+            <div class="media-thumbnails" id="screenshotsList">
+              <!-- Dynamically generated thumbnails -->
+            </div>
+            <div class="media-strip-actions">
+              <button id="captureAnotherBtn" class="media-action-btn" title="Screenshot (📸)">📸</button>
+              <button id="recordVideoBtn" class="media-action-btn" title="Record Video (🎥)">🎥</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Annotation Footer with keyboard hints -->
+        <div class="annotation-footer">
+          <div class="keyboard-hints">
+            <span class="hint"><kbd>A</kbd>=Arrow</span>
+            <span class="hint"><kbd>R</kbd>=Rect</span>
+            <span class="hint"><kbd>C</kbd>=Circle</span>
+            <span class="hint"><kbd>P</kbd>=Pen</span>
+            <span class="hint"><kbd>T</kbd>=Text</span>
+            <span class="hint"><kbd>X</kbd>=Redact</span>
+            <span class="hint"><kbd>V</kbd>=Move</span>
+            <span class="hint"><kbd>K</kbd>=Crop</span>
+          </div>
+          <div class="footer-actions">
+            <button id="continueToReportFooter" class="btn btn-primary">Continue →</button>
           </div>
         </div>
       </section>
@@ -546,9 +530,77 @@
     </div>
   </div>
 
+  <!-- Draft Recovery Modal -->
+  <div id="draftRecoveryModal" class="modal hidden">
+    <div class="modal-overlay" id="draftRecoveryOverlay"></div>
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Unsaved Draft Found</h2>
+        <button id="closeDraftRecoveryModal" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="draft-recovery-message">You have an unsaved draft:</p>
+        <div id="draftRecoveryInfo" class="draft-info-card">
+          <h4 id="draftRecoveryName"></h4>
+          <p id="draftRecoveryDetails"></p>
+        </div>
+        <p class="draft-recovery-hint">Would you like to continue editing this draft or start fresh?</p>
+      </div>
+      <div class="modal-footer">
+        <button id="draftStartFresh" class="btn btn-secondary">Start Fresh</button>
+        <button id="draftViewAll" class="btn btn-secondary">View All Drafts</button>
+        <button id="draftContinue" class="btn btn-primary">Continue Editing</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Draft Manager Modal -->
+  <div id="draftManagerModal" class="modal hidden">
+    <div class="modal-overlay" id="draftManagerOverlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Saved Drafts</h2>
+        <button id="closeDraftManagerModal" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="draftsList" class="drafts-list">
+          <!-- Drafts will be dynamically populated here -->
+        </div>
+        <div id="noDraftsMessage" class="no-drafts-message hidden">
+          <p>No saved drafts found.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="clearAllDrafts" class="btn btn-danger">Clear All Drafts</button>
+        <button id="closeDraftManager" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unsaved Changes Warning Modal -->
+  <div id="unsavedChangesModal" class="modal hidden">
+    <div class="modal-overlay" id="unsavedChangesOverlay"></div>
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Unsaved Changes</h2>
+        <button id="closeUnsavedChangesModal" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>You have unsaved changes. Would you like to save them as a draft before leaving?</p>
+      </div>
+      <div class="modal-footer">
+        <button id="discardChanges" class="btn btn-danger">Discard</button>
+        <button id="cancelClose" class="btn btn-secondary">Cancel</button>
+        <button id="saveAndClose" class="btn btn-primary">Save Draft & Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="../lib/utils.js"></script>
   <script src="../lib/redmine-api.js"></script>
   <script src="../lib/video-storage.js"></script>
+  <script src="../lib/draft-storage.js"></script>
+  <script src="../lib/screenshot-storage.js"></script>
   <script src="../content/annotator.js"></script>
   <script src="annotate.js"></script>
 </body>
