@@ -880,6 +880,9 @@ async function loadRedmineData() {
       prioritySelect.appendChild(option);
     });
 
+    // Render recent projects quick-switch buttons
+    await renderRecentProjects();
+
     // Trigger project change to load project-specific data
     if (settings.defaultProject) {
       await onProjectChange();
@@ -889,6 +892,59 @@ async function loadRedmineData() {
     console.error('Error loading Redmine data:', error);
     showStatus('submitStatus', 'Error loading Redmine data. Please check your settings.', 'error');
   }
+}
+
+// Render recent projects quick-switch buttons
+async function renderRecentProjects() {
+  const bar = document.getElementById('recentProjectsBar');
+  if (!bar) return;
+
+  const recentProjects = await getRecentProjects();
+  if (recentProjects.length === 0) {
+    bar.style.display = 'none';
+    return;
+  }
+
+  const projectSelect = document.getElementById('project');
+  const validIds = new Set();
+  for (const opt of projectSelect.options) {
+    if (opt.value) validIds.add(opt.value);
+  }
+
+  const filtered = recentProjects.filter(p => validIds.has(String(p.id)));
+  if (filtered.length === 0) {
+    bar.style.display = 'none';
+    return;
+  }
+
+  bar.innerHTML = '';
+  filtered.forEach(project => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'recent-project-btn';
+    btn.textContent = project.name;
+    btn.title = project.name;
+    btn.dataset.projectId = project.id;
+    if (String(projectSelect.value) === String(project.id)) {
+      btn.classList.add('active');
+    }
+    btn.addEventListener('click', () => {
+      projectSelect.value = project.id;
+      projectSelect.dispatchEvent(new Event('change'));
+      updateRecentProjectHighlight();
+    });
+    bar.appendChild(btn);
+  });
+  bar.style.display = 'flex';
+}
+
+function updateRecentProjectHighlight() {
+  const bar = document.getElementById('recentProjectsBar');
+  if (!bar) return;
+  const projectId = document.getElementById('project').value;
+  bar.querySelectorAll('.recent-project-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.projectId === String(projectId));
+  });
 }
 
 // Handle project change
@@ -939,6 +995,9 @@ async function onProjectChange() {
       option.textContent = version.name;
       versionSelect.appendChild(option);
     });
+
+    // Update recent project button highlight
+    updateRecentProjectHighlight();
 
   } catch (error) {
     console.error('Error loading project data:', error);
@@ -1493,6 +1552,12 @@ function showSuccessScreen(issue) {
     url: issueUrl,
     timestamp: Date.now(),
   });
+
+  // Save to recent projects for quick-switch
+  const projectId = projectSelect ? projectSelect.value : '';
+  if (projectId && projectName) {
+    saveRecentProject({ id: projectId, name: projectName });
+  }
 }
 
 // Load and display recent activity (drafts and submissions)

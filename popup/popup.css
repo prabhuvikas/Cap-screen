@@ -513,6 +513,40 @@ main {
   resize: vertical;
 }
 
+.recent-projects-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+
+.recent-projects-bar .recent-project-btn {
+  background: #f0f7ff;
+  border: 1px solid #b8d4f0;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  color: #2271b1;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-projects-bar .recent-project-btn:hover {
+  background: #dceafb;
+  border-color: #2271b1;
+}
+
+.recent-projects-bar .recent-project-btn.active {
+  background: #2271b1;
+  color: #fff;
+  border-color: #2271b1;
+}
+
 .checkbox-group label {
   display: flex;
   align-items: center;
