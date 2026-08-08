@@ -256,6 +256,19 @@
                 </div>
               </div>
 
+              <!-- AI Assist Bar (shown only when AI is enabled in settings) -->
+              <div id="aiAssistBar" class="ai-assist-bar hidden">
+                <div class="ai-assist-info">
+                  <span class="ai-assist-title">✨ AI Assist</span>
+                  <small>Draft a polished report from your notes and captured technical data.</small>
+                </div>
+                <button type="button" id="aiAssistBtn" class="btn btn-primary">
+                  <span class="btn-text">✨ Generate with AI</span>
+                  <span class="spinner hidden"></span>
+                </button>
+              </div>
+              <div id="aiAssistStatus" class="status-message"></div>
+
               <div class="form-grid" id="createIssueFields">
                 <div class="form-group">
                   <label for="project">Project *</label>
@@ -598,6 +611,7 @@
 
   <script src="../lib/utils.js"></script>
   <script src="../lib/redmine-api.js"></script>
+  <script src="../lib/ai-api.js"></script>
   <script src="../lib/video-storage.js"></script>
   <script src="../lib/draft-storage.js"></script>
   <script src="../lib/screenshot-storage.js"></script>

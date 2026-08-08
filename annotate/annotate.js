@@ -355,7 +355,11 @@ async function loadSettings() {
     includeCookies: false,
     sanitizeSensitiveData: true,
     screenshotQuality: 'medium',
-    autoFullPageScreenshot: false
+    autoFullPageScreenshot: false,
+    aiEnabled: false,
+    aiEndpoint: '',
+    aiApiKey: '',
+    aiModel: ''
   });
 }
 
@@ -523,6 +527,12 @@ function setupEventListeners() {
   // Form
   document.getElementById('project').addEventListener('change', onProjectChange);
   document.getElementById('bugReportForm').addEventListener('submit', submitBugReport);
+
+  // AI Assist
+  const aiAssistBtn = document.getElementById('aiAssistBtn');
+  if (aiAssistBtn) {
+    aiAssistBtn.addEventListener('click', generateReportWithAI);
+  }
 
   // Issue Mode Toggle
   document.querySelectorAll('input[name="issueMode"]').forEach(radio => {
@@ -1194,11 +1204,28 @@ async function continueToReport() {
 
   showSection('reportSection');
 
+  // Show AI Assist bar if configured
+  updateAIAssistVisibility();
+
   // Collect technical data
   await collectTechnicalData();
 
   // Load Redmine data
   await loadRedmineData();
+}
+
+// Show/hide the AI Assist bar based on settings and the current issue mode.
+// AI generation only applies to the "Create New Issue" fields.
+function updateAIAssistVisibility() {
+  const bar = document.getElementById('aiAssistBar');
+  if (!bar) return;
+
+  const configured = settings.aiEnabled && settings.aiEndpoint && settings.aiApiKey;
+  if (configured && currentIssueMode === 'create') {
+    bar.classList.remove('hidden');
+  } else {
+    bar.classList.add('hidden');
+  }
 }
 
 // Toggle tab selector visibility
@@ -2119,6 +2146,76 @@ async function actuallySubmitBugReport() {
   } finally {
     submitBtn.disabled = false;
     btnText.textContent = 'Confirm & Submit';
+    spinner.classList.add('hidden');
+  }
+}
+
+// Generate a polished bug report using the configured AI provider
+async function generateReportWithAI() {
+  const button = document.getElementById('aiAssistBtn');
+  const btnText = button.querySelector('.btn-text');
+  const spinner = button.querySelector('.spinner');
+
+  if (!settings.aiEnabled || !settings.aiEndpoint || !settings.aiApiKey) {
+    showStatus('aiAssistStatus', 'AI assistant is not configured. Enable it in Settings.', 'error');
+    return;
+  }
+
+  try {
+    button.disabled = true;
+    btnText.textContent = 'Generating...';
+    spinner.classList.remove('hidden');
+    showStatus('aiAssistStatus', 'Generating report with AI...', 'info');
+
+    const ai = new AIAssistant({
+      endpoint: settings.aiEndpoint,
+      apiKey: settings.aiApiKey,
+      model: settings.aiModel
+    });
+
+    // Only surface console errors/warnings and failed/error network requests as
+    // signal for the model.
+    const consoleErrors = (consoleLogs || []).filter((log) => {
+      const level = (log.level || log.type || '').toLowerCase();
+      return level === 'error' || level === 'warn' || level === 'warning';
+    });
+
+    const networkErrors = (networkRequests || []).filter((req) => {
+      return req.failed || (req.statusCode && req.statusCode >= 400);
+    });
+
+    const context = {
+      subject: document.getElementById('subject').value,
+      description: document.getElementById('description').value,
+      stepsToReproduce: document.getElementById('stepsToReproduce').value,
+      expectedBehavior: document.getElementById('expectedBehavior').value,
+      actualBehavior: document.getElementById('actualBehavior').value,
+      pageInfo,
+      consoleErrors,
+      networkErrors
+    };
+
+    const report = await ai.generateBugReport(context);
+
+    // Populate the form fields with the AI-generated content
+    if (report.subject) document.getElementById('subject').value = report.subject;
+    if (report.description) document.getElementById('description').value = report.description;
+    if (report.stepsToReproduce) document.getElementById('stepsToReproduce').value = report.stepsToReproduce;
+    if (report.expectedBehavior) document.getElementById('expectedBehavior').value = report.expectedBehavior;
+    if (report.actualBehavior) document.getElementById('actualBehavior').value = report.actualBehavior;
+
+    // Mark the draft dirty so the change is captured
+    if (typeof markDirtyAndScheduleSave === 'function') {
+      markDirtyAndScheduleSave();
+    }
+
+    showStatus('aiAssistStatus', 'AI draft ready. Review and edit before submitting.', 'success');
+  } catch (error) {
+    console.error('[Annotate] AI generation failed:', error);
+    showStatus('aiAssistStatus', `AI generation failed: ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
+    btnText.textContent = '✨ Generate with AI';
     spinner.classList.add('hidden');
   }
 }
@@ -3280,6 +3377,9 @@ function onIssueModeChange(e) {
     selectedIssue = null;
     clearIssueSelection();
   }
+
+  // Update AI Assist visibility (only relevant in create mode)
+  updateAIAssistVisibility();
 }
 
 // Debounce helper function

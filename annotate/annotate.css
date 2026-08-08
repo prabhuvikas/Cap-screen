@@ -852,6 +852,39 @@ main {
   display: none !important;
 }
 
+/* AI Assist Bar */
+.ai-assist-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #f3e8ff 0%, #e8f0fe 100%);
+  border: 1px solid #d6bcfa;
+  border-radius: 8px;
+}
+
+.ai-assist-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ai-assist-title {
+  font-weight: 600;
+  color: #5b21b6;
+}
+
+.ai-assist-info small {
+  color: #555;
+  font-size: 12px;
+}
+
+.ai-assist-bar .btn {
+  white-space: nowrap;
+}
+
 /* Modal */
 .modal {
   position: fixed;
