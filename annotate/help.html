@@ -22,6 +22,7 @@
       <a href="#getting-started" class="nav-link">Getting Started</a>
       <a href="#capturing" class="nav-link">Capturing Media</a>
       <a href="#annotations" class="nav-link">Annotations</a>
+      <a href="#ai-assist" class="nav-link">AI Assist</a>
       <a href="#keyboard-shortcuts" class="nav-link">Keyboard Shortcuts</a>
       <a href="#tips" class="nav-link">Tips & Tricks</a>
     </nav>
@@ -281,6 +282,64 @@
       </section>
 
       <!-- Tips & Tricks Section -->
+      <!-- AI-Assisted Reporting Section -->
+      <section id="ai-assist" class="help-section">
+        <h2>✨ AI-Assisted Reporting</h2>
+
+        <p>
+          If your administrator has configured an AI provider, you can have a
+          polished issue report drafted for you automatically. The AI classifies
+          the issue, suggests a tracker, and writes a clear subject, description,
+          steps to reproduce, and expected/actual behavior.
+        </p>
+
+        <h3>Setting It Up</h3>
+        <p>
+          Open <strong>Settings</strong> and, under <strong>AI Assistant</strong>,
+          enable the feature and enter your provider's <strong>API Endpoint</strong>,
+          <strong>API Key</strong>, and <strong>Model</strong>. Any
+          OpenAI-compatible Chat Completions endpoint works (OpenAI, Azure OpenAI,
+          OpenRouter, Groq, Ollama, LM Studio, etc.). Use the
+          <strong>Test AI Connection</strong> button to verify it. To have your
+          screenshots analyzed visually, choose a <strong>vision-capable model</strong>
+          (for example <code>gpt-4o</code>).
+        </p>
+
+        <h3>Generating a Report</h3>
+        <ol class="help-steps">
+          <li>On the <strong>Issue Details</strong> step, find the
+            <strong>✨ AI Assist</strong> panel.</li>
+          <li>Describe the issue in your own words in the
+            <strong>“What's the issue?”</strong> box.</li>
+          <li>Click <strong>✨ Generate with AI</strong>.</li>
+          <li>Review the <strong>consent window</strong> that lists exactly what
+            will be sent to the AI provider, then click
+            <strong>Agree &amp; Send to AI</strong>.</li>
+          <li>Review (and edit) the generated report in the preview window, then
+            click <strong>Apply to Form</strong>.</li>
+        </ol>
+
+        <div class="tip-card">
+          <h4>🔒 What gets sent to the AI</h4>
+          <p>
+            Only after you agree: your description, any draft fields, the page
+            URL/title, captured console errors and failed network requests, the
+            tracker options, and your annotated screenshots. <strong>Videos and
+            uploaded documents are never sent to the AI</strong> — they are only
+            attached to the issue. Redact sensitive data before generating.
+          </p>
+        </div>
+
+        <div class="tip-card">
+          <h4>🏷️ Smart tracker selection</h4>
+          <p>
+            The AI picks the most fitting tracker (Bug, Feature, Support, etc.)
+            from your project's list instead of always defaulting to Bug. You can
+            always change it in the preview window or on the form.
+          </p>
+        </div>
+      </section>
+
       <section id="tips" class="help-section">
         <h2>💡 Tips & Tricks</h2>
 
