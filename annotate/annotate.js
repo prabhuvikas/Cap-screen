@@ -2161,6 +2161,16 @@ async function generateReportWithAI() {
     return;
   }
 
+  // The reporter's own description of the issue is the primary input for the AI.
+  const userView = document.getElementById('aiUserPrompt').value.trim();
+  const existingDescription = document.getElementById('description').value.trim();
+  if (!userView && !existingDescription) {
+    const promptField = document.getElementById('aiUserPrompt');
+    if (promptField) promptField.focus();
+    showStatus('aiAssistStatus', 'Please describe the issue in your own words first.', 'error');
+    return;
+  }
+
   try {
     button.disabled = true;
     btnText.textContent = 'Generating...';
@@ -2185,6 +2195,7 @@ async function generateReportWithAI() {
     });
 
     const context = {
+      userView,
       subject: document.getElementById('subject').value,
       description: document.getElementById('description').value,
       stepsToReproduce: document.getElementById('stepsToReproduce').value,

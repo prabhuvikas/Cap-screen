@@ -142,6 +142,22 @@ describe('AIAssistant', () => {
       expect(userMessage).toContain('/api/login');
     });
 
+    test("forwards the reporter's own description (userView) as primary context", async () => {
+      global.fetch = jest.fn(() =>
+        mockChatResponse(JSON.stringify({ subject: 's', description: 'd' }))
+      );
+
+      const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k' });
+      await ai.generateBugReport({
+        userView: 'The checkout button does nothing after applying a coupon.'
+      });
+
+      const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+      const userMessage = body.messages.find((m) => m.role === 'user').content;
+      expect(userMessage).toContain('in their own words');
+      expect(userMessage).toContain('checkout button does nothing');
+    });
+
     test('supports short-key aliases (steps/expected/actual)', async () => {
       const aiJson = JSON.stringify({
         subject: 's',

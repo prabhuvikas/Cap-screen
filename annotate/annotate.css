@@ -855,9 +855,8 @@ main {
 /* AI Assist Bar */
 .ai-assist-bar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  gap: 12px;
   margin-bottom: 16px;
   padding: 14px 16px;
   background: linear-gradient(135deg, #f3e8ff 0%, #e8f0fe 100%);
@@ -879,6 +878,40 @@ main {
 .ai-assist-info small {
   color: #555;
   font-size: 12px;
+}
+
+.ai-assist-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-assist-prompt label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+
+.ai-assist-prompt textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cbb6e6;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  box-sizing: border-box;
+  background: #fff;
+}
+
+.ai-assist-prompt textarea:focus {
+  outline: none;
+  border-color: #8b5cf6;
+}
+
+.ai-assist-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .ai-assist-bar .btn {

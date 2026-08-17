@@ -260,12 +260,19 @@
               <div id="aiAssistBar" class="ai-assist-bar hidden">
                 <div class="ai-assist-info">
                   <span class="ai-assist-title">✨ AI Assist</span>
-                  <small>Draft a polished report from your notes and captured technical data.</small>
+                  <small>Describe the issue in your own words, then let AI draft a polished report using your notes and captured technical data.</small>
                 </div>
-                <button type="button" id="aiAssistBtn" class="btn btn-primary">
-                  <span class="btn-text">✨ Generate with AI</span>
-                  <span class="spinner hidden"></span>
-                </button>
+                <div class="ai-assist-prompt">
+                  <label for="aiUserPrompt">What's the issue? (in your own words)</label>
+                  <textarea id="aiUserPrompt" rows="3"
+                            placeholder="e.g. The checkout button does nothing when I click it after applying a coupon."></textarea>
+                </div>
+                <div class="ai-assist-actions">
+                  <button type="button" id="aiAssistBtn" class="btn btn-primary">
+                    <span class="btn-text">✨ Generate with AI</span>
+                    <span class="spinner hidden"></span>
+                  </button>
+                </div>
               </div>
               <div id="aiAssistStatus" class="status-message"></div>
 
