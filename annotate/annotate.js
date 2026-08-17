@@ -2172,9 +2172,35 @@ async function actuallySubmitBugReport() {
 // Holds the payload awaiting the user's consent before it is sent to the AI.
 let pendingAIContext = null;
 
+// Render every non-video screenshot with its annotations baked in and return
+// their PNG data URLs, so they can be sent to a vision-capable AI model.
+async function getAnnotatedScreenshotImages() {
+  const images = [];
+  for (let i = 0; i < screenshots.length; i++) {
+    const item = screenshots[i];
+    if (!item || item.type === 'video') continue;
+    try {
+      const tempCanvas = document.createElement('canvas');
+      const tempAnnotator = new Annotator(tempCanvas, item.data);
+      await tempAnnotator.initPromise;
+      if (item.annotations && tempAnnotator.restoreState) {
+        await tempAnnotator.restoreState(item.annotations);
+      }
+      images.push(tempAnnotator.getAnnotatedImage());
+    } catch (e) {
+      console.error('[Annotate] Failed to render screenshot for AI:', e);
+    }
+  }
+  return images;
+}
+
 // Step 1: gather the data and ask the user to review/consent before sending
 // anything to the external AI provider.
-function generateReportWithAI() {
+async function generateReportWithAI() {
+  const button = document.getElementById('aiAssistBtn');
+  const btnText = button.querySelector('.btn-text');
+  const spinner = button.querySelector('.spinner');
+
   if (!settings.aiEnabled || !settings.aiEndpoint || !settings.aiApiKey) {
     showStatus('aiAssistStatus', 'AI assistant is not configured. Enable it in Settings.', 'error');
     return;
@@ -2207,6 +2233,20 @@ function generateReportWithAI() {
     .filter((opt) => opt.value)
     .map((opt) => opt.textContent.trim());
 
+  let images = [];
+  try {
+    button.disabled = true;
+    btnText.textContent = 'Preparing...';
+    spinner.classList.remove('hidden');
+    images = await getAnnotatedScreenshotImages();
+  } catch (e) {
+    console.error('[Annotate] Error preparing screenshots for AI:', e);
+  } finally {
+    button.disabled = false;
+    btnText.textContent = '✨ Generate with AI';
+    spinner.classList.add('hidden');
+  }
+
   const context = {
     userView,
     subject: document.getElementById('subject').value,
@@ -2217,7 +2257,8 @@ function generateReportWithAI() {
     pageInfo,
     consoleErrors,
     networkErrors,
-    availableTrackers
+    availableTrackers,
+    images
   };
 
   pendingAIContext = context;
@@ -2291,6 +2332,23 @@ function showAIConsentModal(context) {
 
   if (context.availableTrackers && context.availableTrackers.length) {
     addItem('Tracker options (for classification)', context.availableTrackers.join(', '));
+  }
+
+  if (context.images && context.images.length) {
+    addItem(
+      `Annotated screenshots (${context.images.length})`,
+      `${context.images.length} annotated screenshot image(s) will be sent for visual analysis. Requires a vision-capable model.`
+    );
+  }
+
+  // Be explicit about what is NOT sent to the AI
+  const videoCount = (screenshots || []).filter((s) => s && s.type === 'video').length;
+  const docCount = accumulatedFiles ? accumulatedFiles.length : 0;
+  const excluded = [];
+  if (videoCount) excluded.push(`${videoCount} video recording(s)`);
+  if (docCount) excluded.push(`${docCount} uploaded document(s)`);
+  if (excluded.length) {
+    addItem('NOT sent to AI', `${excluded.join(' and ')} will not be sent to the AI (only attached to the Redmine issue).`);
   }
 
   document.getElementById('aiConsentModal').classList.remove('hidden');

@@ -193,6 +193,42 @@ describe('AIAssistant', () => {
       expect(userMessage).toContain('checkout button does nothing');
     });
 
+    test('sends a multimodal message with image_url parts when images are provided', async () => {
+      global.fetch = jest.fn(() =>
+        mockChatResponse(JSON.stringify({ subject: 's', description: 'd' }))
+      );
+
+      const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k' });
+      await ai.generateBugReport({
+        userView: 'button broken',
+        images: ['data:image/png;base64,AAA', 'data:image/png;base64,BBB']
+      });
+
+      const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+      const userMessage = body.messages.find((m) => m.role === 'user');
+      expect(Array.isArray(userMessage.content)).toBe(true);
+
+      const textParts = userMessage.content.filter((p) => p.type === 'text');
+      const imageParts = userMessage.content.filter((p) => p.type === 'image_url');
+      expect(textParts).toHaveLength(1);
+      expect(imageParts).toHaveLength(2);
+      expect(imageParts[0].image_url.url).toBe('data:image/png;base64,AAA');
+      expect(imageParts[1].image_url.url).toBe('data:image/png;base64,BBB');
+    });
+
+    test('sends a plain-text message when no images are provided', async () => {
+      global.fetch = jest.fn(() =>
+        mockChatResponse(JSON.stringify({ subject: 's', description: 'd' }))
+      );
+
+      const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k' });
+      await ai.generateBugReport({ userView: 'button broken' });
+
+      const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+      const userMessage = body.messages.find((m) => m.role === 'user');
+      expect(typeof userMessage.content).toBe('string');
+    });
+
     test('supports short-key aliases (steps/expected/actual)', async () => {
       const aiJson = JSON.stringify({
         subject: 's',
