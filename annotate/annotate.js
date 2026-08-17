@@ -2128,7 +2128,8 @@ async function actuallySubmitBugReport() {
 
       console.log('[Annotate] Updating issue #' + selectedIssue.id + ' with note and', attachments.length, 'attachments...');
 
-      issue = await redmineAPI.updateIssue(selectedIssue.id, { notes: noteText }, attachments);
+      const noteWithFooter = sanitizeText(noteText + getExtensionFooter());
+      issue = await redmineAPI.updateIssue(selectedIssue.id, { notes: noteWithFooter }, attachments);
 
       console.log('[Annotate] Issue #' + issue.id + ' updated successfully with note');
     } else {
@@ -2311,6 +2312,19 @@ function applyAIPreview() {
 }
 
 // Build description
+// Footer marking that the issue/comment was created by this extension, so it
+// can be identified in Redmine. Includes the extension version when available.
+function getExtensionFooter() {
+  let version = '';
+  try {
+    version = chrome.runtime.getManifest().version;
+  } catch (e) {
+    // chrome.runtime may be unavailable in some contexts (e.g. tests)
+  }
+  const versionStr = version ? ` v${version}` : '';
+  return `\n\n---\nReported via Cred Issue Reporter (Chrome extension)${versionStr}`;
+}
+
 function buildDescription() {
   let description = document.getElementById('description').value;
 
@@ -2398,6 +2412,9 @@ function buildDescription() {
       description += `- ${file.name} (${(file.size / 1024).toFixed(2)} KB)\n`;
     }
   }
+
+  // Append the extension identifier footer
+  description += getExtensionFooter();
 
   return sanitizeText(description);
 }
