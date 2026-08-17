@@ -2194,6 +2194,12 @@ async function generateReportWithAI() {
       return req.failed || (req.statusCode && req.statusCode >= 400);
     });
 
+    // Available tracker names so the AI can classify the issue and pick one.
+    const trackerSelect = document.getElementById('tracker');
+    const availableTrackers = Array.from(trackerSelect.options)
+      .filter((opt) => opt.value)
+      .map((opt) => opt.textContent.trim());
+
     const context = {
       userView,
       subject: document.getElementById('subject').value,
@@ -2203,12 +2209,21 @@ async function generateReportWithAI() {
       actualBehavior: document.getElementById('actualBehavior').value,
       pageInfo,
       consoleErrors,
-      networkErrors
+      networkErrors,
+      availableTrackers
     };
 
     const report = await ai.generateBugReport(context);
 
     // Populate the form fields with the AI-generated content
+    if (report.tracker) {
+      const matchedOption = Array.from(trackerSelect.options).find(
+        (opt) => opt.value && opt.textContent.trim().toLowerCase() === report.tracker.toLowerCase()
+      );
+      if (matchedOption) {
+        trackerSelect.value = matchedOption.value;
+      }
+    }
     if (report.subject) document.getElementById('subject').value = report.subject;
     if (report.description) document.getElementById('description').value = report.description;
     if (report.stepsToReproduce) document.getElementById('stepsToReproduce').value = report.stepsToReproduce;
@@ -2220,7 +2235,8 @@ async function generateReportWithAI() {
       markDirtyAndScheduleSave();
     }
 
-    showStatus('aiAssistStatus', 'AI draft ready. Review and edit before submitting.', 'success');
+    const trackerNote = report.tracker ? ` Classified as "${report.tracker}".` : '';
+    showStatus('aiAssistStatus', `AI draft ready.${trackerNote} Review and edit before submitting.`, 'success');
   } catch (error) {
     console.error('[Annotate] AI generation failed:', error);
     showStatus('aiAssistStatus', `AI generation failed: ${error.message}`, 'error');

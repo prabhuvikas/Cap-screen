@@ -142,6 +142,41 @@ describe('AIAssistant', () => {
       expect(userMessage).toContain('/api/login');
     });
 
+    test('returns the AI-chosen tracker resolved against available options', async () => {
+      global.fetch = jest.fn(() =>
+        mockChatResponse(JSON.stringify({ tracker: 'feature', subject: 's', description: 'd' }))
+      );
+
+      const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k' });
+      const report = await ai.generateBugReport({
+        userView: 'It would be great to export reports as PDF.',
+        availableTrackers: ['Bug', 'Feature', 'Support']
+      });
+
+      // Case-insensitive match resolves to the canonical option name
+      expect(report.tracker).toBe('Feature');
+
+      // The available trackers are offered to the model in the prompt
+      const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+      const systemMessage = body.messages.find((m) => m.role === 'system').content;
+      expect(systemMessage).toContain('Bug, Feature, Support');
+      expect(systemMessage).toContain('tracker');
+    });
+
+    test('falls back to a default tracker list when none provided', async () => {
+      global.fetch = jest.fn(() =>
+        mockChatResponse(JSON.stringify({ tracker: 'Task', subject: 's', description: 'd' }))
+      );
+
+      const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k' });
+      const report = await ai.generateBugReport({ userView: 'Please update the docs.' });
+
+      expect(report.tracker).toBe('Task');
+      const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+      const systemMessage = body.messages.find((m) => m.role === 'system').content;
+      expect(systemMessage).toContain('Bug, Feature, Support, Task');
+    });
+
     test("forwards the reporter's own description (userView) as primary context", async () => {
       global.fetch = jest.fn(() =>
         mockChatResponse(JSON.stringify({ subject: 's', description: 'd' }))
