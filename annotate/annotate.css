@@ -918,6 +918,50 @@ main {
   white-space: nowrap;
 }
 
+/* AI Consent Modal */
+.ai-consent-summary {
+  margin: 12px 0;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+}
+
+.ai-consent-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.ai-consent-item:last-child {
+  border-bottom: none;
+}
+
+.ai-consent-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #5b21b6;
+  margin-bottom: 4px;
+}
+
+.ai-consent-value {
+  font-size: 12px;
+  color: #333;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1.5;
+}
+
+.ai-consent-warning {
+  font-size: 12px;
+  color: #8a6d00;
+  background: #fff8e1;
+  border: 1px solid #ffe082;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-top: 8px;
+}
+
 /* Modal */
 .modal {
   position: fixed;

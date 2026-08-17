@@ -550,6 +550,32 @@
     </div>
   </div>
 
+  <!-- AI Consent Modal -->
+  <div id="aiConsentModal" class="modal hidden">
+    <div class="modal-overlay" id="aiConsentOverlay"></div>
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Send this data to the AI?</h2>
+        <button id="closeAiConsentModal" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="review-description">
+          The information below will be sent to your configured AI provider
+          (<span id="aiConsentEndpoint"></span>) to generate a report.
+          Please review it and confirm before it leaves your browser.
+        </p>
+        <div id="aiConsentSummary" class="ai-consent-summary"></div>
+        <p class="ai-consent-warning">
+          ⚠️ Only continue if you're comfortable sharing this data with the AI provider.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelAiConsent" class="btn btn-secondary">Cancel</button>
+        <button id="confirmAiConsent" class="btn btn-primary">Agree &amp; Send to AI</button>
+      </div>
+    </div>
+  </div>
+
   <!-- AI Preview Modal -->
   <div id="aiPreviewModal" class="modal hidden">
     <div class="modal-overlay" id="aiPreviewOverlay"></div>

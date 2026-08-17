@@ -534,6 +534,15 @@ function setupEventListeners() {
     aiAssistBtn.addEventListener('click', generateReportWithAI);
   }
 
+  // AI Consent Modal
+  const closeAiConsentBtn = document.getElementById('closeAiConsentModal');
+  if (closeAiConsentBtn) {
+    closeAiConsentBtn.addEventListener('click', cancelAIConsent);
+    document.getElementById('aiConsentOverlay').addEventListener('click', cancelAIConsent);
+    document.getElementById('cancelAiConsent').addEventListener('click', cancelAIConsent);
+    document.getElementById('confirmAiConsent').addEventListener('click', confirmAIConsentAndSend);
+  }
+
   // AI Preview Modal
   const closeAiPreviewBtn = document.getElementById('closeAiPreviewModal');
   if (closeAiPreviewBtn) {
@@ -2160,12 +2169,12 @@ async function actuallySubmitBugReport() {
   }
 }
 
-// Generate a polished bug report using the configured AI provider
-async function generateReportWithAI() {
-  const button = document.getElementById('aiAssistBtn');
-  const btnText = button.querySelector('.btn-text');
-  const spinner = button.querySelector('.spinner');
+// Holds the payload awaiting the user's consent before it is sent to the AI.
+let pendingAIContext = null;
 
+// Step 1: gather the data and ask the user to review/consent before sending
+// anything to the external AI provider.
+function generateReportWithAI() {
   if (!settings.aiEnabled || !settings.aiEndpoint || !settings.aiApiKey) {
     showStatus('aiAssistStatus', 'AI assistant is not configured. Enable it in Settings.', 'error');
     return;
@@ -2181,6 +2190,136 @@ async function generateReportWithAI() {
     return;
   }
 
+  // Only surface console errors/warnings and failed/error network requests as
+  // signal for the model.
+  const consoleErrors = (consoleLogs || []).filter((log) => {
+    const level = (log.level || log.type || '').toLowerCase();
+    return level === 'error' || level === 'warn' || level === 'warning';
+  });
+
+  const networkErrors = (networkRequests || []).filter((req) => {
+    return req.failed || (req.statusCode && req.statusCode >= 400);
+  });
+
+  // Available tracker names so the AI can classify the issue and pick one.
+  const trackerSelect = document.getElementById('tracker');
+  const availableTrackers = Array.from(trackerSelect.options)
+    .filter((opt) => opt.value)
+    .map((opt) => opt.textContent.trim());
+
+  const context = {
+    userView,
+    subject: document.getElementById('subject').value,
+    description: document.getElementById('description').value,
+    stepsToReproduce: document.getElementById('stepsToReproduce').value,
+    expectedBehavior: document.getElementById('expectedBehavior').value,
+    actualBehavior: document.getElementById('actualBehavior').value,
+    pageInfo,
+    consoleErrors,
+    networkErrors,
+    availableTrackers
+  };
+
+  pendingAIContext = context;
+  showAIConsentModal(context);
+}
+
+// Build a human-readable summary of the payload and show the consent modal.
+function showAIConsentModal(context) {
+  const endpointEl = document.getElementById('aiConsentEndpoint');
+  endpointEl.textContent =
+    settings.aiEndpoint + (settings.aiModel ? ` — model: ${settings.aiModel}` : '');
+
+  const summaryEl = document.getElementById('aiConsentSummary');
+  summaryEl.innerHTML = '';
+
+  // Use DOM construction (textContent) so page-derived data can never inject markup.
+  const addItem = (label, value) => {
+    if (!value) return;
+    const item = document.createElement('div');
+    item.className = 'ai-consent-item';
+    const l = document.createElement('div');
+    l.className = 'ai-consent-label';
+    l.textContent = label;
+    const v = document.createElement('div');
+    v.className = 'ai-consent-value';
+    v.textContent = value;
+    item.appendChild(l);
+    item.appendChild(v);
+    summaryEl.appendChild(item);
+  };
+
+  addItem('Your description', context.userView);
+
+  const drafts = [];
+  if (context.subject) drafts.push(`Subject: ${context.subject}`);
+  if (context.description) drafts.push(`Description: ${context.description}`);
+  if (context.stepsToReproduce) drafts.push(`Steps: ${context.stepsToReproduce}`);
+  if (context.expectedBehavior) drafts.push(`Expected: ${context.expectedBehavior}`);
+  if (context.actualBehavior) drafts.push(`Actual: ${context.actualBehavior}`);
+  if (drafts.length) addItem('Draft fields', drafts.join('\n'));
+
+  const pi = context.pageInfo || {};
+  const pageBits = [];
+  if (pi.url) pageBits.push(`URL: ${pi.url}`);
+  if (pi.title) pageBits.push(`Title: ${pi.title}`);
+  if (pi.userAgent) pageBits.push(`User agent: ${pi.userAgent}`);
+  if (pageBits.length) addItem('Page context', pageBits.join('\n'));
+
+  if (context.consoleErrors && context.consoleErrors.length) {
+    const preview = context.consoleErrors.slice(0, 5).map((log) => {
+      const level = log.level || log.type || 'log';
+      const message = typeof log.message === 'string' ? log.message : JSON.stringify(log.message);
+      return `[${level}] ${String(message).slice(0, 200)}`;
+    });
+    if (context.consoleErrors.length > 5) {
+      preview.push(`…and ${context.consoleErrors.length - 5} more`);
+    }
+    addItem(`Console errors/warnings (${context.consoleErrors.length})`, preview.join('\n'));
+  }
+
+  if (context.networkErrors && context.networkErrors.length) {
+    const preview = context.networkErrors.slice(0, 5).map((req) => {
+      const status = req.statusCode || (req.failed ? 'failed' : '');
+      return `${req.method || 'GET'} ${req.url} ${status ? `(${status})` : ''}`.trim();
+    });
+    if (context.networkErrors.length > 5) {
+      preview.push(`…and ${context.networkErrors.length - 5} more`);
+    }
+    addItem(`Failed network requests (${context.networkErrors.length})`, preview.join('\n'));
+  }
+
+  if (context.availableTrackers && context.availableTrackers.length) {
+    addItem('Tracker options (for classification)', context.availableTrackers.join(', '));
+  }
+
+  document.getElementById('aiConsentModal').classList.remove('hidden');
+}
+
+// Close the consent modal without sending anything
+function closeAIConsentModal() {
+  document.getElementById('aiConsentModal').classList.add('hidden');
+}
+
+// User declined to send data to the AI
+function cancelAIConsent() {
+  pendingAIContext = null;
+  closeAIConsentModal();
+  showStatus('aiAssistStatus', 'AI request cancelled. No data was sent.', 'info');
+}
+
+// Step 2: user agreed — actually send the data to the AI and preview the result.
+async function confirmAIConsentAndSend() {
+  closeAIConsentModal();
+
+  if (!pendingAIContext) return;
+  const context = pendingAIContext;
+  pendingAIContext = null;
+
+  const button = document.getElementById('aiAssistBtn');
+  const btnText = button.querySelector('.btn-text');
+  const spinner = button.querySelector('.spinner');
+
   try {
     button.disabled = true;
     btnText.textContent = 'Generating...';
@@ -2193,41 +2332,11 @@ async function generateReportWithAI() {
       model: settings.aiModel
     });
 
-    // Only surface console errors/warnings and failed/error network requests as
-    // signal for the model.
-    const consoleErrors = (consoleLogs || []).filter((log) => {
-      const level = (log.level || log.type || '').toLowerCase();
-      return level === 'error' || level === 'warn' || level === 'warning';
-    });
-
-    const networkErrors = (networkRequests || []).filter((req) => {
-      return req.failed || (req.statusCode && req.statusCode >= 400);
-    });
-
-    // Available tracker names so the AI can classify the issue and pick one.
-    const trackerSelect = document.getElementById('tracker');
-    const availableTrackers = Array.from(trackerSelect.options)
-      .filter((opt) => opt.value)
-      .map((opt) => opt.textContent.trim());
-
-    const context = {
-      userView,
-      subject: document.getElementById('subject').value,
-      description: document.getElementById('description').value,
-      stepsToReproduce: document.getElementById('stepsToReproduce').value,
-      expectedBehavior: document.getElementById('expectedBehavior').value,
-      actualBehavior: document.getElementById('actualBehavior').value,
-      pageInfo,
-      consoleErrors,
-      networkErrors,
-      availableTrackers
-    };
-
     const report = await ai.generateBugReport(context);
 
     // Show the AI-generated report in a preview modal for review/editing before
     // it is applied to the main form.
-    showAIPreviewModal(report, trackerSelect);
+    showAIPreviewModal(report, document.getElementById('tracker'));
 
     showStatus('aiAssistStatus', 'AI draft ready. Review it in the preview window.', 'success');
   } catch (error) {
