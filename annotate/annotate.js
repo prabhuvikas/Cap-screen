@@ -534,6 +534,15 @@ function setupEventListeners() {
     aiAssistBtn.addEventListener('click', generateReportWithAI);
   }
 
+  // AI Preview Modal
+  const closeAiPreviewBtn = document.getElementById('closeAiPreviewModal');
+  if (closeAiPreviewBtn) {
+    closeAiPreviewBtn.addEventListener('click', closeAIPreviewModal);
+    document.getElementById('aiPreviewOverlay').addEventListener('click', closeAIPreviewModal);
+    document.getElementById('discardAiPreview').addEventListener('click', closeAIPreviewModal);
+    document.getElementById('applyAiPreview').addEventListener('click', applyAIPreview);
+  }
+
   // Issue Mode Toggle
   document.querySelectorAll('input[name="issueMode"]').forEach(radio => {
     radio.addEventListener('change', onIssueModeChange);
@@ -2215,28 +2224,11 @@ async function generateReportWithAI() {
 
     const report = await ai.generateBugReport(context);
 
-    // Populate the form fields with the AI-generated content
-    if (report.tracker) {
-      const matchedOption = Array.from(trackerSelect.options).find(
-        (opt) => opt.value && opt.textContent.trim().toLowerCase() === report.tracker.toLowerCase()
-      );
-      if (matchedOption) {
-        trackerSelect.value = matchedOption.value;
-      }
-    }
-    if (report.subject) document.getElementById('subject').value = report.subject;
-    if (report.description) document.getElementById('description').value = report.description;
-    if (report.stepsToReproduce) document.getElementById('stepsToReproduce').value = report.stepsToReproduce;
-    if (report.expectedBehavior) document.getElementById('expectedBehavior').value = report.expectedBehavior;
-    if (report.actualBehavior) document.getElementById('actualBehavior').value = report.actualBehavior;
+    // Show the AI-generated report in a preview modal for review/editing before
+    // it is applied to the main form.
+    showAIPreviewModal(report, trackerSelect);
 
-    // Mark the draft dirty so the change is captured
-    if (typeof markDirtyAndScheduleSave === 'function') {
-      markDirtyAndScheduleSave();
-    }
-
-    const trackerNote = report.tracker ? ` Classified as "${report.tracker}".` : '';
-    showStatus('aiAssistStatus', `AI draft ready.${trackerNote} Review and edit before submitting.`, 'success');
+    showStatus('aiAssistStatus', 'AI draft ready. Review it in the preview window.', 'success');
   } catch (error) {
     console.error('[Annotate] AI generation failed:', error);
     showStatus('aiAssistStatus', `AI generation failed: ${error.message}`, 'error');
@@ -2245,6 +2237,77 @@ async function generateReportWithAI() {
     btnText.textContent = '✨ Generate with AI';
     spinner.classList.add('hidden');
   }
+}
+
+// Populate and show the AI preview modal with the generated report. The tracker
+// dropdown mirrors the main form's tracker options, preselected to the AI's
+// classification.
+function showAIPreviewModal(report, trackerSelect) {
+  // Clone tracker options into the preview select
+  const previewTracker = document.getElementById('aiPreviewTracker');
+  previewTracker.innerHTML = '';
+  Array.from(trackerSelect.options).forEach((opt) => {
+    const clone = document.createElement('option');
+    clone.value = opt.value;
+    clone.textContent = opt.textContent;
+    previewTracker.appendChild(clone);
+  });
+
+  // Preselect the AI-chosen tracker (fall back to the main form's current value)
+  let selectedTrackerValue = trackerSelect.value;
+  if (report.tracker) {
+    const matchedOption = Array.from(trackerSelect.options).find(
+      (opt) => opt.value && opt.textContent.trim().toLowerCase() === report.tracker.toLowerCase()
+    );
+    if (matchedOption) selectedTrackerValue = matchedOption.value;
+  }
+  previewTracker.value = selectedTrackerValue;
+
+  document.getElementById('aiPreviewSubject').value = report.subject || '';
+  document.getElementById('aiPreviewDescription').value = report.description || '';
+  document.getElementById('aiPreviewSteps').value = report.stepsToReproduce || '';
+  document.getElementById('aiPreviewExpected').value = report.expectedBehavior || '';
+  document.getElementById('aiPreviewActual').value = report.actualBehavior || '';
+
+  document.getElementById('aiPreviewModal').classList.remove('hidden');
+}
+
+// Close the AI preview modal without applying anything
+function closeAIPreviewModal() {
+  document.getElementById('aiPreviewModal').classList.add('hidden');
+}
+
+// Apply the (possibly edited) AI preview content to the main form
+function applyAIPreview() {
+  const trackerSelect = document.getElementById('tracker');
+  const previewTrackerValue = document.getElementById('aiPreviewTracker').value;
+  if (previewTrackerValue) {
+    trackerSelect.value = previewTrackerValue;
+  }
+
+  const subject = document.getElementById('aiPreviewSubject').value;
+  const description = document.getElementById('aiPreviewDescription').value;
+  const steps = document.getElementById('aiPreviewSteps').value;
+  const expected = document.getElementById('aiPreviewExpected').value;
+  const actual = document.getElementById('aiPreviewActual').value;
+
+  if (subject) document.getElementById('subject').value = subject;
+  if (description) document.getElementById('description').value = description;
+  if (steps) document.getElementById('stepsToReproduce').value = steps;
+  if (expected) document.getElementById('expectedBehavior').value = expected;
+  if (actual) document.getElementById('actualBehavior').value = actual;
+
+  // Mark the draft dirty so the change is captured
+  if (typeof markDirtyAndScheduleSave === 'function') {
+    markDirtyAndScheduleSave();
+  }
+
+  closeAIPreviewModal();
+
+  const selectedTrackerName =
+    trackerSelect.options[trackerSelect.selectedIndex]?.textContent?.trim();
+  const trackerNote = selectedTrackerName ? ` Tracker set to "${selectedTrackerName}".` : '';
+  showStatus('aiAssistStatus', `AI report applied to the form.${trackerNote}`, 'success');
 }
 
 // Build description

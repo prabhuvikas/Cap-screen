@@ -550,6 +550,52 @@
     </div>
   </div>
 
+  <!-- AI Preview Modal -->
+  <div id="aiPreviewModal" class="modal hidden">
+    <div class="modal-overlay" id="aiPreviewOverlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>✨ AI-Generated Report</h2>
+        <button id="closeAiPreviewModal" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="review-description">
+          Review the AI-generated report below. Edit anything you like, then apply it to the form.
+        </p>
+        <div class="review-section">
+          <div class="review-item">
+            <label for="aiPreviewTracker">Tracker (auto-classified):</label>
+            <select id="aiPreviewTracker" class="review-select"></select>
+          </div>
+          <div class="review-item">
+            <label for="aiPreviewSubject">Subject:</label>
+            <input type="text" id="aiPreviewSubject" class="review-input" placeholder="Issue title">
+          </div>
+          <div class="review-item full-width">
+            <label for="aiPreviewDescription">Description:</label>
+            <textarea id="aiPreviewDescription" class="review-textarea" rows="5" placeholder="Description"></textarea>
+          </div>
+          <div class="review-item full-width">
+            <label for="aiPreviewSteps">Steps to Reproduce:</label>
+            <textarea id="aiPreviewSteps" class="review-textarea" rows="4" placeholder="Steps to reproduce"></textarea>
+          </div>
+          <div class="review-item full-width">
+            <label for="aiPreviewExpected">Expected Behavior:</label>
+            <textarea id="aiPreviewExpected" class="review-textarea" rows="3" placeholder="Expected behavior"></textarea>
+          </div>
+          <div class="review-item full-width">
+            <label for="aiPreviewActual">Actual Behavior:</label>
+            <textarea id="aiPreviewActual" class="review-textarea" rows="3" placeholder="Actual behavior"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="discardAiPreview" class="btn btn-secondary">Discard</button>
+        <button id="applyAiPreview" class="btn btn-primary">Apply to Form</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Draft Recovery Modal -->
   <div id="draftRecoveryModal" class="modal hidden">
     <div class="modal-overlay" id="draftRecoveryOverlay"></div>
