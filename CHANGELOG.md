@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.0.2] - August 24, 2026
+
+### Fixed
+- Fix changelog generation and improve release workflow robustness
+  - **Environment variable support in changelog script** (`.github/scripts/generate-changelog.js`)
+  - Added support for reading PR metadata (`VERSION`, `PR_TITLE`, `PR_BODY`, `PR_NUMBER`, `PR_AUTHOR`) from environment variables
+  - Maintains backward compatibility with positional arguments for manual script invocation
+  - Prevents shell escaping issues and improves security by avoiding command-line argument exposure
+  - **Simplified release workflow** (`.github/workflows/release.yml`)
+
+_Merged PR #45 by @prabhuvikas_
+
+---
+
+
+
 ## [3.0.1] - August 24, 2026
 
 ### Added
