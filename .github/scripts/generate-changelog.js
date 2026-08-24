@@ -7,15 +7,18 @@
 
 const fs = require('fs');
 
-// Get arguments
-const version = process.argv[2];
-const prTitle = process.argv[3];
-const prBody = process.argv[4] || '';
-const prNumber = process.argv[5];
-const prAuthor = process.argv[6];
+// Get inputs. The release workflow passes these through the environment so PR
+// text never has to survive a trip through a shell command line; positional
+// arguments still work for running the script by hand.
+const version = process.env.VERSION || process.argv[2];
+const prTitle = process.env.PR_TITLE || process.argv[3];
+const prBody = process.env.PR_BODY || process.argv[4] || '';
+const prNumber = process.env.PR_NUMBER || process.argv[5];
+const prAuthor = process.env.PR_AUTHOR || process.argv[6];
 
 if (!version || !prTitle) {
   console.error('Usage: node generate-changelog.js <version> <pr-title> <pr-body> <pr-number> <pr-author>');
+  console.error('   or: VERSION=... PR_TITLE=... PR_BODY=... PR_NUMBER=... PR_AUTHOR=... node generate-changelog.js');
   process.exit(1);
 }
 

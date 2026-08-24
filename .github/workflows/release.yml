@@ -178,13 +178,7 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: |
-          node .github/scripts/generate-changelog.js \
-            "$VERSION" \
-            "$PR_TITLE" \
-            "$PR_BODY" \
-            "$PR_NUMBER" \
-            "$PR_AUTHOR"
+        run: node .github/scripts/generate-changelog.js
 
       - name: Build extension zip
         id: build
