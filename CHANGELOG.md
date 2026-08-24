@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.0.1] - August 24, 2026
+
+### Changed
+- Improve changelog generation with better noise filtering
+  - **Added `isNoiseLine()` function** - Centralized logic to identify and filter out changelog noise:
+  - Markdown tables, horizontal rules, headings
+  - HTML comments and italic footers
+  - Bold headings (e.g., `**AI client**`) that aren't list items
+  - **Improved bullet point detection** - Created `BULLET_RE` regex that requires whitespace after the marker (`- `, `* `, `+ `) to avoid false positives with bold markdown
+
+_Merged PR #44 by @prabhuvikas_
+
+---
+
+
+
 ## [3.0.0] - February 1, 2026
 
 ### Added
