@@ -10,6 +10,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('resetSettings').addEventListener('click', resetSettings);
   document.getElementById('redmineUrl').addEventListener('input', clearConnectionStatus);
   document.getElementById('apiKey').addEventListener('input', clearConnectionStatus);
+
+  // AI Assistant settings
+  document.getElementById('testAIConnection').addEventListener('click', testAIConnection);
+  document.getElementById('aiEndpoint').addEventListener('input', clearAIConnectionStatus);
+  document.getElementById('aiApiKey').addEventListener('input', clearAIConnectionStatus);
+  document.getElementById('aiModel').addEventListener('input', clearAIConnectionStatus);
 });
 
 // Load settings from storage
@@ -27,12 +33,20 @@ async function loadSettings() {
       includeCookies: false,
       sanitizeSensitiveData: true,
       screenshotQuality: 'medium',
-      autoFullPageScreenshot: false
+      autoFullPageScreenshot: false,
+      aiEnabled: false,
+      aiEndpoint: '',
+      aiApiKey: '',
+      aiModel: ''
     });
 
     // Populate form fields
     document.getElementById('redmineUrl').value = settings.redmineUrl;
     document.getElementById('apiKey').value = settings.apiKey;
+    document.getElementById('aiEnabled').checked = settings.aiEnabled;
+    document.getElementById('aiEndpoint').value = settings.aiEndpoint;
+    document.getElementById('aiApiKey').value = settings.aiApiKey;
+    document.getElementById('aiModel').value = settings.aiModel;
     document.getElementById('includeNetworkRequests').checked = settings.includeNetworkRequests;
     document.getElementById('includeConsoleLogs').checked = settings.includeConsoleLogs;
     document.getElementById('includeLocalStorage').checked = settings.includeLocalStorage;
@@ -205,7 +219,11 @@ async function saveSettings() {
     includeCookies: document.getElementById('includeCookies').checked,
     sanitizeSensitiveData: document.getElementById('sanitizeSensitiveData').checked,
     screenshotQuality: document.getElementById('screenshotQuality').value,
-    autoFullPageScreenshot: document.getElementById('autoFullPageScreenshot').checked
+    autoFullPageScreenshot: document.getElementById('autoFullPageScreenshot').checked,
+    aiEnabled: document.getElementById('aiEnabled').checked,
+    aiEndpoint: document.getElementById('aiEndpoint').value.trim(),
+    aiApiKey: document.getElementById('aiApiKey').value.trim(),
+    aiModel: document.getElementById('aiModel').value.trim()
   };
 
   try {
@@ -251,7 +269,11 @@ async function resetSettings() {
     includeCookies: false,
     sanitizeSensitiveData: true,
     screenshotQuality: 'medium',
-    autoFullPageScreenshot: false
+    autoFullPageScreenshot: false,
+    aiEnabled: false,
+    aiEndpoint: '',
+    aiApiKey: '',
+    aiModel: ''
   };
 
   try {
@@ -272,6 +294,51 @@ async function resetSettings() {
 // Clear connection status when inputs change
 function clearConnectionStatus() {
   const statusEl = document.getElementById('connectionStatus');
+  statusEl.textContent = '';
+  statusEl.className = 'status-message';
+}
+
+// Test connection to the configured AI provider
+async function testAIConnection() {
+  const button = document.getElementById('testAIConnection');
+  const btnText = button.querySelector('.btn-text');
+  const spinner = button.querySelector('.spinner');
+
+  const endpoint = document.getElementById('aiEndpoint').value.trim();
+  const apiKey = document.getElementById('aiApiKey').value.trim();
+  const model = document.getElementById('aiModel').value.trim();
+
+  if (!endpoint || !apiKey) {
+    showStatus('aiConnectionStatus', 'Please enter both endpoint and API key', 'error');
+    return;
+  }
+
+  try {
+    button.disabled = true;
+    btnText.textContent = 'Testing...';
+    spinner.classList.remove('hidden');
+    clearAIConnectionStatus();
+
+    const ai = new AIAssistant({ endpoint, apiKey, model });
+    const result = await ai.testConnection();
+
+    if (result.success) {
+      showStatus('aiConnectionStatus', 'AI connection successful!', 'success');
+    } else {
+      showStatus('aiConnectionStatus', `AI connection failed: ${result.message}`, 'error');
+    }
+  } catch (error) {
+    showStatus('aiConnectionStatus', `AI connection failed: ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
+    btnText.textContent = 'Test AI Connection';
+    spinner.classList.add('hidden');
+  }
+}
+
+// Clear AI connection status when inputs change
+function clearAIConnectionStatus() {
+  const statusEl = document.getElementById('aiConnectionStatus');
   statusEl.textContent = '';
   statusEl.className = 'status-message';
 }

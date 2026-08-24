@@ -355,7 +355,11 @@ async function loadSettings() {
     includeCookies: false,
     sanitizeSensitiveData: true,
     screenshotQuality: 'medium',
-    autoFullPageScreenshot: false
+    autoFullPageScreenshot: false,
+    aiEnabled: false,
+    aiEndpoint: '',
+    aiApiKey: '',
+    aiModel: ''
   });
 }
 
@@ -523,6 +527,30 @@ function setupEventListeners() {
   // Form
   document.getElementById('project').addEventListener('change', onProjectChange);
   document.getElementById('bugReportForm').addEventListener('submit', submitBugReport);
+
+  // AI Assist
+  const aiAssistBtn = document.getElementById('aiAssistBtn');
+  if (aiAssistBtn) {
+    aiAssistBtn.addEventListener('click', generateReportWithAI);
+  }
+
+  // AI Consent Modal
+  const closeAiConsentBtn = document.getElementById('closeAiConsentModal');
+  if (closeAiConsentBtn) {
+    closeAiConsentBtn.addEventListener('click', cancelAIConsent);
+    document.getElementById('aiConsentOverlay').addEventListener('click', cancelAIConsent);
+    document.getElementById('cancelAiConsent').addEventListener('click', cancelAIConsent);
+    document.getElementById('confirmAiConsent').addEventListener('click', confirmAIConsentAndSend);
+  }
+
+  // AI Preview Modal
+  const closeAiPreviewBtn = document.getElementById('closeAiPreviewModal');
+  if (closeAiPreviewBtn) {
+    closeAiPreviewBtn.addEventListener('click', closeAIPreviewModal);
+    document.getElementById('aiPreviewOverlay').addEventListener('click', closeAIPreviewModal);
+    document.getElementById('discardAiPreview').addEventListener('click', closeAIPreviewModal);
+    document.getElementById('applyAiPreview').addEventListener('click', applyAIPreview);
+  }
 
   // Issue Mode Toggle
   document.querySelectorAll('input[name="issueMode"]').forEach(radio => {
@@ -1194,11 +1222,28 @@ async function continueToReport() {
 
   showSection('reportSection');
 
+  // Show AI Assist bar if configured
+  updateAIAssistVisibility();
+
   // Collect technical data
   await collectTechnicalData();
 
   // Load Redmine data
   await loadRedmineData();
+}
+
+// Show/hide the AI Assist bar based on settings and the current issue mode.
+// AI generation only applies to the "Create New Issue" fields.
+function updateAIAssistVisibility() {
+  const bar = document.getElementById('aiAssistBar');
+  if (!bar) return;
+
+  const configured = settings.aiEnabled && settings.aiEndpoint && settings.aiApiKey;
+  if (configured && currentIssueMode === 'create') {
+    bar.classList.remove('hidden');
+  } else {
+    bar.classList.add('hidden');
+  }
 }
 
 // Toggle tab selector visibility
@@ -2092,7 +2137,8 @@ async function actuallySubmitBugReport() {
 
       console.log('[Annotate] Updating issue #' + selectedIssue.id + ' with note and', attachments.length, 'attachments...');
 
-      issue = await redmineAPI.updateIssue(selectedIssue.id, { notes: noteText }, attachments);
+      const noteWithFooter = sanitizeText(noteText + getExtensionFooter());
+      issue = await redmineAPI.updateIssue(selectedIssue.id, { notes: noteWithFooter }, attachments);
 
       console.log('[Annotate] Issue #' + issue.id + ' updated successfully with note');
     } else {
@@ -2123,7 +2169,329 @@ async function actuallySubmitBugReport() {
   }
 }
 
+// Holds the payload awaiting the user's consent before it is sent to the AI.
+let pendingAIContext = null;
+
+// Render every non-video screenshot with its annotations baked in and return
+// their PNG data URLs, so they can be sent to a vision-capable AI model.
+async function getAnnotatedScreenshotImages() {
+  const images = [];
+  for (let i = 0; i < screenshots.length; i++) {
+    const item = screenshots[i];
+    if (!item || item.type === 'video') continue;
+    try {
+      const tempCanvas = document.createElement('canvas');
+      const tempAnnotator = new Annotator(tempCanvas, item.data);
+      await tempAnnotator.initPromise;
+      if (item.annotations && tempAnnotator.restoreState) {
+        await tempAnnotator.restoreState(item.annotations);
+      }
+      images.push(tempAnnotator.getAnnotatedImage());
+    } catch (e) {
+      console.error('[Annotate] Failed to render screenshot for AI:', e);
+    }
+  }
+  return images;
+}
+
+// Step 1: gather the data and ask the user to review/consent before sending
+// anything to the external AI provider.
+async function generateReportWithAI() {
+  const button = document.getElementById('aiAssistBtn');
+  const btnText = button.querySelector('.btn-text');
+  const spinner = button.querySelector('.spinner');
+
+  if (!settings.aiEnabled || !settings.aiEndpoint || !settings.aiApiKey) {
+    showStatus('aiAssistStatus', 'AI assistant is not configured. Enable it in Settings.', 'error');
+    return;
+  }
+
+  // The reporter's own description of the issue is the primary input for the AI.
+  const userView = document.getElementById('aiUserPrompt').value.trim();
+  const existingDescription = document.getElementById('description').value.trim();
+  if (!userView && !existingDescription) {
+    const promptField = document.getElementById('aiUserPrompt');
+    if (promptField) promptField.focus();
+    showStatus('aiAssistStatus', 'Please describe the issue in your own words first.', 'error');
+    return;
+  }
+
+  // Only surface console errors/warnings and failed/error network requests as
+  // signal for the model.
+  const consoleErrors = (consoleLogs || []).filter((log) => {
+    const level = (log.level || log.type || '').toLowerCase();
+    return level === 'error' || level === 'warn' || level === 'warning';
+  });
+
+  const networkErrors = (networkRequests || []).filter((req) => {
+    return req.failed || (req.statusCode && req.statusCode >= 400);
+  });
+
+  // Available tracker names so the AI can classify the issue and pick one.
+  const trackerSelect = document.getElementById('tracker');
+  const availableTrackers = Array.from(trackerSelect.options)
+    .filter((opt) => opt.value)
+    .map((opt) => opt.textContent.trim());
+
+  let images = [];
+  try {
+    button.disabled = true;
+    btnText.textContent = 'Preparing...';
+    spinner.classList.remove('hidden');
+    images = await getAnnotatedScreenshotImages();
+  } catch (e) {
+    console.error('[Annotate] Error preparing screenshots for AI:', e);
+  } finally {
+    button.disabled = false;
+    btnText.textContent = '✨ Generate with AI';
+    spinner.classList.add('hidden');
+  }
+
+  const context = {
+    userView,
+    subject: document.getElementById('subject').value,
+    description: document.getElementById('description').value,
+    stepsToReproduce: document.getElementById('stepsToReproduce').value,
+    expectedBehavior: document.getElementById('expectedBehavior').value,
+    actualBehavior: document.getElementById('actualBehavior').value,
+    pageInfo,
+    consoleErrors,
+    networkErrors,
+    availableTrackers,
+    images
+  };
+
+  pendingAIContext = context;
+  showAIConsentModal(context);
+}
+
+// Build a human-readable summary of the payload and show the consent modal.
+function showAIConsentModal(context) {
+  const endpointEl = document.getElementById('aiConsentEndpoint');
+  endpointEl.textContent =
+    settings.aiEndpoint + (settings.aiModel ? ` — model: ${settings.aiModel}` : '');
+
+  const summaryEl = document.getElementById('aiConsentSummary');
+  summaryEl.innerHTML = '';
+
+  // Use DOM construction (textContent) so page-derived data can never inject markup.
+  const addItem = (label, value) => {
+    if (!value) return;
+    const item = document.createElement('div');
+    item.className = 'ai-consent-item';
+    const l = document.createElement('div');
+    l.className = 'ai-consent-label';
+    l.textContent = label;
+    const v = document.createElement('div');
+    v.className = 'ai-consent-value';
+    v.textContent = value;
+    item.appendChild(l);
+    item.appendChild(v);
+    summaryEl.appendChild(item);
+  };
+
+  addItem('Your description', context.userView);
+
+  const drafts = [];
+  if (context.subject) drafts.push(`Subject: ${context.subject}`);
+  if (context.description) drafts.push(`Description: ${context.description}`);
+  if (context.stepsToReproduce) drafts.push(`Steps: ${context.stepsToReproduce}`);
+  if (context.expectedBehavior) drafts.push(`Expected: ${context.expectedBehavior}`);
+  if (context.actualBehavior) drafts.push(`Actual: ${context.actualBehavior}`);
+  if (drafts.length) addItem('Draft fields', drafts.join('\n'));
+
+  const pi = context.pageInfo || {};
+  const pageBits = [];
+  if (pi.url) pageBits.push(`URL: ${pi.url}`);
+  if (pi.title) pageBits.push(`Title: ${pi.title}`);
+  if (pi.userAgent) pageBits.push(`User agent: ${pi.userAgent}`);
+  if (pageBits.length) addItem('Page context', pageBits.join('\n'));
+
+  if (context.consoleErrors && context.consoleErrors.length) {
+    const preview = context.consoleErrors.slice(0, 5).map((log) => {
+      const level = log.level || log.type || 'log';
+      const message = typeof log.message === 'string' ? log.message : JSON.stringify(log.message);
+      return `[${level}] ${String(message).slice(0, 200)}`;
+    });
+    if (context.consoleErrors.length > 5) {
+      preview.push(`…and ${context.consoleErrors.length - 5} more`);
+    }
+    addItem(`Console errors/warnings (${context.consoleErrors.length})`, preview.join('\n'));
+  }
+
+  if (context.networkErrors && context.networkErrors.length) {
+    const preview = context.networkErrors.slice(0, 5).map((req) => {
+      const status = req.statusCode || (req.failed ? 'failed' : '');
+      return `${req.method || 'GET'} ${req.url} ${status ? `(${status})` : ''}`.trim();
+    });
+    if (context.networkErrors.length > 5) {
+      preview.push(`…and ${context.networkErrors.length - 5} more`);
+    }
+    addItem(`Failed network requests (${context.networkErrors.length})`, preview.join('\n'));
+  }
+
+  if (context.availableTrackers && context.availableTrackers.length) {
+    addItem('Tracker options (for classification)', context.availableTrackers.join(', '));
+  }
+
+  if (context.images && context.images.length) {
+    addItem(
+      `Annotated screenshots (${context.images.length})`,
+      `${context.images.length} annotated screenshot image(s) will be sent for visual analysis. Requires a vision-capable model.`
+    );
+  }
+
+  // Be explicit about what is NOT sent to the AI
+  const videoCount = (screenshots || []).filter((s) => s && s.type === 'video').length;
+  const docCount = accumulatedFiles ? accumulatedFiles.length : 0;
+  const excluded = [];
+  if (videoCount) excluded.push(`${videoCount} video recording(s)`);
+  if (docCount) excluded.push(`${docCount} uploaded document(s)`);
+  if (excluded.length) {
+    addItem('NOT sent to AI', `${excluded.join(' and ')} will not be sent to the AI (only attached to the Redmine issue).`);
+  }
+
+  document.getElementById('aiConsentModal').classList.remove('hidden');
+}
+
+// Close the consent modal without sending anything
+function closeAIConsentModal() {
+  document.getElementById('aiConsentModal').classList.add('hidden');
+}
+
+// User declined to send data to the AI
+function cancelAIConsent() {
+  pendingAIContext = null;
+  closeAIConsentModal();
+  showStatus('aiAssistStatus', 'AI request cancelled. No data was sent.', 'info');
+}
+
+// Step 2: user agreed — actually send the data to the AI and preview the result.
+async function confirmAIConsentAndSend() {
+  closeAIConsentModal();
+
+  if (!pendingAIContext) return;
+  const context = pendingAIContext;
+  pendingAIContext = null;
+
+  const button = document.getElementById('aiAssistBtn');
+  const btnText = button.querySelector('.btn-text');
+  const spinner = button.querySelector('.spinner');
+
+  try {
+    button.disabled = true;
+    btnText.textContent = 'Generating...';
+    spinner.classList.remove('hidden');
+    showStatus('aiAssistStatus', 'Generating report with AI...', 'info');
+
+    const ai = new AIAssistant({
+      endpoint: settings.aiEndpoint,
+      apiKey: settings.aiApiKey,
+      model: settings.aiModel
+    });
+
+    const report = await ai.generateBugReport(context);
+
+    // Show the AI-generated report in a preview modal for review/editing before
+    // it is applied to the main form.
+    showAIPreviewModal(report, document.getElementById('tracker'));
+
+    showStatus('aiAssistStatus', 'AI draft ready. Review it in the preview window.', 'success');
+  } catch (error) {
+    console.error('[Annotate] AI generation failed:', error);
+    showStatus('aiAssistStatus', `AI generation failed: ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
+    btnText.textContent = '✨ Generate with AI';
+    spinner.classList.add('hidden');
+  }
+}
+
+// Populate and show the AI preview modal with the generated report. The tracker
+// dropdown mirrors the main form's tracker options, preselected to the AI's
+// classification.
+function showAIPreviewModal(report, trackerSelect) {
+  // Clone tracker options into the preview select
+  const previewTracker = document.getElementById('aiPreviewTracker');
+  previewTracker.innerHTML = '';
+  Array.from(trackerSelect.options).forEach((opt) => {
+    const clone = document.createElement('option');
+    clone.value = opt.value;
+    clone.textContent = opt.textContent;
+    previewTracker.appendChild(clone);
+  });
+
+  // Preselect the AI-chosen tracker (fall back to the main form's current value)
+  let selectedTrackerValue = trackerSelect.value;
+  if (report.tracker) {
+    const matchedOption = Array.from(trackerSelect.options).find(
+      (opt) => opt.value && opt.textContent.trim().toLowerCase() === report.tracker.toLowerCase()
+    );
+    if (matchedOption) selectedTrackerValue = matchedOption.value;
+  }
+  previewTracker.value = selectedTrackerValue;
+
+  document.getElementById('aiPreviewSubject').value = report.subject || '';
+  document.getElementById('aiPreviewDescription').value = report.description || '';
+  document.getElementById('aiPreviewSteps').value = report.stepsToReproduce || '';
+  document.getElementById('aiPreviewExpected').value = report.expectedBehavior || '';
+  document.getElementById('aiPreviewActual').value = report.actualBehavior || '';
+
+  document.getElementById('aiPreviewModal').classList.remove('hidden');
+}
+
+// Close the AI preview modal without applying anything
+function closeAIPreviewModal() {
+  document.getElementById('aiPreviewModal').classList.add('hidden');
+}
+
+// Apply the (possibly edited) AI preview content to the main form
+function applyAIPreview() {
+  const trackerSelect = document.getElementById('tracker');
+  const previewTrackerValue = document.getElementById('aiPreviewTracker').value;
+  if (previewTrackerValue) {
+    trackerSelect.value = previewTrackerValue;
+  }
+
+  const subject = document.getElementById('aiPreviewSubject').value;
+  const description = document.getElementById('aiPreviewDescription').value;
+  const steps = document.getElementById('aiPreviewSteps').value;
+  const expected = document.getElementById('aiPreviewExpected').value;
+  const actual = document.getElementById('aiPreviewActual').value;
+
+  if (subject) document.getElementById('subject').value = subject;
+  if (description) document.getElementById('description').value = description;
+  if (steps) document.getElementById('stepsToReproduce').value = steps;
+  if (expected) document.getElementById('expectedBehavior').value = expected;
+  if (actual) document.getElementById('actualBehavior').value = actual;
+
+  // Mark the draft dirty so the change is captured
+  if (typeof markDirtyAndScheduleSave === 'function') {
+    markDirtyAndScheduleSave();
+  }
+
+  closeAIPreviewModal();
+
+  const selectedTrackerName =
+    trackerSelect.options[trackerSelect.selectedIndex]?.textContent?.trim();
+  const trackerNote = selectedTrackerName ? ` Tracker set to "${selectedTrackerName}".` : '';
+  showStatus('aiAssistStatus', `AI report applied to the form.${trackerNote}`, 'success');
+}
+
 // Build description
+// Footer marking that the issue/comment was created by this extension, so it
+// can be identified in Redmine. Includes the extension version when available.
+function getExtensionFooter() {
+  let version = '';
+  try {
+    version = chrome.runtime.getManifest().version;
+  } catch (e) {
+    // chrome.runtime may be unavailable in some contexts (e.g. tests)
+  }
+  const versionStr = version ? ` v${version}` : '';
+  return `\n\n---\nReported via Cred Issue Reporter (Chrome extension)${versionStr}`;
+}
+
 function buildDescription() {
   let description = document.getElementById('description').value;
 
@@ -2211,6 +2579,9 @@ function buildDescription() {
       description += `- ${file.name} (${(file.size / 1024).toFixed(2)} KB)\n`;
     }
   }
+
+  // Append the extension identifier footer
+  description += getExtensionFooter();
 
   return sanitizeText(description);
 }
@@ -3280,6 +3651,9 @@ function onIssueModeChange(e) {
     selectedIssue = null;
     clearIssueSelection();
   }
+
+  // Update AI Assist visibility (only relevant in create mode)
+  updateAIAssistVisibility();
 }
 
 // Debounce helper function

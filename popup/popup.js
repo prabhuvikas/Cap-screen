@@ -1204,6 +1204,19 @@ async function actuallySubmitBugReport() {
 }
 
 // Build description
+// Footer marking that the issue was created by this extension, so it can be
+// identified in Redmine. Includes the extension version when available.
+function getExtensionFooter() {
+  let version = '';
+  try {
+    version = chrome.runtime.getManifest().version;
+  } catch (e) {
+    // chrome.runtime may be unavailable in some contexts (e.g. tests)
+  }
+  const versionStr = version ? ` v${version}` : '';
+  return `\n\n---\nReported via Cred Issue Reporter (Chrome extension)${versionStr}`;
+}
+
 function buildDescription() {
   let description = document.getElementById('description').value;
 
@@ -1264,6 +1277,9 @@ function buildDescription() {
     description += 'is available in the attached technical-data.json file.\n';
     description += additionalInfo;
   }
+
+  // Append the extension identifier footer
+  description += getExtensionFooter();
 
   // Sanitize the entire description to remove any remaining unicode
   return sanitizeText(description);

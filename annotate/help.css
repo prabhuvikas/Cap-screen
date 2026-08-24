@@ -367,6 +367,41 @@ kbd {
   margin-bottom: 5px;
 }
 
+/* AI-Assisted Reporting */
+#ai-assist > p {
+  color: #5f6368;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+#ai-assist h3 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 20px;
+  color: #202124;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 20px 0 10px;
+}
+
+#ai-assist .help-steps {
+  margin: 0 0 20px 22px;
+  color: #5f6368;
+  line-height: 1.6;
+}
+
+#ai-assist .help-steps li {
+  margin-bottom: 8px;
+}
+
+#ai-assist code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  background: #f1f3f4;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #202124;
+}
+
 /* FAQ */
 .faq-item {
   background: #ffffff;

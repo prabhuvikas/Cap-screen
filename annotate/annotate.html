@@ -256,6 +256,26 @@
                 </div>
               </div>
 
+              <!-- AI Assist Bar (shown only when AI is enabled in settings) -->
+              <div id="aiAssistBar" class="ai-assist-bar hidden">
+                <div class="ai-assist-info">
+                  <span class="ai-assist-title">✨ AI Assist</span>
+                  <small>Describe the issue in your own words, then let AI draft a polished report using your notes, captured technical data, and annotated screenshots.</small>
+                </div>
+                <div class="ai-assist-prompt">
+                  <label for="aiUserPrompt">What's the issue? (in your own words)</label>
+                  <textarea id="aiUserPrompt" rows="3"
+                            placeholder="e.g. The checkout button does nothing when I click it after applying a coupon."></textarea>
+                </div>
+                <div class="ai-assist-actions">
+                  <button type="button" id="aiAssistBtn" class="btn btn-primary">
+                    <span class="btn-text">✨ Generate with AI</span>
+                    <span class="spinner hidden"></span>
+                  </button>
+                </div>
+              </div>
+              <div id="aiAssistStatus" class="status-message"></div>
+
               <div class="form-grid" id="createIssueFields">
                 <div class="form-group">
                   <label for="project">Project *</label>
@@ -530,6 +550,78 @@
     </div>
   </div>
 
+  <!-- AI Consent Modal -->
+  <div id="aiConsentModal" class="modal hidden">
+    <div class="modal-overlay" id="aiConsentOverlay"></div>
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Send this data to the AI?</h2>
+        <button id="closeAiConsentModal" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="review-description">
+          The information below will be sent to your configured AI provider
+          (<span id="aiConsentEndpoint"></span>) to generate a report.
+          Please review it and confirm before it leaves your browser.
+        </p>
+        <div id="aiConsentSummary" class="ai-consent-summary"></div>
+        <p class="ai-consent-warning">
+          ⚠️ Only continue if you're comfortable sharing this data with the AI provider.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelAiConsent" class="btn btn-secondary">Cancel</button>
+        <button id="confirmAiConsent" class="btn btn-primary">Agree &amp; Send to AI</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Preview Modal -->
+  <div id="aiPreviewModal" class="modal hidden">
+    <div class="modal-overlay" id="aiPreviewOverlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>✨ AI-Generated Report</h2>
+        <button id="closeAiPreviewModal" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="review-description">
+          Review the AI-generated report below. Edit anything you like, then apply it to the form.
+        </p>
+        <div class="review-section">
+          <div class="review-item">
+            <label for="aiPreviewTracker">Tracker (auto-classified):</label>
+            <select id="aiPreviewTracker" class="review-select"></select>
+          </div>
+          <div class="review-item">
+            <label for="aiPreviewSubject">Subject:</label>
+            <input type="text" id="aiPreviewSubject" class="review-input" placeholder="Issue title">
+          </div>
+          <div class="review-item full-width">
+            <label for="aiPreviewDescription">Description:</label>
+            <textarea id="aiPreviewDescription" class="review-textarea" rows="5" placeholder="Description"></textarea>
+          </div>
+          <div class="review-item full-width">
+            <label for="aiPreviewSteps">Steps to Reproduce:</label>
+            <textarea id="aiPreviewSteps" class="review-textarea" rows="4" placeholder="Steps to reproduce"></textarea>
+          </div>
+          <div class="review-item full-width">
+            <label for="aiPreviewExpected">Expected Behavior:</label>
+            <textarea id="aiPreviewExpected" class="review-textarea" rows="3" placeholder="Expected behavior"></textarea>
+          </div>
+          <div class="review-item full-width">
+            <label for="aiPreviewActual">Actual Behavior:</label>
+            <textarea id="aiPreviewActual" class="review-textarea" rows="3" placeholder="Actual behavior"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="discardAiPreview" class="btn btn-secondary">Discard</button>
+        <button id="applyAiPreview" class="btn btn-primary">Apply to Form</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Draft Recovery Modal -->
   <div id="draftRecoveryModal" class="modal hidden">
     <div class="modal-overlay" id="draftRecoveryOverlay"></div>
@@ -598,6 +690,7 @@
 
   <script src="../lib/utils.js"></script>
   <script src="../lib/redmine-api.js"></script>
+  <script src="../lib/ai-api.js"></script>
   <script src="../lib/video-storage.js"></script>
   <script src="../lib/draft-storage.js"></script>
   <script src="../lib/screenshot-storage.js"></script>

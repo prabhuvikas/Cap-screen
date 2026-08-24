@@ -50,14 +50,16 @@ Scripts injected into web pages to collect data. Each file has a specific role:
 Extension settings/preferences page accessible via Chrome settings. Handles:
 - Redmine server URL and API key configuration
 - Default project, priority, and assignee settings
+- AI assistant configuration (endpoint, API key, model) for AI-assisted reporting
 - Data collection toggles (network requests, console logs, cookies)
-- Connection testing
+- Connection testing (Redmine and AI provider)
 - **Files**: `options.js`, `options.html`, `options.css`
 - **When to modify**: Adding new settings or changing configuration options
 
 ### `lib/` - Shared Libraries
 Reusable modules used across multiple parts of the extension:
 - `redmine-api.js` - Redmine API client (projects, issues, uploads, users)
+- `ai-api.js` - AI assistant client (OpenAI-compatible Chat Completions) for generating bug reports
 - `utils.js` - Common utility functions
 - `video-storage.js` - Video data storage management
 - **When to modify**: Changing API integrations or adding shared utilities

@@ -55,6 +55,7 @@ function createBuildDescription(sourceFile, globals) {
 
   const sanitizeTextSrc = extractFunctionSource(source, 'sanitizeText');
   const buildDescriptionSrc = extractFunctionSource(source, 'buildDescription');
+  const getExtensionFooterSrc = extractFunctionSource(source, 'getExtensionFooter');
 
   const {
     settings = {},
@@ -74,6 +75,7 @@ function createBuildDescription(sourceFile, globals) {
     'videoDataUrl', 'screenshots', 'currentTab',
     `
     ${sanitizeTextSrc}
+    ${getExtensionFooterSrc}
     ${buildDescriptionSrc}
     return buildDescription;
     `
@@ -277,5 +279,22 @@ describe.each([
     const result = buildDescription();
 
     expect(result).toContain('Bug description');
+  });
+
+  // -----------------------------------------------------------------------
+  // Extension identifier footer must always be present
+  // -----------------------------------------------------------------------
+
+  test('should append the extension identifier footer', () => {
+    const buildDescription = createBuildDescription(sourceFile, {
+      settings: {},
+      networkRequests: [],
+      consoleLogs: [],
+      videoDataUrl: null,
+    });
+
+    const result = buildDescription();
+
+    expect(result).toContain('Reported via Cred Issue Reporter (Chrome extension)');
   });
 });
