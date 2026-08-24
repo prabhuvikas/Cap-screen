@@ -8,3 +8,6 @@ npm-debug.log*
 
 # Test coverage
 coverage/
+
+# Redmine news preview output (test-redmine-news.js)
+test-redmine-news-v*.md
