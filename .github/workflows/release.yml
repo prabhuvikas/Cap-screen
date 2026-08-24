@@ -158,14 +158,10 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Bump version
         id: bump_version
         run: |
+          echo "Using the runner's Node: $(node --version) (npm $(npm --version))"
           PREVIOUS_VERSION=$(node -p "require('./manifest.json').version")
           node .github/scripts/bump-version.js ${{ needs.prepare.outputs.version_type }}
           NEW_VERSION=$(node -p "require('./manifest.json').version")
@@ -280,11 +276,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -298,6 +289,7 @@ jobs:
           DEBUG: 'true'
         run: |
           echo "=== Debug Info ==="
+          echo "Node: $(node --version), npm: $(npm --version)"
           echo "Folder ID length: ${#GOOGLE_DRIVE_FOLDER_ID}"
           echo "Credentials length: ${#GOOGLE_DRIVE_CREDENTIALS}"
           echo "==================="
