@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.0.1] - August 24, 2026
 
+### Added
+- feat: add AI-assisted bug reporting with consent gate, editable preview, and screenshot analysis
+  - New `lib/ai-api.js` — `AIAssistant` targeting any OpenAI-compatible Chat Completions endpoint (OpenAI, Azure, OpenRouter, Groq, Ollama, LM Studio, …)
+  - Options gains an AI Assistant section: enable toggle, endpoint, API key, model, and a **Test AI Connection** button
+  - "Generate with AI" bar on the annotate page with a "What's the issue? (in your own words)" prompt that drives the generated report
+  - Consent modal itemising exactly what is transmitted, and an editable preview modal before anything is applied to the form; videos and uploaded documents are never sent to the AI
+  - Smart tracker selection against the project's real tracker list, and a "Reported via Cred Issue Reporter (Chrome extension) vX.Y.Z" footer on every issue and comment
+
 ### Changed
 - Improve changelog generation with better noise filtering
   - **Added `isNoiseLine()` function** - Centralized logic to identify and filter out changelog noise:
@@ -17,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Bold headings (e.g., `**AI client**`) that aren't list items
   - **Improved bullet point detection** - Created `BULLET_RE` regex that requires whitespace after the marker (`- `, `* `, `+ `) to avoid false positives with bold markdown
 
+_Merged PR #43 by @prabhuvikas_
 _Merged PR #44 by @prabhuvikas_
 
 ---
@@ -28,13 +37,13 @@ _Merged PR #44 by @prabhuvikas_
 ### Added
 - docs: add save draft feature implementation plan
   - Redesign overall reporting
-  - Implement save draft feature with auto-save, manual save, and Save
+  - Implement save draft feature with auto-save, manual save, and "Save As" options
+  - Add Photoshop-inspired vertical toolbar layout with left tool palette
+  - Add keyboard shortcuts for annotation tools (A/R/C/P/T/X/V/K)
+  - Add download button for media items on hover
+  - See latest reports submission for quick access on popover screen
 
-_Merged PR #As options                                                                   
-- Add Photoshop-inspired vertical toolbar layout with left tool palette
-- Add keyboard shortcuts for annotation tools (A/R/C/P/T/X/V/K)
-- Add download button for media items on hover
-- See latest reports submission for quick access on popover screen by @42_
+_Merged PR #42 by @prabhuvikas_
 
 ---
 
@@ -44,12 +53,13 @@ _Merged PR #As options
 
 ### Added
 - Add countdown timer, full-page screenshots, and recent submissions
-  - This PR enhances the bug reporting workflow with three major features: a 3-2-1 countdown overlay before video recording starts, full-page screenshot capture via scroll-and-stitch, and a recent submissions history panel in the popup.
-  - Added  in background.js that displays a 3-2-1 countdown overlay on the recording tab before capture begins
-  - Split display recording into two phases:  (acquire stream) and  (start capture)
-  - Updated alert message to indicate Recording
+  - Added `showCountdownOnTab()` in background.js that displays a 3-2-1 countdown overlay on the recording tab before capture begins
+  - Split display recording into two phases: `prepareDisplayRecording()` (acquire stream) and `beginRecording()` (start capture)
+  - Implemented `handleFullPageScreenshot()` in background.js, which scrolls through a page, captures each viewport segment and stitches them together
+  - Added rate-limiting wrapper `captureVisibleTabThrottled()` to respect Chrome's MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND limit
+  - Added a "Recent Submissions" panel in the popup, backed by `saveRecentSubmission()` / `getRecentSubmissions()` in lib/utils.js
 
-_Merged PR #started by @after_
+_Merged PR #41 by @prabhuvikas_
 
 ---
 
@@ -59,17 +69,13 @@ _Merged PR #started by @after_
 
 ### Changed
 - Update upgrade instructions to preserve extension settings
-  - Updated the upgrade instructions in the v2.1.5 release notes to provide a clearer, more reliable process for updating the extension while preserving user settings and preferences.
-  - Replaced the remove
+  - Replaced the "remove and reload" approach with an in-place file replacement method
+  - Added explicit step to extract the downloaded zip file
+  - Changed from removing the old version to replacing its contents directly
+  - Simplified the reload process by using the Chrome extensions UI reload button instead of manual unpacking
+  - Clarified that all existing settings and preferences are preserved throughout the upgrade
 
-_Merged PR #and by @reload approach with an in-place file replacement method
-- Added explicit step to extract the downloaded zip file
-- Changed from removing the old version to replacing its contents directly
-- Simplified the reload process by using the Chrome extensions UI reload button instead of manual unpacking
-- Clarified that all existing settings and preferences are preserved throughout the upgrade
-
-## Rationale
-The new approach is more user-friendly and reduces the risk of losing settings during the upgrade process. By replacing files in-place rather than removing and reloading, users can maintain their configuration without additional manual steps._
+_Merged PR #40 by @prabhuvikas_
 
 ---
 
@@ -79,43 +85,13 @@ The new approach is more user-friendly and reduces the risk of losing settings d
 
 ### Fixed
 - Release v2.1.5: Annotation editor fixes and testing infrastructure
-  - This release introduces critical bug fixes for the annotation editor, comprehensive testing infrastructure, and a refactored CI/CD pipeline with automated changelog generation.
   - **Undo/Redo After Crop**: Fixed critical issue where undo/redo functionality stopped working after cropping an image
   - **Duplicate Annotations**: Resolved bug where annotations would appear duplicated after crop operations
-  - **History State Handling**: Fixed  method to properly handle the new history format
-  - **UI Clarity**: Renamed 1:1 zoom button to Reset
+  - **History State Handling**: Fixed `restoreState` method to properly handle the new history format
+  - **UI Clarity**: Renamed "1:1" zoom button to "Reset Zoom" for better user understanding
+  - Added Jest unit tests for the `Annotator` class covering drawing tools, undo/redo, and state management
 
-_Merged PR #Zoom for better user understanding
-
-### Testing Infrastructure
-- Added Jest unit tests for the  class covering drawing tools, undo/redo, and state management
-- Implemented automated CI workflow that runs on every PR to  with results posted as comments
-- Created smoke test suite for catching critical issues before merge
-- Added comprehensive regression test suite for annotation and cropping edge cases
-- Included manual test scripts for pre-merge and regression testing
-
-### CI/CD Pipeline Improvements
-- Refactored monolithic release workflow into a 4-stage pipeline (Pre-check → Prepare → Build → Distribute)
-- Implemented changelog auto-detection based on PR title prefixes (, , , )
-- Added conditional pipeline execution with  label support
-- Excluded zip build artifacts from version control via 
-
-### Documentation
-- Expanded  with detailed folder descriptions and responsibilities
-- Added CI test workflow documentation
-- Included GitHub branch protection setup instructions
-
-## Notable Implementation Details
-
-- Build artifacts are now only attached to GitHub releases, not committed to the repository
-- Changelog sections are automatically categorized based on PR title patterns
-- The release pipeline can be skipped for docs-only changes or via explicit label
-- All existing user settings and preferences are preserved during upgrade
-
-## Version Information
-- **Previous Version**: v2.1.2
-- **Current Version**: v2.1.5
-- **Release Date**: January 25, 2026 by @39_
+_Merged PR #39 by @prabhuvikas_
 
 ---
 
