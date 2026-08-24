@@ -166,10 +166,11 @@ jobs:
       - name: Bump version
         id: bump_version
         run: |
+          PREVIOUS_VERSION=$(node -p "require('./manifest.json').version")
           node .github/scripts/bump-version.js ${{ needs.prepare.outputs.version_type }}
           NEW_VERSION=$(node -p "require('./manifest.json').version")
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "New version: $NEW_VERSION"
+          echo "Version: $PREVIOUS_VERSION -> $NEW_VERSION (${{ needs.prepare.outputs.version_type }} bump)"
 
       - name: Update CHANGELOG
         env:
@@ -178,7 +179,24 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: node .github/scripts/generate-changelog.js
+        run: |
+          # Sizes only - the script itself logs the shape of each input. This
+          # runs before node so an input problem is visible even if node never
+          # starts.
+          echo "::group::Changelog step inputs"
+          echo "VERSION   : '${VERSION}' (${#VERSION} chars)"
+          echo "PR_TITLE  : ${#PR_TITLE} chars"
+          echo "PR_BODY   : ${#PR_BODY} chars, $(printf '%s' "${PR_BODY}" | wc -l) newlines"
+          echo "PR_NUMBER : '${PR_NUMBER}'"
+          echo "PR_AUTHOR : '${PR_AUTHOR}'"
+          echo "::endgroup::"
+
+          node .github/scripts/generate-changelog.js
+
+          echo "::group::CHANGELOG.md diff"
+          git --no-pager diff --stat -- CHANGELOG.md
+          git --no-pager diff -- CHANGELOG.md | head -80
+          echo "::endgroup::"
 
       - name: Build extension zip
         id: build
@@ -203,6 +221,48 @@ jobs:
           echo "## Stage 2: Build" >> $GITHUB_STEP_SUMMARY
           echo "- New version: **v${{ steps.bump_version.outputs.version }}**" >> $GITHUB_STEP_SUMMARY
           echo "- Extension ZIP: \`${{ steps.build.outputs.zip_file }}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Build diagnostics on failure
+        if: failure()
+        env:
+          VERSION: ${{ steps.bump_version.outputs.version }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          echo "::group::Environment"
+          echo "node: $(node --version), npm: $(npm --version), runner: ${RUNNER_OS}"
+          echo "workflow sha: ${GITHUB_SHA}, ref: ${GITHUB_REF}, attempt: ${GITHUB_RUN_ATTEMPT}"
+          echo "::endgroup::"
+
+          echo "::group::Inputs at failure"
+          echo "VERSION   : '${VERSION}'"
+          echo "PR_NUMBER : '${PR_NUMBER}'"
+          echo "PR_AUTHOR : '${PR_AUTHOR}'"
+          echo "PR_TITLE  : ${#PR_TITLE} chars"
+          printf 'PR_TITLE  : %s\n' "${PR_TITLE}"
+          echo "PR_BODY   : ${#PR_BODY} chars, first 500:"
+          printf '%s\n' "${PR_BODY:0:500}"
+          echo "::endgroup::"
+
+          echo "::group::Repository state"
+          echo "manifest version: $(node -p "require('./manifest.json').version" 2>&1)"
+          git --no-pager status --short
+          git --no-pager diff --stat
+          echo "--- CHANGELOG.md, first 40 lines ---"
+          head -40 CHANGELOG.md 2>&1 || echo "(CHANGELOG.md unreadable)"
+          echo "::endgroup::"
+
+          {
+            echo "### Stage 2 (Build) failed"
+            echo ""
+            echo "- Version: \`${VERSION:-unset}\`"
+            echo "- PR: #${PR_NUMBER:-unset} by \`${PR_AUTHOR:-unset}\`"
+            echo "- PR body: ${#PR_BODY} chars"
+            echo ""
+            echo "See the \`Build diagnostics on failure\` step for full state."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # =============================================================================
   # STAGE 3: DISTRIBUTE

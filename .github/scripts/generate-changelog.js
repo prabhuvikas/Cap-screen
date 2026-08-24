@@ -6,19 +6,116 @@
  */
 
 const fs = require('fs');
+const crypto = require('crypto');
+
+// ---------------------------------------------------------------------------
+// Diagnostics
+//
+// This runs unattended in the release workflow, so a failure can only ever be
+// debugged from the job log after the fact. Everything the next person needs -
+// where each input came from, what was parsed out of it, and what was written -
+// is logged here, wrapped in collapsed ::group:: blocks so a healthy run stays
+// readable.
+// ---------------------------------------------------------------------------
+
+const inActions = Boolean(process.env.GITHUB_ACTIONS);
+const diagnostics = {};
+
+function group(title, body) {
+  console.log(inActions ? `::group::${title}` : `--- ${title} ---`);
+  try {
+    body();
+  } finally {
+    console.log(inActions ? '::endgroup::' : '---');
+  }
+}
+
+function warn(message) {
+  console.log(inActions ? `::warning::${message}` : `[WARN] ${message}`);
+}
+
+function annotateError(message) {
+  console.log(inActions ? `::error::${message}` : `[ERROR] ${message}`);
+}
+
+/** Append to the job summary so a failure is visible without opening the log. */
+function appendSummary(markdown) {
+  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+  if (!summaryPath) return;
+  try {
+    fs.appendFileSync(summaryPath, `${markdown}\n`);
+  } catch (error) {
+    console.log(`[WARN] Could not write job summary: ${error.message}`);
+  }
+}
+
+/**
+ * Describe an input without dumping a whole PR body into the log: length, line
+ * count, a short hash for comparing runs, the first line, and any characters
+ * that have historically broken this step.
+ */
+function describeInput(name, value, source) {
+  if (value === undefined || value === null || value === '') {
+    console.log(`  ${name.padEnd(9)} (empty)  [from ${source}]`);
+    return;
+  }
+
+  const lines = value.split('\n');
+  const hash = crypto.createHash('sha256').update(value).digest('hex').slice(0, 12);
+  const hazards = [
+    value.includes('`') && 'backticks',
+    value.includes('$(') && '$(...)',
+    /["']/.test(value) && 'quotes',
+    lines.length > 1 && `${lines.length} lines`
+  ].filter(Boolean);
+
+  console.log(`  ${name.padEnd(9)} ${value.length} chars, sha256:${hash}  [from ${source}]`);
+  console.log(`  ${''.padEnd(9)} first line: ${JSON.stringify(lines[0].slice(0, 160))}`);
+  if (hazards.length > 0) {
+    console.log(`  ${''.padEnd(9)} contains: ${hazards.join(', ')}`);
+  }
+}
+
+/** Read an input from the environment, falling back to a positional argument. */
+function readInput(envName, argIndex) {
+  if (process.env[envName]) {
+    return { value: process.env[envName], source: `env ${envName}` };
+  }
+  const arg = process.argv[argIndex];
+  return { value: arg, source: arg ? `argv[${argIndex}]` : 'unset' };
+}
 
 // Get inputs. The release workflow passes these through the environment so PR
 // text never has to survive a trip through a shell command line; positional
 // arguments still work for running the script by hand.
-const version = process.env.VERSION || process.argv[2];
-const prTitle = process.env.PR_TITLE || process.argv[3];
-const prBody = process.env.PR_BODY || process.argv[4] || '';
-const prNumber = process.env.PR_NUMBER || process.argv[5];
-const prAuthor = process.env.PR_AUTHOR || process.argv[6];
+const versionInput = readInput('VERSION', 2);
+const prTitleInput = readInput('PR_TITLE', 3);
+const prBodyInput = readInput('PR_BODY', 4);
+const prNumberInput = readInput('PR_NUMBER', 5);
+const prAuthorInput = readInput('PR_AUTHOR', 6);
+
+const version = versionInput.value;
+const prTitle = prTitleInput.value;
+const prBody = prBodyInput.value || '';
+const prNumber = prNumberInput.value;
+const prAuthor = prAuthorInput.value;
+
+group('Changelog inputs', () => {
+  describeInput('version', version, versionInput.source);
+  describeInput('title', prTitle, prTitleInput.source);
+  describeInput('body', prBody, prBodyInput.source);
+  describeInput('number', prNumber, prNumberInput.source);
+  describeInput('author', prAuthor, prAuthorInput.source);
+  console.log(`  argv count: ${process.argv.length - 2}, cwd: ${process.cwd()}, node: ${process.version}`);
+});
 
 if (!version || !prTitle) {
+  annotateError('Changelog generation needs at least a version and a PR title.');
+  console.error(`  version: ${version ? 'present' : 'MISSING'} (${versionInput.source})`);
+  console.error(`  title:   ${prTitle ? 'present' : 'MISSING'} (${prTitleInput.source})`);
   console.error('Usage: node generate-changelog.js <version> <pr-title> <pr-body> <pr-number> <pr-author>');
   console.error('   or: VERSION=... PR_TITLE=... PR_BODY=... PR_NUMBER=... PR_AUTHOR=... node generate-changelog.js');
+  appendSummary('### Changelog step failed\n\nMissing required input (version or PR title). See the job log for which one.');
   process.exit(1);
 }
 
@@ -111,6 +208,7 @@ function parseChanges(prBody, prTitle) {
   const detectedCategory = detectChangeType(prTitle);
 
   if (!prBody) {
+    diagnostics.parse = { bodyLines: 0, hasExplicitCategories: false, counts: { added: 0, fixed: 0, changed: 0, removed: 0 } };
     return { changes, detectedCategory };
   }
 
@@ -135,6 +233,12 @@ function parseChanges(prBody, prTitle) {
       }
     }
   }
+
+  diagnostics.parse = {
+    bodyLines: lines.length,
+    hasExplicitCategories,
+    counts: Object.fromEntries(Object.entries(changes).map(([key, items]) => [key, items.length]))
+  };
 
   return { changes, detectedCategory, hasExplicitCategories };
 }
@@ -167,6 +271,9 @@ function generateChangelogEntry(version, prTitle, prBody, prNumber, prAuthor) {
 
   // If we have explicit categorized changes from PR body, use them
   const hasCategories = Object.values(changes).some(arr => arr.length > 0);
+
+  diagnostics.detectedCategory = detectedCategory;
+  diagnostics.path = (hasCategories && hasExplicitCategories) ? 'explicit-categories' : 'title-fallback';
 
   if (hasCategories && hasExplicitCategories) {
     if (changes.added.length > 0) {
@@ -219,6 +326,12 @@ function generateChangelogEntry(version, prTitle, prBody, prNumber, prAuthor) {
         ? bullets
         : candidates.filter(line => line.length > 20);
 
+      diagnostics.fallback = {
+        candidateLines: candidates.length,
+        bulletLines: bullets.length,
+        using: bullets.length > 0 ? 'bullets' : 'prose'
+      };
+
       source
         .map(line => line.replace(BULLET_RE, '').trim())
         .filter(line => line && line !== prTitle)
@@ -266,10 +379,42 @@ function insertChangelogEntry(changelogContent, newEntry) {
     insertIndex = lines.length;
   }
 
+  diagnostics.insertIndex = insertIndex;
+  diagnostics.insertAnchor = lines[insertIndex] === undefined
+    ? '(end of file)'
+    : JSON.stringify(lines[insertIndex].slice(0, 80));
+
   // Insert the new entry
   lines.splice(insertIndex, 0, '', newEntry);
 
   return lines.join('\n');
+}
+
+/**
+ * Sanity-check the generated entry before it is written.
+ *
+ * These are the shapes a corrupted entry took when the workflow used to
+ * interpolate PR text into its shell command (a non-numeric PR number, an
+ * author with spaces in it, an entry with no content) - cheap to check, and
+ * they turn a silently wrong CHANGELOG into a visible warning.
+ */
+function validateEntry(entry) {
+  const problems = [];
+
+  if (prNumber && !/^\d+$/.test(prNumber)) {
+    problems.push(`PR number is not numeric: ${JSON.stringify(prNumber.slice(0, 60))}`);
+  }
+  if (prAuthor && /\s/.test(prAuthor)) {
+    problems.push(`PR author contains whitespace: ${JSON.stringify(prAuthor.slice(0, 60))}`);
+  }
+  if (!/^- .+/m.test(entry)) {
+    problems.push('Entry has no bullet points - the PR title and body produced nothing.');
+  }
+  if (!new RegExp(`^## \\[${version.replace(/\./g, '\\.')}\\]`, 'm').test(entry)) {
+    problems.push(`Entry heading does not carry version ${version}.`);
+  }
+
+  return problems;
 }
 
 /**
@@ -312,10 +457,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     // Write back to file
     fs.writeFileSync(changelogPath, updatedChangelog);
 
+    group('Changelog diagnostics', () => {
+      console.log(`  detected category: ${diagnostics.detectedCategory}`);
+      console.log(`  extraction path:   ${diagnostics.path}`);
+      if (diagnostics.parse) {
+        console.log(`  body lines parsed: ${diagnostics.parse.bodyLines}, explicit ## sections: ${diagnostics.parse.hasExplicitCategories === true}`);
+        console.log(`  items per section: ${JSON.stringify(diagnostics.parse.counts)}`);
+      }
+      if (diagnostics.fallback) {
+        console.log(`  fallback source:   ${diagnostics.fallback.using} (${diagnostics.fallback.bulletLines} bullets of ${diagnostics.fallback.candidateLines} non-noise lines)`);
+      }
+      console.log(`  insert at line:    ${diagnostics.insertIndex} (before ${diagnostics.insertAnchor})`);
+      console.log(`  entry size:        ${newEntry.length} chars, ${newEntry.split('\n').length} lines`);
+      console.log(`  CHANGELOG.md:      ${changelogContent.length} -> ${updatedChangelog.length} chars`);
+    });
+
+    const problems = validateEntry(newEntry);
+    for (const problem of problems) {
+      warn(`Changelog entry looks wrong: ${problem}`);
+    }
+
     console.log('✅ CHANGELOG.md updated successfully');
 
+    const summaryLines = [`### Changelog entry for v${version}`, ''];
+    if (problems.length > 0) {
+      summaryLines.push(`**${problems.length} sanity check(s) failed - review the entry before release:**`, '');
+      problems.forEach(problem => summaryLines.push(`- ${problem}`));
+      summaryLines.push('');
+    }
+    summaryLines.push('```markdown', newEntry.trimEnd(), '```', '');
+    appendSummary(summaryLines.join('\n'));
+
   } catch (error) {
-    console.error('❌ Failed to update changelog:', error.message);
+    annotateError(`Failed to update changelog: ${error.message}`);
+    console.error(error.stack);
+
+    group('State at failure', () => {
+      console.error(`  version: ${JSON.stringify(version)} (${versionInput.source})`);
+      console.error(`  title:   ${JSON.stringify(prTitle)} (${prTitleInput.source})`);
+      console.error(`  body:    ${prBody.length} chars (${prBodyInput.source})`);
+      console.error(`  number:  ${JSON.stringify(prNumber)} (${prNumberInput.source})`);
+      console.error(`  author:  ${JSON.stringify(prAuthor)} (${prAuthorInput.source})`);
+      console.error(`  cwd:     ${process.cwd()}`);
+      console.error(`  CHANGELOG.md exists: ${fs.existsSync(changelogPath)}`);
+      console.error(`  diagnostics so far: ${JSON.stringify(diagnostics)}`);
+    });
+
+    appendSummary([
+      '### Changelog step failed',
+      '',
+      `\`${error.message}\``,
+      '',
+      `Inputs: version \`${version}\`, PR #\`${prNumber}\` by \`${prAuthor}\`, body ${prBody.length} chars.`,
+      'Full state is in the "State at failure" group in the job log.'
+    ].join('\n'));
+
     process.exit(1);
   }
 }
