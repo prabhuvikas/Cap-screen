@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.0.3] - August 25, 2026
+
+### Changed
+- Improve changelog generation diagnostics and error reporting
+  - **Input diagnostics**: Added `describeInput()` function that logs input source, size, hash, and potential hazards (backticks, shell syntax, quotes) without dumping entire PR bodies into logs
+  - **Structured logging**: Implemented `group()`, `warn()`, and `annotateError()` functions that adapt output format based on whether running in GitHub Actions (using `::group::` and `::warning::` annotations) or locally
+  - **Job summary integration**: Added `appendSummary()` to write failures and generated entries to `GITHUB_STEP_SUMMARY`, making issues visible without opening the full job log
+  - **Entry validation**: New `validateEntry()` function sanity-checks the generated changelog entry for common corruption patterns (non-numeric PR number, author with spaces, missing content, wrong version)
+  - **Diagnostic tracking**: Accumulated diagnostics throughout parsing and generation (detected category, extraction path, parse counts, fallback strategy, insertion point) logged in a collapsed group
+
+_Merged PR #46 by @prabhuvikas_
+
+---
+
+
+
 ## [3.0.2] - August 24, 2026
 
 ### Fixed
