@@ -32,35 +32,25 @@ const includePatterns = [
   'README.md'
 ];
 
-// Files and directories to exclude
-const excludePatterns = [
-  '.git/',
-  '.github/',
-  'node_modules/',
-  '*.zip',
-  '.DS_Store',
-  'debug.log',
-  'diff.txt',
-  '*.md', // Exclude all markdown except the ones we explicitly include
-  'docs/',
-  'CHROME_WEBSTORE_REVIEW.md',
-  'CONTENT_SCRIPT_ERROR_FIXES.md',
-  'INSTALL.md',
-  'PR_BUG_FIXES.md',
-  'PUBLISHING_GUIDE.md',
-  'RELEASE_NOTES_*.md',
-  'SETUP_GITHUB_PAGES.md',
-  'STORAGE_QUOTA_FIXES.md',
-  'STORE_LISTING.md',
-  'news.md',
-  'CHANGELOG.md',
-  'promotional-tile.html'
-];
+// Anything not in includePatterns stays out. The previous approach - zip the
+// whole tree and subtract excludePatterns - silently shipped .git/, .github/,
+// tests/, package.json and the helper shell scripts, because `zip -x "dir/"`
+// does not match a directory's contents (zip wants "dir/*").
 
-// Build exclusion flags for zip command
-const excludeFlags = excludePatterns
-  .map(pattern => `-x "${pattern}"`)
-  .join(' ');
+// Entries that must never appear in a published extension, checked after the
+// zip is built so a mistake in includePatterns fails the build here rather
+// than reaching the Chrome Web Store.
+const forbiddenEntry = [
+  /^\.git\//,
+  /^\.github\//,
+  /^node_modules\//,
+  /^tests?\//,
+  /^docs\//,
+  /^(package|package-lock|jest\.config)\./,
+  /^\.gitignore$/,
+  /^CHANGELOG\.md$/,
+  /\.(sh|bat|ps1)$/
+];
 
 try {
   // Remove old zip if exists
@@ -69,11 +59,20 @@ try {
     console.log(`Removed old ${zipFileName}`);
   }
 
-  // Create zip using system zip command
-  // -r: recursive
-  // -q: quiet mode
-  // We include everything then exclude patterns
-  const zipCommand = `zip -r -q "${zipFileName}" . ${excludeFlags}`;
+  const missing = includePatterns.filter(
+    pattern => !fs.existsSync(pattern.replace(/\/$/, ''))
+  );
+  if (missing.length > 0) {
+    throw new Error(`Nothing to package for: ${missing.join(', ')}`);
+  }
+
+  // -r: recursive, -q: quiet. Only the include list goes in.
+  const inputs = includePatterns.map(pattern => `"${pattern}"`).join(' ');
+  // Dev files that live inside otherwise-shipping directories, e.g.
+  // assets/create-icons.sh.
+  const zipCommand =
+    `zip -r -q "${zipFileName}" ${inputs} ` +
+    '-x "*/.DS_Store" -x "*.sh" -x "*.bat" -x "*.ps1"';
 
   console.log('Creating ZIP file...');
   execSync(zipCommand, { stdio: 'inherit' });
@@ -83,6 +82,24 @@ try {
     throw new Error('ZIP file was not created');
   }
 
+  const entries = execSync(`unzip -Z1 "${zipFileName}"`, { encoding: 'utf8' })
+    .split('\n')
+    .filter(Boolean);
+
+  if (!entries.includes('manifest.json')) {
+    throw new Error('ZIP does not contain manifest.json');
+  }
+
+  const leaked = entries.filter(entry =>
+    forbiddenEntry.some(pattern => pattern.test(entry))
+  );
+  if (leaked.length > 0) {
+    throw new Error(
+      `ZIP contains ${leaked.length} file(s) that must not ship, ` +
+      `starting with: ${leaked.slice(0, 5).join(', ')}`
+    );
+  }
+
   const stats = fs.statSync(zipFileName);
   const fileSizeMB = (stats.size / (1024 * 1024)).toFixed(2);
 
@@ -90,9 +107,19 @@ try {
   console.log(`File: ${zipFileName}`);
   console.log(`Size: ${fileSizeMB} MB`);
 
-  // List contents for verification
+  console.log(`Entries: ${entries.length} (no dev, test or VCS files)`);
+
+  // Top-level breakdown, so the log shows the shape of the package without
+  // listing several hundred paths.
+  const byTop = entries.reduce((acc, entry) => {
+    const top = entry.includes('/') ? `${entry.split('/')[0]}/` : entry;
+    acc[top] = (acc[top] || 0) + 1;
+    return acc;
+  }, {});
   console.log('\nZIP Contents:');
-  execSync(`unzip -l "${zipFileName}" | head -20`, { stdio: 'inherit' });
+  Object.keys(byTop).sort().forEach(top => {
+    console.log(`  ${top}${byTop[top] > 1 ? ` (${byTop[top]} files)` : ''}`);
+  });
 
 } catch (error) {
   console.error('❌ Error building extension:', error.message);
