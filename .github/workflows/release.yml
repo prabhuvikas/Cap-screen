@@ -6,6 +6,13 @@ on:
     branches:
       - main
 
+# Releases mutate main (version bump + changelog) and claim a version number,
+# so only one may be in flight at a time. Queue rather than cancel: every merged
+# PR still gets its own release.
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 jobs:
   # =============================================================================
   # PRE-CHECK: Determine if release should run
@@ -152,9 +159,12 @@ jobs:
       zip_file: ${{ steps.build.outputs.zip_file }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
+          # main, not the run's trigger SHA. A queued release must bump from the
+          # version that is on main now, or two releases claim the same number.
+          ref: main
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -262,7 +272,10 @@ jobs:
 
   # =============================================================================
   # STAGE 3: DISTRIBUTE
-  # Upload to external services (Google Drive and Redmine)
+  # Announce the build on external services (Google Drive and Redmine).
+  # These are announcements, not the release itself: a Drive or Redmine outage
+  # must never stop the version bump, tag and GitHub release from happening, so
+  # every external call here is allowed to fail and is reported instead.
   # =============================================================================
   distribute:
     name: "Stage 3: Distribute"
@@ -271,6 +284,8 @@ jobs:
 
     outputs:
       drive_link: ${{ steps.upload_drive.outputs.drive_link }}
+      drive_status: ${{ steps.status.outputs.drive }}
+      news_status: ${{ steps.status.outputs.news }}
 
     steps:
       - name: Checkout code
@@ -281,57 +296,121 @@ jobs:
         with:
           name: release-artifacts
 
-      - name: Upload to Google Drive
-        id: upload_drive
+      - name: Check distribution secrets
+        id: secrets
         env:
           GOOGLE_DRIVE_CREDENTIALS: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
           GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-          DEBUG: 'true'
-        run: |
-          echo "=== Debug Info ==="
-          echo "Node: $(node --version), npm: $(npm --version)"
-          echo "Folder ID length: ${#GOOGLE_DRIVE_FOLDER_ID}"
-          echo "Credentials length: ${#GOOGLE_DRIVE_CREDENTIALS}"
-          echo "==================="
-          node .github/scripts/upload-to-drive.js \
-            "${{ needs.build.outputs.zip_file }}" \
-            "${{ needs.build.outputs.version }}"
-          DRIVE_LINK=$(cat drive-link.txt)
-          echo "drive_link=$DRIVE_LINK" >> $GITHUB_OUTPUT
-          echo "Google Drive link: $DRIVE_LINK"
-
-      - name: Create Redmine news
-        env:
           REDMINE_API_KEY: ${{ secrets.REDMINE_API_KEY }}
           REDMINE_SERVER_URL: ${{ secrets.REDMINE_SERVER_URL }}
           REDMINE_PROJECT_ID: ${{ secrets.REDMINE_PROJECT_ID }}
         run: |
-          node .github/scripts/create-redmine-news.js \
-            "${{ needs.build.outputs.version }}" \
-            "${{ steps.upload_drive.outputs.drive_link }}"
+          # The scripts exit 1 on missing configuration. Decide here instead, so
+          # an unconfigured service reads as "skipped" rather than "broken".
+          if [ -n "${GOOGLE_DRIVE_CREDENTIALS}" ] && [ -n "${GOOGLE_DRIVE_FOLDER_ID}" ]; then
+            echo "have_drive=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have_drive=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GOOGLE_DRIVE_CREDENTIALS/GOOGLE_DRIVE_FOLDER_ID not set - skipping Drive upload"
+          fi
+
+          if [ -n "${REDMINE_API_KEY}" ] && [ -n "${REDMINE_SERVER_URL}" ] && [ -n "${REDMINE_PROJECT_ID}" ]; then
+            echo "have_redmine=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have_redmine=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::REDMINE_* secrets not set - skipping Redmine news"
+          fi
+
+      - name: Upload to Google Drive
+        id: upload_drive
+        if: steps.secrets.outputs.have_drive == 'true'
+        continue-on-error: true
+        env:
+          GOOGLE_DRIVE_CREDENTIALS: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          DEBUG: 'true'
+          ZIP_FILE: ${{ needs.build.outputs.zip_file }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          echo "::group::Upload inputs"
+          echo "node: $(node --version), npm: $(npm --version)"
+          echo "zip: '${ZIP_FILE}' ($(stat -c %s "${ZIP_FILE}" 2>/dev/null || echo 'missing') bytes)"
+          echo "folder id: ${#GOOGLE_DRIVE_FOLDER_ID} chars, credentials: ${#GOOGLE_DRIVE_CREDENTIALS} chars"
+          echo "::endgroup::"
+
+          node .github/scripts/upload-to-drive.js "${ZIP_FILE}" "${VERSION}"
+
+          if [ -f drive-link.txt ]; then
+            DRIVE_LINK=$(cat drive-link.txt)
+            echo "drive_link=${DRIVE_LINK}" >> "$GITHUB_OUTPUT"
+            echo "Google Drive link: ${DRIVE_LINK}"
+          else
+            echo "::error::upload-to-drive.js exited 0 without writing drive-link.txt"
+            exit 1
+          fi
+
+      - name: Create Redmine news
+        id: create_news
+        if: steps.secrets.outputs.have_redmine == 'true'
+        continue-on-error: true
+        env:
+          REDMINE_API_KEY: ${{ secrets.REDMINE_API_KEY }}
+          REDMINE_SERVER_URL: ${{ secrets.REDMINE_SERVER_URL }}
+          REDMINE_PROJECT_ID: ${{ secrets.REDMINE_PROJECT_ID }}
+          VERSION: ${{ needs.build.outputs.version }}
+          DRIVE_LINK: ${{ steps.upload_drive.outputs.drive_link }}
+        run: |
+          node .github/scripts/create-redmine-news.js "${VERSION}" "${DRIVE_LINK}"
+
+      - name: Distribution status
+        id: status
+        if: always()
+        env:
+          DRIVE_OUTCOME: ${{ steps.upload_drive.outcome }}
+          NEWS_OUTCOME: ${{ steps.create_news.outcome }}
+        run: |
+          # outcome is '' when the step never ran under its own `if`.
+          echo "drive=${DRIVE_OUTCOME:-skipped}" >> "$GITHUB_OUTPUT"
+          echo "news=${NEWS_OUTCOME:-skipped}" >> "$GITHUB_OUTPUT"
+
+          if [ "${DRIVE_OUTCOME}" = "failure" ] || [ "${NEWS_OUTCOME}" = "failure" ]; then
+            echo "::warning::Distribution was degraded - the release itself still proceeds"
+          fi
 
       - name: Stage Summary
+        if: always()
+        env:
+          DRIVE_STATUS: ${{ steps.status.outputs.drive }}
+          NEWS_STATUS: ${{ steps.status.outputs.news }}
+          DRIVE_LINK: ${{ steps.upload_drive.outputs.drive_link }}
         run: |
-          echo "## Stage 3: Distribute" >> $GITHUB_STEP_SUMMARY
-          echo "- Google Drive: [${{ steps.upload_drive.outputs.drive_link }}](${{ steps.upload_drive.outputs.drive_link }})" >> $GITHUB_STEP_SUMMARY
-          echo "- Redmine news: Created" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Stage 3: Distribute"
+            echo "- Google Drive: \`${DRIVE_STATUS:-unknown}\`${DRIVE_LINK:+ - ${DRIVE_LINK}}"
+            echo "- Redmine news: \`${NEWS_STATUS:-unknown}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # =============================================================================
   # STAGE 4: PUBLISH
-  # Commit changes and create GitHub release
+  # Commit the version bump and changelog, tag, and create the GitHub release.
+  # Runs even when Stage 3 was degraded - only a failed build blocks it.
   # =============================================================================
   publish:
     name: "Stage 4: Publish"
     needs: [prepare, build, distribute]
+    if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
 
     permissions:
       contents: write
 
     steps:
-      - name: Checkout code
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
+          # Explicitly main, at its current tip, so the release commit lands on
+          # top of whatever is there now rather than on the run's trigger SHA.
+          ref: main
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -345,38 +424,112 @@ jobs:
         with:
           name: release-artifacts
 
+      - name: Check the release version
+        id: version
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          if [ -z "${VERSION}" ]; then
+            echo "::error::Stage 2 produced no version - nothing to publish"
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+            # A re-run of an already-published release, or a version collision.
+            # Either way, don't create a second tag for it.
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::tag v${VERSION} already exists - the release will be updated in place, not re-tagged"
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "Publishing v${VERSION}"
+
       - name: Commit version changes
+        id: commit
         env:
           VERSION: ${{ needs.build.outputs.version }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          if git diff --quiet -- manifest.json CHANGELOG.md; then
+            echo "::notice::manifest.json and CHANGELOG.md already match main - nothing to commit"
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           git add manifest.json CHANGELOG.md
           git commit -m "chore: release v${VERSION} [skip ci]" \
             -m "Auto-generated by release workflow" \
             -m "PR #${PR_NUMBER}: ${PR_TITLE}"
 
-          git push origin main --force-with-lease
+          # main can move while a release is in flight. Rebase onto it and retry
+          # instead of force-pushing over whatever landed there.
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "Pushed the release commit (attempt ${attempt})"
+              echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "::notice::push rejected on attempt ${attempt}; rebasing onto origin/main"
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "::error::The release commit conflicts with main (usually CHANGELOG.md vs a concurrent release). Resolve on main, then re-run this job."
+              exit 1
+            fi
+            sleep $(( attempt * 3 ))
+          done
+
+          echo "::error::Could not push the release commit after 5 attempts"
+          exit 1
+
+      - name: Compose release notes
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          DRIVE_STATUS: ${{ needs.distribute.outputs.drive_status }}
+          DRIVE_LINK: ${{ needs.distribute.outputs.drive_link }}
+          NEWS_STATUS: ${{ needs.distribute.outputs.news_status }}
+          REDMINE_SERVER_URL: ${{ secrets.REDMINE_SERVER_URL }}
+          REDMINE_PROJECT_ID: ${{ secrets.REDMINE_PROJECT_ID }}
+        run: |
+          # Written with printf from the environment, never interpolated into
+          # the shell, so backticks and quotes in the PR body stay literal.
+          {
+            printf '## Cred Issue Reporter v%s\n\n' "${VERSION}"
+            printf '### Changes\n%s\n\n' "${PR_TITLE}"
+            printf '%s\n\n' "${PR_BODY}"
+            printf '### Downloads\n'
+            printf -- '- Chrome Extension ZIP: attached to this release\n'
+            if [ "${DRIVE_STATUS}" = "success" ] && [ -n "${DRIVE_LINK}" ]; then
+              printf -- '- [Google Drive copy](%s)\n' "${DRIVE_LINK}"
+            else
+              printf -- '- Google Drive copy: _%s_\n' "${DRIVE_STATUS:-skipped}"
+            fi
+            if [ "${NEWS_STATUS}" = "success" ] && [ -n "${REDMINE_SERVER_URL}" ]; then
+              printf -- '- [Redmine announcement](%s/projects/%s/news)\n' "${REDMINE_SERVER_URL}" "${REDMINE_PROJECT_ID}"
+            else
+              printf -- '- Redmine announcement: _%s_\n' "${NEWS_STATUS:-skipped}"
+            fi
+            printf '\n---\nMerged PR #%s by @%s\n' "${PR_NUMBER}" "${PR_AUTHOR}"
+          } > release-notes.md
+
+          echo "::group::release-notes.md"
+          cat release-notes.md
+          echo "::endgroup::"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.build.outputs.version }}
+          target_commitish: ${{ steps.commit.outputs.sha }}
           name: "Release v${{ needs.build.outputs.version }}"
-          body: |
-            ## Cred Issue Reporter v${{ needs.build.outputs.version }}
-
-            ### Changes
-            ${{ github.event.pull_request.title }}
-
-            ${{ github.event.pull_request.body }}
-
-            ### Downloads
-            - [Chrome Extension ZIP](${{ needs.distribute.outputs.drive_link }})
-            - [View on Redmine](${{ secrets.REDMINE_SERVER_URL }}/projects/${{ secrets.REDMINE_PROJECT_ID }}/news)
-
-            ---
-            Merged PR #${{ github.event.pull_request.number }} by @${{ github.event.pull_request.user.login }}
+          body_path: release-notes.md
           files: |
             ${{ needs.build.outputs.zip_file }}
           draft: false
@@ -385,21 +538,28 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Final Summary
+        if: always()
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          VERSION_TYPE: ${{ needs.prepare.outputs.version_type }}
+          ZIP_FILE: ${{ needs.build.outputs.zip_file }}
+          DRIVE_STATUS: ${{ needs.distribute.outputs.drive_status }}
+          DRIVE_LINK: ${{ needs.distribute.outputs.drive_link }}
+          NEWS_STATUS: ${{ needs.distribute.outputs.news_status }}
+          RELEASE_SHA: ${{ steps.commit.outputs.sha }}
         run: |
-          echo "## Release Complete!" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** v${{ needs.build.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Type:** ${{ needs.prepare.outputs.version_type }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "- Extension ZIP: \`${{ needs.build.outputs.zip_file }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Google Drive: [${{ needs.distribute.outputs.drive_link }}](${{ needs.distribute.outputs.drive_link }})" >> $GITHUB_STEP_SUMMARY
-          echo "- GitHub Release: [v${{ needs.build.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/v${{ needs.build.outputs.version }})" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Updates" >> $GITHUB_STEP_SUMMARY
-          echo "- manifest.json version bumped" >> $GITHUB_STEP_SUMMARY
-          echo "- CHANGELOG.md updated" >> $GITHUB_STEP_SUMMARY
-          echo "- Extension built and uploaded to Google Drive" >> $GITHUB_STEP_SUMMARY
-          echo "- Redmine news created" >> $GITHUB_STEP_SUMMARY
-          echo "- GitHub release created" >> $GITHUB_STEP_SUMMARY
-          echo "- Changes committed to main branch" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Release v${VERSION}"
+            echo ""
+            echo "- Bump type: **${VERSION_TYPE}**"
+            echo "- Release commit: \`${RELEASE_SHA:-not pushed}\`"
+            echo "- Extension ZIP: \`${ZIP_FILE}\`"
+            echo "- GitHub release: [v${VERSION}](https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${VERSION})"
+            echo "- Google Drive: \`${DRIVE_STATUS:-unknown}\`${DRIVE_LINK:+ - ${DRIVE_LINK}}"
+            echo "- Redmine news: \`${NEWS_STATUS:-unknown}\`"
+            echo ""
+            if [ "${DRIVE_STATUS}" != "success" ] || [ "${NEWS_STATUS}" != "success" ]; then
+              echo "> Distribution was degraded. The version bump, tag and GitHub release are done;"
+              echo "> re-run **Stage 3: Distribute** once the external service is back."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
