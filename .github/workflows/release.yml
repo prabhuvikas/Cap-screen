@@ -46,6 +46,16 @@ jobs:
             echo "No 'skip-release' label found"
           fi
 
+          # Counterpart to skip-release: release even though the auto-skip rule
+          # below would have passed on this PR. For a pipeline or docs change
+          # that still needs to reach users as a release.
+          if echo "$LABELS" | grep -q "force-release"; then
+            echo "has_force_label=true" >> $GITHUB_OUTPUT
+            echo "Found 'force-release' label"
+          else
+            echo "has_force_label=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -67,15 +77,23 @@ jobs:
         id: decision
         run: |
           HAS_SKIP_LABEL="${{ steps.check_label.outputs.has_skip_label }}"
+          HAS_FORCE_LABEL="${{ steps.check_label.outputs.has_force_label }}"
           HAS_RELEASE_WORTHY_CHANGES="${{ steps.changed_files.outputs.release_worthy }}"
 
           echo "Skip label present: $HAS_SKIP_LABEL"
+          echo "Force label present: $HAS_FORCE_LABEL"
           echo "Has release-worthy changes: $HAS_RELEASE_WORTHY_CHANGES"
 
+          # skip-release wins over force-release, so an explicit "do not ship"
+          # is never overridden by the escape hatch.
           if [ "$HAS_SKIP_LABEL" = "true" ]; then
             echo "should_release=false" >> $GITHUB_OUTPUT
             echo "skip_reason=PR has 'skip-release' label" >> $GITHUB_OUTPUT
             echo "::notice::Skipping release: PR has 'skip-release' label"
+          elif [ "$HAS_FORCE_LABEL" = "true" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
+            echo "::notice::Proceeding with release: PR has 'force-release' label"
           elif [ "$HAS_RELEASE_WORTHY_CHANGES" = "false" ]; then
             echo "should_release=false" >> $GITHUB_OUTPUT
             echo "skip_reason=Only CI/docs files changed (.github/**, *.md, etc.)" >> $GITHUB_OUTPUT
@@ -100,6 +118,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Checks Performed" >> $GITHUB_STEP_SUMMARY
           echo "- Skip label present: \`${{ steps.check_label.outputs.has_skip_label }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Force label present: \`${{ steps.check_label.outputs.has_force_label }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Release-worthy changes: \`${{ steps.changed_files.outputs.release_worthy }}\`" >> $GITHUB_STEP_SUMMARY
 
   # =============================================================================
