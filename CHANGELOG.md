@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.0.4] - August 25, 2026
+
+### Changed
+- ci: make the release pipeline finish the publish cycle
+  - Five ways a merge could fail to produce a release, all of them in the
+  - pipeline rather than the code being released:
+  - 1. A Drive or Redmine outage killed the release. publish needed distribute,
+  - so an external announcement failing meant no version bump, no tag and no
+  - GitHub release - which is what runs 6 and 7 died of. Distribution is now
+
+_Merged PR #47 by @prabhuvikas_
+
+---
+
+
+
 ## [3.0.3] - August 25, 2026
 
 ### Changed
