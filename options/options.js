@@ -37,7 +37,8 @@ async function loadSettings() {
       aiEnabled: false,
       aiEndpoint: '',
       aiApiKey: '',
-      aiModel: ''
+      aiModel: '',
+      aiDuplicateCheck: false
     });
 
     // Populate form fields
@@ -47,6 +48,7 @@ async function loadSettings() {
     document.getElementById('aiEndpoint').value = settings.aiEndpoint;
     document.getElementById('aiApiKey').value = settings.aiApiKey;
     document.getElementById('aiModel').value = settings.aiModel;
+    document.getElementById('aiDuplicateCheck').checked = settings.aiDuplicateCheck;
     document.getElementById('includeNetworkRequests').checked = settings.includeNetworkRequests;
     document.getElementById('includeConsoleLogs').checked = settings.includeConsoleLogs;
     document.getElementById('includeLocalStorage').checked = settings.includeLocalStorage;
@@ -223,7 +225,8 @@ async function saveSettings() {
     aiEnabled: document.getElementById('aiEnabled').checked,
     aiEndpoint: document.getElementById('aiEndpoint').value.trim(),
     aiApiKey: document.getElementById('aiApiKey').value.trim(),
-    aiModel: document.getElementById('aiModel').value.trim()
+    aiModel: document.getElementById('aiModel').value.trim(),
+    aiDuplicateCheck: document.getElementById('aiDuplicateCheck').checked
   };
 
   try {
@@ -273,7 +276,8 @@ async function resetSettings() {
     aiEnabled: false,
     aiEndpoint: '',
     aiApiKey: '',
-    aiModel: ''
+    aiModel: '',
+    aiDuplicateCheck: false
   };
 
   try {

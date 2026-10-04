@@ -461,6 +461,14 @@
           <div class="tab-content">
             <!-- Issue Details Tab -->
             <div id="formDataTab" class="tab-pane active">
+              <!-- Possible duplicates (filled in by runDuplicateCheck) -->
+              <div id="duplicateCheckSection" class="duplicate-check hidden" aria-live="polite">
+                <div class="duplicate-check-header">
+                  <span class="duplicate-check-title">Possible duplicates</span>
+                  <span id="duplicateCheckStatus" class="duplicate-check-status"></span>
+                </div>
+                <ul id="duplicateCheckList" class="duplicate-check-list"></ul>
+              </div>
               <div class="review-section">
                 <p class="review-description" style="margin-bottom: 16px; color: #4CAF50;">✏️ You can edit any field below before submitting</p>
                 <div class="review-item">
@@ -691,6 +699,7 @@
   <script src="../lib/utils.js"></script>
   <script src="../lib/redmine-api.js"></script>
   <script src="../lib/ai-api.js"></script>
+  <script src="../lib/duplicate-check.js"></script>
   <script src="../lib/video-storage.js"></script>
   <script src="../lib/draft-storage.js"></script>
   <script src="../lib/screenshot-storage.js"></script>
