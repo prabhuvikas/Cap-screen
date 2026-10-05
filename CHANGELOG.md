@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.0.5] - October 5, 2026
+
+### Added
+- feat: check for duplicate issues in the review window before submit
+  - Candidates come from Redmine (recent open issues plus title-keyword
+  - With the new "Use AI to check for duplicate issues on submit" setting
+  - The check runs in the background and never blocks or changes
+
+_Merged PR #48 by @prabhuvikas_
+
+---
+
+
+
 ## [3.0.4] - August 25, 2026
 
 ### Changed
