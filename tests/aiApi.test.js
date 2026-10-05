@@ -254,6 +254,82 @@ describe('AIAssistant', () => {
     });
   });
 
+  describe('findDuplicates', () => {
+    const candidates = [
+      { id: 101, subject: 'Checkout total wrong with coupon', description: 'Total ignores coupon', status: { name: 'New' } },
+      { id: 102, subject: 'Login button misaligned', description: 'CSS issue' },
+      { id: 103, subject: 'Coupon not applied at checkout', description: '' }
+    ];
+    const report = { subject: 'Coupon discount missing from checkout total', description: 'desc', url: 'https://shop.test/checkout' };
+
+    test('returns no matches without calling the AI when there are no candidates', async () => {
+      global.fetch = jest.fn();
+      const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k' });
+      await expect(ai.findDuplicates(report, [])).resolves.toEqual([]);
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    test('sends the report and candidates, and returns sorted matches above the threshold', async () => {
+      global.fetch = jest.fn(() =>
+        mockChatResponse(
+          JSON.stringify({
+            duplicates: [
+              { id: 103, confidence: 0.6, reason: 'Same coupon bug' },
+              { id: '#101', confidence: 0.9, reason: 'Same symptom on checkout' },
+              { id: 102, confidence: 0.2, reason: 'Unrelated' }
+            ]
+          })
+        )
+      );
+      const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k' });
+      const result = await ai.findDuplicates(report, candidates);
+
+      expect(result).toEqual([
+        { id: 101, confidence: 0.9, reason: 'Same symptom on checkout' },
+        { id: 103, confidence: 0.6, reason: 'Same coupon bug' }
+      ]);
+
+      const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+      const userMessage = body.messages[1].content;
+      expect(userMessage).toContain('Coupon discount missing from checkout total');
+      expect(userMessage).toContain('#101 [New]: Checkout total wrong with coupon');
+      expect(userMessage).toContain('#102: Login button misaligned');
+      expect(body.temperature).toBe(0);
+    });
+
+    test('ignores ids that were not in the candidate list and duplicate entries', async () => {
+      global.fetch = jest.fn(() =>
+        mockChatResponse(
+          JSON.stringify({
+            duplicates: [
+              { id: 999, confidence: 0.99, reason: 'Invented' },
+              { id: 101, confidence: 0.8, reason: 'first' },
+              { id: 101, confidence: 0.7, reason: 'second' }
+            ]
+          })
+        )
+      );
+      const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k' });
+      const result = await ai.findDuplicates(report, candidates);
+      expect(result).toEqual([{ id: 101, confidence: 0.8, reason: 'first' }]);
+    });
+
+    test('respects a custom minimum confidence', async () => {
+      global.fetch = jest.fn(() =>
+        mockChatResponse('{"duplicates":[{"id":102,"confidence":0.35,"reason":"maybe"}]}')
+      );
+      const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k' });
+      const result = await ai.findDuplicates(report, candidates, { minConfidence: 0.3 });
+      expect(result.map((m) => m.id)).toEqual([102]);
+    });
+
+    test('throws when the reply has no duplicates list', async () => {
+      global.fetch = jest.fn(() => mockChatResponse('I think #101 matches.'));
+      const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k' });
+      await expect(ai.findDuplicates(report, candidates)).rejects.toThrow(/parse/i);
+    });
+  });
+
   describe('testConnection', () => {
     test('returns success with the trimmed reply', async () => {
       global.fetch = jest.fn(() => mockChatResponse('  OK  '));

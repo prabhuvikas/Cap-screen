@@ -2448,3 +2448,89 @@ main {
 .annotation-toolbar-bottom.hidden-for-vertical {
   display: none;
 }
+
+/* Possible duplicates (review modal) */
+.duplicate-check {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+}
+
+.duplicate-check.has-matches {
+  background: #fff8e1;
+  border-color: #ffe08a;
+}
+
+.duplicate-check-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.duplicate-check-title {
+  font-weight: 600;
+  color: #333;
+}
+
+.duplicate-check-status {
+  font-size: 13px;
+  color: #666;
+}
+
+.duplicate-check-status.success {
+  color: #155724;
+}
+
+.duplicate-check-status.warning {
+  color: #8a6d00;
+}
+
+.duplicate-check-status.error {
+  color: #721c24;
+}
+
+.duplicate-check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.duplicate-check-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.duplicate-check-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.duplicate-check-info a {
+  font-weight: 600;
+  color: #1a73e8;
+  text-decoration: none;
+  word-break: break-word;
+}
+
+.duplicate-check-info a:hover {
+  text-decoration: underline;
+}
+
+.duplicate-check-meta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #666;
+}
+
+.duplicate-check-item .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}

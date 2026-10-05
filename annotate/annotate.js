@@ -359,7 +359,8 @@ async function loadSettings() {
     aiEnabled: false,
     aiEndpoint: '',
     aiApiKey: '',
-    aiModel: ''
+    aiModel: '',
+    aiDuplicateCheck: false
   });
 }
 
@@ -1778,6 +1779,9 @@ async function submitBugReport(e) {
     // Show review modal
     const modal = document.getElementById('reviewModal');
     modal.classList.remove('hidden');
+
+    // Look for existing issues that match, without holding up the modal.
+    runDuplicateCheck();
   } catch (error) {
     console.error('[Annotate] Error showing review modal:', error);
     alert('Error showing review modal: ' + error.message);
@@ -3857,6 +3861,240 @@ function clearIssueSelection() {
 }
 
 // ========== End of Issue Mode Functions ==========
+
+// ========== Duplicate Check (review modal) ==========
+
+// Results per report (DuplicateCheck.cacheKey), so reopening the review modal
+// for an unchanged report doesn't query Redmine or the AI again.
+const duplicateCheckCache = new Map();
+let duplicateCheckRunId = 0;
+
+// Minimum keyword score to show a match when the AI isn't ranking them:
+// roughly one shared title word plus one more shared word or the same page.
+const DUPLICATE_KEYWORD_MIN_SCORE = 3;
+const DUPLICATE_MAX_SHOWN = 5;
+
+function isAIDuplicateCheckEnabled() {
+  return !!(settings.aiDuplicateCheck && settings.aiEnabled && settings.aiEndpoint && settings.aiApiKey);
+}
+
+// Find open issues in the selected project that look like this report and list
+// them in the review modal. Never blocks or alters submission.
+async function runDuplicateCheck() {
+  const section = document.getElementById('duplicateCheckSection');
+  if (!section) return;
+
+  const runId = ++duplicateCheckRunId;
+
+  const subject = document.getElementById('subject').value.trim();
+  const description = [
+    document.getElementById('description').value,
+    document.getElementById('actualBehavior').value
+  ].filter(Boolean).join('\n').trim();
+
+  if (currentIssueMode !== 'create' || !redmineAPI || (!subject && !description)) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  const report = {
+    projectId: document.getElementById('project').value,
+    subject,
+    description,
+    url: pageInfo.url || '',
+    useAI: isAIDuplicateCheckEnabled()
+  };
+  const key = DuplicateCheck.cacheKey(report);
+
+  section.classList.remove('hidden');
+
+  if (duplicateCheckCache.has(key)) {
+    renderDuplicateResults(duplicateCheckCache.get(key));
+    return;
+  }
+
+  renderDuplicateStatus(report.useAI ? 'Checking with AI…' : 'Checking…');
+  document.getElementById('duplicateCheckList').innerHTML = '';
+
+  let result;
+  try {
+    result = await findDuplicateIssues(report);
+    duplicateCheckCache.set(key, result);
+  } catch (error) {
+    console.error('[Annotate] Duplicate check failed:', error);
+    result = { matches: [], error: `Couldn't check for duplicates: ${error.message}` };
+  }
+
+  // Drop the result if a newer check started, or the modal was closed or
+  // switched to update mode while we were waiting.
+  const modalOpen = !document.getElementById('reviewModal').classList.contains('hidden');
+  if (runId !== duplicateCheckRunId || !modalOpen || currentIssueMode !== 'create') return;
+
+  renderDuplicateResults(result);
+}
+
+// Gather candidates from Redmine, score them by keywords, and (if enabled) let
+// the AI pick the real duplicates. Returns { matches, usedAI, note }.
+async function findDuplicateIssues(report) {
+  const baseFilters = { status_id: 'open' };
+  if (report.projectId) baseFilters.project_id = report.projectId;
+
+  // Recent open issues, plus title searches for the leading title keywords so
+  // older matching issues are found too.
+  const titleKeywords = DuplicateCheck.extractKeywords(report.subject, '', 2);
+  const requests = [
+    redmineAPI.getIssues({ ...baseFilters, limit: 100, sort: 'updated_on:desc' }),
+    ...titleKeywords.map((word) => redmineAPI.getIssues({ ...baseFilters, subject: word, limit: 25 }))
+  ];
+  const responses = await Promise.allSettled(requests);
+  const fulfilled = responses.filter((r) => r.status === 'fulfilled');
+  if (fulfilled.length === 0) {
+    throw responses[0].reason || new Error('Redmine request failed');
+  }
+
+  const candidates = DuplicateCheck.mergeIssues(...fulfilled.map((r) => r.value.issues));
+  const scored = DuplicateCheck.scoreCandidates(report, candidates, 20);
+  if (scored.length === 0) return { matches: [], usedAI: false };
+
+  const keywordMatches = () =>
+    scored
+      .filter((entry) => entry.score >= DUPLICATE_KEYWORD_MIN_SCORE)
+      .slice(0, DUPLICATE_MAX_SHOWN)
+      .map((entry) => ({
+        issue: entry.issue,
+        reason: entry.matched.length ? `Shared keywords: ${entry.matched.slice(0, 5).join(', ')}` : 'Same page',
+        confidence: null
+      }));
+
+  if (!report.useAI) return { matches: keywordMatches(), usedAI: false };
+
+  try {
+    const ai = new AIAssistant({
+      endpoint: settings.aiEndpoint,
+      apiKey: settings.aiApiKey,
+      model: settings.aiModel
+    });
+    const ranked = await ai.findDuplicates(
+      { subject: report.subject, description: report.description, url: report.url },
+      scored.map((entry) => entry.issue)
+    );
+    const byId = new Map(scored.map((entry) => [Number(entry.issue.id), entry.issue]));
+    return {
+      matches: ranked.slice(0, DUPLICATE_MAX_SHOWN).map((m) => ({
+        issue: byId.get(m.id),
+        reason: m.reason,
+        confidence: m.confidence
+      })),
+      usedAI: true
+    };
+  } catch (error) {
+    console.error('[Annotate] AI duplicate check failed, using keyword matches:', error);
+    return {
+      matches: keywordMatches(),
+      usedAI: false,
+      note: 'AI check failed, showing keyword matches.'
+    };
+  }
+}
+
+function renderDuplicateStatus(text, type = '') {
+  const status = document.getElementById('duplicateCheckStatus');
+  status.textContent = text;
+  status.className = `duplicate-check-status${type ? ` ${type}` : ''}`;
+}
+
+function renderDuplicateResults(result) {
+  const section = document.getElementById('duplicateCheckSection');
+  const list = document.getElementById('duplicateCheckList');
+  list.innerHTML = '';
+
+  const matches = (result.matches || []).filter((m) => m.issue);
+  section.classList.toggle('has-matches', matches.length > 0);
+
+  if (result.error) {
+    renderDuplicateStatus(result.error, 'error');
+    return;
+  }
+
+  if (matches.length === 0) {
+    renderDuplicateStatus(result.note || 'No similar open issues found.', result.note ? 'warning' : 'success');
+    return;
+  }
+
+  const summary = `${matches.length} similar open issue${matches.length === 1 ? '' : 's'} found${result.usedAI ? ' (ranked by AI)' : ''}.`;
+  renderDuplicateStatus(result.note ? `${summary} ${result.note}` : summary, 'warning');
+
+  // Built with textContent: issue text comes from Redmine and the AI.
+  matches.forEach(({ issue, reason, confidence }) => {
+    const item = document.createElement('li');
+    item.className = 'duplicate-check-item';
+
+    const info = document.createElement('div');
+    info.className = 'duplicate-check-info';
+
+    const link = document.createElement('a');
+    link.href = `${settings.redmineUrl}/issues/${issue.id}`;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = `#${issue.id}: ${issue.subject || ''}`;
+    info.appendChild(link);
+
+    const meta = document.createElement('div');
+    meta.className = 'duplicate-check-meta';
+    const metaParts = [];
+    if (confidence != null) metaParts.push(`${Math.round(confidence * 100)}% match`);
+    if (issue.status?.name) metaParts.push(issue.status.name);
+    if (issue.assigned_to?.name) metaParts.push(`Assigned to ${issue.assigned_to.name}`);
+    if (reason) metaParts.push(reason);
+    meta.textContent = metaParts.join(' · ');
+    info.appendChild(meta);
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-secondary btn-small';
+    button.textContent = `Add to #${issue.id} instead`;
+    button.addEventListener('click', () => addReportToExistingIssue(issue.id, button));
+
+    item.appendChild(info);
+    item.appendChild(button);
+    list.appendChild(item);
+  });
+}
+
+// Switch to update mode for the chosen issue, carry the report over as the
+// note (attachments come along as they do for any update), and re-open the
+// review so the reporter confirms before anything is sent.
+async function addReportToExistingIssue(issueId, button) {
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Loading…';
+
+  try {
+    const issue = await redmineAPI.getIssue(issueId, ['attachments']);
+
+    const subject = document.getElementById('subject').value.trim();
+    const note = `${subject ? `**${subject}**\n\n` : ''}${buildDescription()}`;
+
+    document.getElementById('issueModeUpdate').checked = true;
+    onIssueModeChange({ target: { value: 'update' } });
+    displaySelectedIssue(issue);
+
+    const noteField = document.getElementById('noteText');
+    if (!noteField.value.trim()) noteField.value = note;
+
+    document.getElementById('duplicateCheckSection').classList.add('hidden');
+    await populateReviewModal();
+    switchTab('formData');
+  } catch (error) {
+    console.error('[Annotate] Error switching to existing issue:', error);
+    renderDuplicateStatus(`Couldn't load issue #${issueId}: ${error.message}`, 'error');
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+// ========== End of Duplicate Check ==========
+
 
 // Close review modal
 function closeReviewModal() {

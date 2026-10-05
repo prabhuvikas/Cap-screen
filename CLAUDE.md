@@ -59,7 +59,8 @@ Extension settings/preferences page accessible via Chrome settings. Handles:
 ### `lib/` - Shared Libraries
 Reusable modules used across multiple parts of the extension:
 - `redmine-api.js` - Redmine API client (projects, issues, uploads, users)
-- `ai-api.js` - AI assistant client (OpenAI-compatible Chat Completions) for generating bug reports
+- `ai-api.js` - AI assistant client (OpenAI-compatible Chat Completions) for generating bug reports and ranking duplicate issues
+- `duplicate-check.js` - Keyword scoring used to find possible duplicate issues before submit
 - `utils.js` - Common utility functions
 - `video-storage.js` - Video data storage management
 - **When to modify**: Changing API integrations or adding shared utilities

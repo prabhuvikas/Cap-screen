@@ -89,6 +89,19 @@
           </label>
         </div>
 
+        <div class="form-group checkbox-group">
+          <label>
+            <input type="checkbox" id="aiDuplicateCheck">
+            <span>Use AI to check for duplicate issues on submit</span>
+          </label>
+          <small>
+            When you submit a new issue, the titles and descriptions of up to 20
+            similar open issues from your Redmine project are sent to the AI
+            provider along with your report, to rank likely duplicates. When off,
+            duplicates are found by keyword matching only and nothing is sent to the AI.
+          </small>
+        </div>
+
         <div class="form-group">
           <label for="aiEndpoint">AI API Endpoint</label>
           <input
