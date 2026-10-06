@@ -2400,7 +2400,10 @@ async function confirmAIConsentAndSend() {
     // it is applied to the main form.
     showAIPreviewModal(report, document.getElementById('tracker'));
 
-    showStatus('aiAssistStatus', 'AI draft ready. Review it in the preview window.', 'success');
+    const readyMessage = report.textGenerated === false
+      ? 'Tracker suggested by the decision model. Text fields keep your own wording, since this model does not write text.'
+      : 'AI draft ready. Review it in the preview window.';
+    showStatus('aiAssistStatus', readyMessage, 'success');
   } catch (error) {
     console.error('[Annotate] AI generation failed:', error);
     showStatus('aiAssistStatus', `AI generation failed: ${error.message}`, 'error');
