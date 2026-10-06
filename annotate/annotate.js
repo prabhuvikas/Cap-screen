@@ -501,6 +501,24 @@ function setupEventListeners() {
       }
     }
 
+    // Ctrl/Cmd + Z for undo, Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y for redo
+    // (only while the annotation canvas is visible)
+    const annotateSection = document.getElementById('annotateSection');
+    const isAnnotating = annotateSection && !annotateSection.classList.contains('hidden');
+    if (isAnnotating && (e.ctrlKey || e.metaKey) && !e.altKey) {
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        annotator.undo();
+        return;
+      }
+      if ((key === 'z' && e.shiftKey) || (key === 'y' && !e.shiftKey)) {
+        e.preventDefault();
+        annotator.redo();
+        return;
+      }
+    }
+
     // Ctrl/Cmd + Plus/Equals for zoom in
     if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '=')) {
       e.preventDefault();
