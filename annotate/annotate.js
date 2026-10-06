@@ -445,19 +445,7 @@ function setupEventListeners() {
   const cancelCropTop = document.getElementById('cancelCropTop');
 
   if (applyCropTop) {
-    applyCropTop.addEventListener('click', async () => {
-      if (annotator) {
-        const success = await annotator.applyCrop();
-        if (success) {
-          // Update the current screenshot data with cropped image
-          const currentScreenshot = screenshots.find(s => s.id === currentScreenshotId);
-          if (currentScreenshot) {
-            currentScreenshot.data = annotator.imageDataUrl;
-            await chrome.storage.session.set({ screenshots: screenshots });
-          }
-        }
-      }
-    });
+    applyCropTop.addEventListener('click', applyCropAndSave);
   }
 
   if (cancelCropTop) {
@@ -470,6 +458,17 @@ function setupEventListeners() {
     continueFooterBtn.addEventListener('click', continueToReport);
   }
 
+  // Keyboard shortcuts help overlay
+  const shortcutsModal = document.getElementById('shortcutsModal');
+  if (shortcutsModal) {
+    document.getElementById('closeShortcutsModal').addEventListener('click', () => toggleShortcutsModal(false));
+    document.getElementById('shortcutsOverlay').addEventListener('click', () => toggleShortcutsModal(false));
+  }
+  const shortcutsBtn = document.getElementById('shortcutsBtn');
+  if (shortcutsBtn) {
+    shortcutsBtn.addEventListener('click', () => toggleShortcutsModal(true));
+  }
+
   // Keyboard shortcuts for tools and zoom
   document.addEventListener('keydown', (e) => {
     if (!annotator) return;
@@ -477,6 +476,75 @@ function setupEventListeners() {
     // Skip if user is typing in an input or textarea
     const activeElement = document.activeElement;
     if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable)) {
+      return;
+    }
+
+    const annotateSectionEl = document.getElementById('annotateSection');
+    if (!annotateSectionEl || annotateSectionEl.classList.contains('hidden')) return;
+
+    // While the shortcuts overlay is open, only Esc / ? (to close it) are handled
+    if (isShortcutsModalOpen()) {
+      if (e.key === 'Escape' || e.key === '?') {
+        e.preventDefault();
+        toggleShortcutsModal(false);
+      }
+      return;
+    }
+
+    // ? opens the shortcuts overlay
+    if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      toggleShortcutsModal(true);
+      return;
+    }
+
+    // Previous / next media item: Page Up/Down or Alt + Left/Right
+    const prevMedia = e.key === 'PageUp' || (e.altKey && e.key === 'ArrowLeft');
+    const nextMedia = e.key === 'PageDown' || (e.altKey && e.key === 'ArrowRight');
+    if ((prevMedia || nextMedia) && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      switchScreenshotBy(prevMedia ? -1 : 1);
+      return;
+    }
+
+    // Remaining shortcuts act on the canvas, which is hidden while a video is shown
+    const canvasEl = document.getElementById('annotationCanvas');
+    if (!canvasEl || canvasEl.style.display === 'none') return;
+
+    // Crop: Enter applies, Esc cancels
+    if (annotator.cropActive && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        applyCropAndSave();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        annotator.cancelCrop();
+        return;
+      }
+    }
+
+    // Esc deselects the selected annotation
+    if (e.key === 'Escape' && annotator.clearSelection()) {
+      e.preventDefault();
+      return;
+    }
+
+    // Arrow keys nudge the selected annotation (Shift = 10px)
+    const nudgeKeys = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    if (nudgeKeys[e.key] && annotator.selectedAnnotation && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      const step = e.shiftKey ? 10 : 1;
+      const [dx, dy] = nudgeKeys[e.key];
+      annotator.nudgeSelectedAnnotation(dx * step, dy * step);
+      return;
+    }
+
+    // [ / ] decrease / increase line width
+    if ((e.key === '[' || e.key === ']') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      stepLineWidth(e.key === ']' ? 1 : -1);
       return;
     }
 
@@ -502,10 +570,7 @@ function setupEventListeners() {
     }
 
     // Ctrl/Cmd + Z for undo, Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y for redo
-    // (only while the annotation canvas is visible)
-    const annotateSection = document.getElementById('annotateSection');
-    const isAnnotating = annotateSection && !annotateSection.classList.contains('hidden');
-    if (isAnnotating && (e.ctrlKey || e.metaKey) && !e.altKey) {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
       const key = e.key.toLowerCase();
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -664,6 +729,48 @@ function showVideoPlayer(videoData) {
       Your browser does not support the video tag.
     </video>
   `;
+}
+
+// Apply the active crop selection and persist the cropped image
+async function applyCropAndSave() {
+  if (!annotator) return;
+  const success = await annotator.applyCrop();
+  if (success) {
+    // Update the current screenshot data with cropped image
+    const currentScreenshot = screenshots.find(s => s.id === currentScreenshotId);
+    if (currentScreenshot) {
+      currentScreenshot.data = annotator.imageDataUrl;
+      await chrome.storage.session.set({ screenshots: screenshots });
+    }
+  }
+}
+
+// Step the line width selector up (+1) or down (-1) one option
+function stepLineWidth(direction) {
+  const select = document.getElementById('lineWidthTop');
+  if (!select) return;
+  const newIndex = select.selectedIndex + direction;
+  if (newIndex < 0 || newIndex >= select.options.length) return;
+  select.selectedIndex = newIndex;
+  select.dispatchEvent(new Event('change'));
+}
+
+// Switch to the previous (-1) or next (+1) media item, wrapping around
+function switchScreenshotBy(offset) {
+  if (screenshots.length < 2) return;
+  const index = screenshots.findIndex(s => s.id === currentScreenshotId);
+  const nextIndex = (index + offset + screenshots.length) % screenshots.length;
+  switchScreenshot(screenshots[nextIndex].id);
+}
+
+function isShortcutsModalOpen() {
+  const modal = document.getElementById('shortcutsModal');
+  return !!modal && !modal.classList.contains('hidden');
+}
+
+function toggleShortcutsModal(show) {
+  const modal = document.getElementById('shortcutsModal');
+  if (modal) modal.classList.toggle('hidden', !show);
 }
 
 // Show annotation canvas

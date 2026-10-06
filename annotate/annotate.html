@@ -58,7 +58,7 @@
           </div>
           <div class="options-group">
             <label for="lineWidthTop">Width</label>
-            <select id="lineWidthTop" class="width-selector">
+            <select id="lineWidthTop" class="width-selector" title="Line width ([ / ])">
               <option value="1">1px</option>
               <option value="2">2px</option>
               <option value="3" selected>3px</option>
@@ -76,8 +76,8 @@
           <button id="clearAnnotationsTop" class="options-btn options-btn-danger" title="Clear All">🗑️ Clear</button>
           <div id="cropControlsTop" style="display: none;">
             <div class="options-divider" style="display: inline-block; vertical-align: middle;"></div>
-            <button id="applyCropTop" class="options-btn options-btn-primary">✓ Apply</button>
-            <button id="cancelCropTop" class="options-btn">✕ Cancel</button>
+            <button id="applyCropTop" class="options-btn options-btn-primary" title="Apply crop (Enter)">✓ Apply</button>
+            <button id="cancelCropTop" class="options-btn" title="Cancel crop (Esc)">✕ Cancel</button>
           </div>
           <div class="options-divider"></div>
           <!-- Zoom Controls -->
@@ -87,6 +87,8 @@
             <button id="zoomInBtn" class="options-btn" title="Zoom In (Ctrl++)">+</button>
             <button id="zoomResetBtn" class="options-btn" title="Reset Zoom (Ctrl+0)">⟲</button>
           </div>
+          <div class="options-divider"></div>
+          <button id="shortcutsBtn" class="options-btn" title="Keyboard shortcuts (?)">⌨ Shortcuts</button>
         </div>
 
         <div class="content-wrapper">
@@ -162,6 +164,7 @@
             <span class="hint"><kbd>X</kbd>=Redact</span>
             <span class="hint"><kbd>V</kbd>=Move</span>
             <span class="hint"><kbd>K</kbd>=Crop</span>
+            <span class="hint"><kbd>?</kbd>=All shortcuts</span>
           </div>
           <div class="footer-actions">
             <button id="continueToReportFooter" class="btn btn-primary">Continue →</button>
@@ -580,6 +583,40 @@
       <div class="modal-footer">
         <button id="cancelAiConsent" class="btn btn-secondary">Cancel</button>
         <button id="confirmAiConsent" class="btn btn-primary">Agree &amp; Send to AI</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcuts Modal -->
+  <div id="shortcutsModal" class="modal hidden">
+    <div class="modal-overlay" id="shortcutsOverlay"></div>
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Keyboard Shortcuts</h2>
+        <button id="closeShortcutsModal" class="icon-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <table class="shortcuts-list">
+          <tr><th colspan="2">Tools</th></tr>
+          <tr><td><kbd>A</kbd> <kbd>R</kbd> <kbd>C</kbd> <kbd>P</kbd></td><td>Arrow, Rectangle, Circle, Pen</td></tr>
+          <tr><td><kbd>T</kbd> <kbd>X</kbd> <kbd>V</kbd> <kbd>K</kbd></td><td>Text, Redact, Move, Crop</td></tr>
+          <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Thinner / thicker line</td></tr>
+          <tr><th colspan="2">Editing</th></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td><td>Undo</td></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>Y</kbd> / <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></td><td>Redo</td></tr>
+          <tr><td><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd></td><td>Nudge selected annotation 1px (<kbd>Shift</kbd> for 10px)</td></tr>
+          <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Delete selected annotation</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Deselect annotation</td></tr>
+          <tr><th colspan="2">Crop</th></tr>
+          <tr><td><kbd>Enter</kbd></td><td>Apply crop</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Cancel crop</td></tr>
+          <tr><th colspan="2">View</th></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd></td><td>Zoom in / out / reset</td></tr>
+          <tr><td><kbd>Page Up</kbd> / <kbd>Page Down</kbd></td><td>Previous / next screenshot</td></tr>
+          <tr><td><kbd>Alt</kbd> + <kbd>←</kbd> / <kbd>→</kbd></td><td>Previous / next screenshot</td></tr>
+          <tr><td><kbd>?</kbd></td><td>Show this list</td></tr>
+        </table>
+        <p class="shortcuts-note">On Mac, use <kbd>Cmd</kbd> in place of <kbd>Ctrl</kbd>.</p>
       </div>
     </div>
   </div>

@@ -826,4 +826,94 @@ describe('Annotator', () => {
       expect(annotator.historyStep).toBe(stepBeforeRedo);
     });
   });
+  describe('nudgeSelectedAnnotation()', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    test('should return false when nothing is selected', () => {
+      expect(annotator.nudgeSelectedAnnotation(1, 0)).toBe(false);
+    });
+
+    test('should move shape start and end points', () => {
+      const shape = { type: 'rectangle', x: 10, y: 20, endX: 50, endY: 60 };
+      annotator.annotations.push(shape);
+      annotator.selectedAnnotation = shape;
+
+      annotator.nudgeSelectedAnnotation(10, -5);
+
+      expect(shape).toMatchObject({ x: 20, y: 15, endX: 60, endY: 55 });
+    });
+
+    test('should move text position only', () => {
+      const text = { type: 'text', x: 10, y: 20, text: 'hi' };
+      annotator.annotations.push(text);
+      annotator.selectedAnnotation = text;
+
+      annotator.nudgeSelectedAnnotation(-1, 1);
+
+      expect(text.x).toBe(9);
+      expect(text.y).toBe(21);
+      expect(text.endX).toBeUndefined();
+    });
+
+    test('should move every point of a pen stroke', () => {
+      const pen = { type: 'pen', points: [{ x: 0, y: 0 }, { x: 5, y: 5 }] };
+      annotator.annotations.push(pen);
+      annotator.selectedAnnotation = pen;
+
+      annotator.nudgeSelectedAnnotation(1, 2);
+
+      expect(pen.points).toEqual([{ x: 1, y: 2 }, { x: 6, y: 7 }]);
+    });
+
+    test('should save a single history entry after a burst of nudges', () => {
+      const shape = { type: 'arrow', x: 0, y: 0, endX: 10, endY: 10 };
+      annotator.annotations.push(shape);
+      annotator.selectedAnnotation = shape;
+      const historyLength = annotator.history.length;
+
+      annotator.nudgeSelectedAnnotation(1, 0);
+      annotator.nudgeSelectedAnnotation(1, 0);
+      annotator.nudgeSelectedAnnotation(1, 0);
+      expect(annotator.history.length).toBe(historyLength);
+
+      jest.runAllTimers();
+      expect(annotator.history.length).toBe(historyLength + 1);
+      expect(annotator.history[annotator.historyStep].annotations[0].x).toBe(3);
+    });
+
+    test('undo should commit a pending nudge before stepping back', () => {
+      const shape = { type: 'rectangle', x: 0, y: 0, endX: 10, endY: 10 };
+      annotator.annotations.push(shape);
+      annotator.saveState();
+      annotator.selectedAnnotation = shape;
+      const stepBefore = annotator.historyStep;
+
+      annotator.nudgeSelectedAnnotation(5, 0);
+      annotator.undo();
+
+      // Nudge was committed (+1) and then undone (-1)
+      expect(annotator.historyStep).toBe(stepBefore);
+      expect(annotator.history.length).toBe(stepBefore + 2);
+      jest.runAllTimers();
+      expect(annotator.history.length).toBe(stepBefore + 2);
+    });
+  });
+
+  describe('clearSelection()', () => {
+    test('should clear the selected annotation', () => {
+      annotator.selectedAnnotation = { type: 'text', x: 0, y: 0 };
+      expect(annotator.clearSelection()).toBe(true);
+      expect(annotator.selectedAnnotation).toBeNull();
+    });
+
+    test('should return false when nothing is selected', () => {
+      expect(annotator.clearSelection()).toBe(false);
+    });
+  });
 });
