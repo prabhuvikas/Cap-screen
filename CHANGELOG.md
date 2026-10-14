@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.0.6] - October 14, 2026
+
+### Added
+- feat: add keyboard shortcuts for undo/redo on annotate screen
+  - Ctrl/Cmd+Z undoes, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z redoes. Shortcuts are
+  - skipped while typing in inputs and only apply while the annotate section
+  - is visible. Help page and Redo tooltip updated.
+  - Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+  - Claude-Session: https://claude.ai/code/session_01KrnzDaVgHxpjnNJKajXjnG
+
+_Merged PR #49 by @prabhuvikas_
+
+---
+
+
+
 ## [3.0.5] - October 5, 2026
 
 ### Added
