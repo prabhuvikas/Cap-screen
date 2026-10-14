@@ -634,7 +634,7 @@ function setupEventListeners() {
     closeAiConsentBtn.addEventListener('click', cancelAIConsent);
     document.getElementById('aiConsentOverlay').addEventListener('click', cancelAIConsent);
     document.getElementById('cancelAiConsent').addEventListener('click', cancelAIConsent);
-    document.getElementById('confirmAiConsent').addEventListener('click', confirmAIConsentAndSend);
+    document.getElementById('confirmAiConsent').addEventListener('click', confirmAIConsent);
   }
 
   // AI Preview Modal
@@ -2426,11 +2426,17 @@ async function generateReportWithAI() {
   showAIConsentModal(context);
 }
 
-// Build a human-readable summary of the payload and show the consent modal.
-function showAIConsentModal(context) {
+// What to do when the user answers the consent modal: { onConfirm, onCancel }.
+let aiConsentHandlers = null;
+
+// Show the consent modal listing what will be sent to the AI. Nothing is sent
+// unless the user agrees: `fillSummary(addItem)` adds one entry per kind of
+// data, and onConfirm / onCancel run on the user's answer.
+function openAIConsentModal(purpose, fillSummary, handlers) {
   const endpointEl = document.getElementById('aiConsentEndpoint');
   endpointEl.textContent =
     settings.aiEndpoint + (settings.aiModel ? ` — model: ${settings.aiModel}` : '');
+  document.getElementById('aiConsentPurpose').textContent = purpose;
 
   const summaryEl = document.getElementById('aiConsentSummary');
   summaryEl.innerHTML = '';
@@ -2451,6 +2457,24 @@ function showAIConsentModal(context) {
     summaryEl.appendChild(item);
   };
 
+  fillSummary(addItem);
+
+  aiConsentHandlers = handlers;
+  document.getElementById('aiConsentModal').classList.remove('hidden');
+}
+
+// Build a human-readable summary of the report-generation payload and ask for consent.
+function showAIConsentModal(context) {
+  openAIConsentModal('to generate a report', (addItem) => fillReportConsentSummary(addItem, context), {
+    onConfirm: confirmAIConsentAndSend,
+    onCancel: () => {
+      pendingAIContext = null;
+      showStatus('aiAssistStatus', 'AI request cancelled. No data was sent.', 'info');
+    }
+  });
+}
+
+function fillReportConsentSummary(addItem, context) {
   addItem('Your description', context.userView);
 
   const drafts = [];
@@ -2511,8 +2535,6 @@ function showAIConsentModal(context) {
   if (excluded.length) {
     addItem('NOT sent to AI', `${excluded.join(' and ')} will not be sent to the AI (only attached to the Redmine issue).`);
   }
-
-  document.getElementById('aiConsentModal').classList.remove('hidden');
 }
 
 // Close the consent modal without sending anything
@@ -2522,15 +2544,22 @@ function closeAIConsentModal() {
 
 // User declined to send data to the AI
 function cancelAIConsent() {
-  pendingAIContext = null;
+  const handlers = aiConsentHandlers;
+  aiConsentHandlers = null;
   closeAIConsentModal();
-  showStatus('aiAssistStatus', 'AI request cancelled. No data was sent.', 'info');
+  if (handlers && handlers.onCancel) handlers.onCancel();
+}
+
+// User agreed to send the data listed in the consent modal
+function confirmAIConsent() {
+  const handlers = aiConsentHandlers;
+  aiConsentHandlers = null;
+  closeAIConsentModal();
+  if (handlers && handlers.onConfirm) handlers.onConfirm();
 }
 
 // Step 2: user agreed — actually send the data to the AI and preview the result.
 async function confirmAIConsentAndSend() {
-  closeAIConsentModal();
-
   if (!pendingAIContext) return;
   const context = pendingAIContext;
   pendingAIContext = null;
@@ -4053,8 +4082,20 @@ function isAIDuplicateCheckEnabled() {
   return !!(settings.aiDuplicateCheck && settings.aiEnabled && settings.aiEndpoint && settings.aiApiKey);
 }
 
+// Timeout for the AI duplicate ranking; the keyword matches are already shown.
+const DUPLICATE_AI_TIMEOUT_MS = 30000;
+
+// Whether a duplicate check result is no longer wanted: a newer check started,
+// or the review modal was closed or switched to update mode.
+function isDuplicateCheckStale(runId) {
+  const modalOpen = !document.getElementById('reviewModal').classList.contains('hidden');
+  return runId !== duplicateCheckRunId || !modalOpen || currentIssueMode !== 'create';
+}
+
 // Find open issues in the selected project that look like this report and list
-// them in the review modal. Never blocks or alters submission.
+// them in the review modal. Never blocks or alters submission. Matching is by
+// keywords; when AI duplicate checks are on, the reporter can then ask the AI
+// to rank the candidates, after confirming what will be sent.
 async function runDuplicateCheck() {
   const section = document.getElementById('duplicateCheckSection');
   if (!section) return;
@@ -4076,40 +4117,44 @@ async function runDuplicateCheck() {
     projectId: document.getElementById('project').value,
     subject,
     description,
-    url: pageInfo.url || '',
-    useAI: isAIDuplicateCheckEnabled()
+    url: pageInfo.url || ''
   };
-  const key = DuplicateCheck.cacheKey(report);
+  const keywordKey = DuplicateCheck.cacheKey({ ...report, useAI: false });
+  const aiKey = DuplicateCheck.cacheKey({ ...report, useAI: true });
 
   section.classList.remove('hidden');
 
-  if (duplicateCheckCache.has(key)) {
-    renderDuplicateResults(duplicateCheckCache.get(key));
+  // The reporter already agreed to an AI ranking of this exact report.
+  if (duplicateCheckCache.has(aiKey)) {
+    renderDuplicateResults(duplicateCheckCache.get(aiKey));
     return;
   }
 
-  renderDuplicateStatus(report.useAI ? 'Checking with AI…' : 'Checking…');
-  document.getElementById('duplicateCheckList').innerHTML = '';
+  let result = duplicateCheckCache.get(keywordKey);
+  if (!result) {
+    renderDuplicateStatus('Checking…');
+    document.getElementById('duplicateCheckList').innerHTML = '';
 
-  let result;
-  try {
-    result = await findDuplicateIssues(report);
-    duplicateCheckCache.set(key, result);
-  } catch (error) {
-    console.error('[Annotate] Duplicate check failed:', error);
-    result = { matches: [], error: `Couldn't check for duplicates: ${error.message}` };
+    try {
+      result = await findDuplicateIssues(report);
+      duplicateCheckCache.set(keywordKey, result);
+    } catch (error) {
+      console.error('[Annotate] Duplicate check failed:', error);
+      result = { matches: [], error: `Couldn't check for duplicates: ${error.message}` };
+    }
+
+    if (isDuplicateCheckStale(runId)) return;
   }
 
-  // Drop the result if a newer check started, or the modal was closed or
-  // switched to update mode while we were waiting.
-  const modalOpen = !document.getElementById('reviewModal').classList.contains('hidden');
-  if (runId !== duplicateCheckRunId || !modalOpen || currentIssueMode !== 'create') return;
-
   renderDuplicateResults(result);
+  if (isAIDuplicateCheckEnabled() && result.candidates && result.candidates.length > 0) {
+    renderAIDuplicateOffer(report, result, aiKey, runId);
+  }
 }
 
-// Gather candidates from Redmine, score them by keywords, and (if enabled) let
-// the AI pick the real duplicates. Returns { matches, usedAI, note }.
+// Gather candidates from Redmine and score them by keywords.
+// Returns { matches, usedAI, candidates } where candidates are the top-scored
+// issues an AI ranking would look at.
 async function findDuplicateIssues(report) {
   const baseFilters = { status_id: 'open' };
   if (report.projectId) baseFilters.project_id = report.projectId;
@@ -4129,32 +4174,80 @@ async function findDuplicateIssues(report) {
 
   const candidates = DuplicateCheck.mergeIssues(...fulfilled.map((r) => r.value.issues));
   const scored = DuplicateCheck.scoreCandidates(report, candidates, 20);
-  if (scored.length === 0) return { matches: [], usedAI: false };
 
-  const keywordMatches = () =>
-    scored
-      .filter((entry) => entry.score >= DUPLICATE_KEYWORD_MIN_SCORE)
-      .slice(0, DUPLICATE_MAX_SHOWN)
-      .map((entry) => ({
-        issue: entry.issue,
-        reason: entry.matched.length ? `Shared keywords: ${entry.matched.slice(0, 5).join(', ')}` : 'Same page',
-        confidence: null
-      }));
+  const matches = scored
+    .filter((entry) => entry.score >= DUPLICATE_KEYWORD_MIN_SCORE)
+    .slice(0, DUPLICATE_MAX_SHOWN)
+    .map((entry) => ({
+      issue: entry.issue,
+      reason: entry.matched.length ? `Shared keywords: ${entry.matched.slice(0, 5).join(', ')}` : 'Same page',
+      confidence: null
+    }));
 
-  if (!report.useAI) return { matches: keywordMatches(), usedAI: false };
+  return { matches, usedAI: false, candidates: scored.map((entry) => entry.issue) };
+}
 
+// Offer an AI ranking under the keyword results. Nothing goes to the AI until
+// the reporter agrees in the consent modal.
+function renderAIDuplicateOffer(report, keywordResult, aiKey, runId) {
+  const item = document.createElement('li');
+  item.className = 'duplicate-check-ai-offer';
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-secondary btn-small';
+  button.textContent = '✨ Check with AI…';
+  button.addEventListener('click', () => askConsentForAIDuplicateCheck(report, keywordResult, aiKey, runId));
+
+  item.appendChild(button);
+  document.getElementById('duplicateCheckList').appendChild(item);
+}
+
+function askConsentForAIDuplicateCheck(report, keywordResult, aiKey, runId) {
+  const candidates = keywordResult.candidates;
+  const url = redactForExport(report.url);
+
+  openAIConsentModal('to check whether this report duplicates an existing issue', (addItem) => {
+    addItem('Your report', [
+      `Title: ${report.subject}`,
+      report.description ? `Description: ${report.description}` : '',
+      url ? `Page URL: ${url}` : ''
+    ].filter(Boolean).join('\n'));
+    addItem(
+      `Existing open issues from Redmine (${candidates.length})`,
+      candidates.map((issue) => `#${issue.id}: ${issue.subject || ''}`).join('\n') +
+        '\n\nThe title and the first 400 characters of each issue\'s description are sent.'
+    );
+    addItem('NOT sent to AI', 'Screenshots, videos, attached documents, console logs and network requests.');
+  }, {
+    onConfirm: () => rankDuplicatesWithAI(report, keywordResult, aiKey, runId),
+    // The keyword results stay on screen; nothing was sent.
+    onCancel: () => {}
+  });
+}
+
+async function rankDuplicatesWithAI(report, keywordResult, aiKey, runId) {
+  if (isDuplicateCheckStale(runId)) return;
+
+  renderDuplicateStatus('Checking with AI…');
+  document.getElementById('duplicateCheckList').innerHTML = '';
+
+  let result;
+  let failed = false;
   try {
     const ai = new AIAssistant({
       endpoint: settings.aiEndpoint,
       apiKey: settings.aiApiKey,
-      model: settings.aiModel
+      model: settings.aiModel,
+      timeoutMs: DUPLICATE_AI_TIMEOUT_MS
     });
+    const candidates = keywordResult.candidates;
     const ranked = await ai.findDuplicates(
       { subject: report.subject, description: report.description, url: redactForExport(report.url) },
-      scored.map((entry) => entry.issue)
+      candidates
     );
-    const byId = new Map(scored.map((entry) => [Number(entry.issue.id), entry.issue]));
-    return {
+    const byId = new Map(candidates.map((issue) => [Number(issue.id), issue]));
+    result = {
       matches: ranked.slice(0, DUPLICATE_MAX_SHOWN).map((m) => ({
         issue: byId.get(m.id),
         reason: m.reason,
@@ -4162,14 +4255,18 @@ async function findDuplicateIssues(report) {
       })),
       usedAI: true
     };
+    duplicateCheckCache.set(aiKey, result);
   } catch (error) {
     console.error('[Annotate] AI duplicate check failed, using keyword matches:', error);
-    return {
-      matches: keywordMatches(),
-      usedAI: false,
-      note: 'AI check failed, showing keyword matches.'
-    };
+    failed = true;
+    result = { ...keywordResult, note: `AI check failed (${error.message.replace(/\.$/, '')}). Showing keyword matches.` };
   }
+
+  if (isDuplicateCheckStale(runId)) return;
+
+  renderDuplicateResults(result);
+  // Let the reporter retry after a failure (e.g. a timeout).
+  if (failed) renderAIDuplicateOffer(report, keywordResult, aiKey, runId);
 }
 
 function renderDuplicateStatus(text, type = '') {
