@@ -385,6 +385,44 @@ class Annotator {
     });
   }
 
+  // Move the selected annotation by (dx, dy) canvas pixels (keyboard nudge).
+  // History is saved once after a burst of nudges rather than on every key press.
+  nudgeSelectedAnnotation(dx, dy) {
+    const annotation = this.selectedAnnotation;
+    if (!annotation) return false;
+
+    if (annotation.type === 'pen' && annotation.points) {
+      annotation.points = annotation.points.map(point => ({
+        x: point.x + dx,
+        y: point.y + dy
+      }));
+    } else {
+      annotation.x += dx;
+      annotation.y += dy;
+      if (annotation.type !== 'text') {
+        annotation.endX += dx;
+        annotation.endY += dy;
+      }
+    }
+
+    this.redrawCanvas();
+
+    clearTimeout(this.nudgeSaveTimer);
+    this.nudgeSaveTimer = setTimeout(() => {
+      this.nudgeSaveTimer = null;
+      this.saveState();
+    }, 400);
+    return true;
+  }
+
+  // Clear the current selection (if any) and redraw without the selection box
+  clearSelection() {
+    if (!this.selectedAnnotation) return false;
+    this.selectedAnnotation = null;
+    this.redrawCanvas();
+    return true;
+  }
+
   drawShape(startX, startY, endX, endY, shape, isPreview) {
     this.ctx.strokeStyle = this.currentColor;
     this.ctx.lineWidth = this.lineWidth;
@@ -797,7 +835,17 @@ class Annotator {
     }
   }
 
+  // Commit a pending keyboard-nudge history entry immediately
+  flushPendingNudge() {
+    if (this.nudgeSaveTimer) {
+      clearTimeout(this.nudgeSaveTimer);
+      this.nudgeSaveTimer = null;
+      this.saveState();
+    }
+  }
+
   undo() {
+    this.flushPendingNudge();
     if (this.historyStep > 0) {
       this.historyStep--;
       this.restoreStateFromHistory();
@@ -805,6 +853,7 @@ class Annotator {
   }
 
   redo() {
+    this.flushPendingNudge();
     if (this.historyStep < this.history.length - 1) {
       this.historyStep++;
       this.restoreStateFromHistory();
@@ -828,6 +877,7 @@ class Annotator {
 
   // Get the current state (for saving annotations when switching screenshots)
   getState() {
+    this.flushPendingNudge();
     return {
       history: this.history.slice(),
       historyStep: this.historyStep,
