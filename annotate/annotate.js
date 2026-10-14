@@ -1541,6 +1541,21 @@ async function collectTechnicalData() {
   }
 }
 
+// Start console capture in the page's own world. Pages loaded after the
+// extension was installed already have it (manifest content script); for older
+// tabs it starts now. Safe to call repeatedly.
+async function injectConsoleCapture(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content/console-capture.js'],
+      world: 'MAIN'
+    });
+  } catch (e) {
+    console.log('Console capture injection skipped:', e.message);
+  }
+}
+
 // Collect technical data from a single tab
 async function collectTechnicalDataFromSingleTab(tabId) {
   try {
@@ -1548,6 +1563,7 @@ async function collectTechnicalDataFromSingleTab(tabId) {
 
     // Ensure content script is injected
     try {
+      await injectConsoleCapture(tabId);
       await chrome.scripting.executeScript({
         target: { tabId: tabId },
         files: ['content/content.js']
@@ -1661,6 +1677,7 @@ async function collectTechnicalDataFromMultipleTabs() {
 
         // Inject content script into this tab
         try {
+          await injectConsoleCapture(tabId);
           await chrome.scripting.executeScript({
             target: { tabId: tabId },
             files: ['content/content.js']
