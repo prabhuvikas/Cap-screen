@@ -6,105 +6,24 @@ if (window.bugReporterContentScriptLoaded) {
 } else {
   window.bugReporterContentScriptLoaded = true;
 
-// Collect console logs
-const consoleLogs = [];
-const originalConsole = {
-  log: console.log,
-  warn: console.warn,
-  error: console.error,
-  info: console.info
-};
-
-// Override console methods to capture logs
-['log', 'warn', 'error', 'info'].forEach(method => {
-  console[method] = function(...args) {
-    // Extract stack trace if any argument is an Error object
-    let stackTrace = null;
-    const message = args.map(arg => {
-      if (arg instanceof Error) {
-        // Capture stack trace from Error object
-        if (arg.stack) {
-          stackTrace = arg.stack;
-        }
-        // Return error message and name
-        return `${arg.name}: ${arg.message}`;
-      } else {
-        try {
-          return typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg);
-        } catch (e) {
-          return String(arg);
-        }
-      }
-    }).join(' ');
-
-    const logEntry = {
-      type: method,
-      message: message,
-      timestamp: new Date().toISOString(),
-      url: window.location.href
-    };
-
-    // Add stack trace if available
-    if (stackTrace) {
-      logEntry.stack = stackTrace;
-    } else if (method === 'error' || method === 'warn') {
-      // Generate stack trace for error/warn calls even without Error object
-      try {
-        const stack = new Error().stack;
-        // Remove the first few lines (this wrapper function)
-        const stackLines = stack.split('\n');
-        logEntry.stack = stackLines.slice(2).join('\n');
-      } catch (e) {
-        // Stack trace generation failed, ignore
-      }
-    }
-
-    consoleLogs.push(logEntry);
-
-    // Call original console method
-    originalConsole[method].apply(console, args);
-
-    // Send to background script periodically
-    if (consoleLogs.length % 10 === 0) {
-      chrome.runtime.sendMessage({
-        action: 'storeConsoleLogs',
-        logs: consoleLogs
-      });
+// Console logs are recorded by content/console-capture.js in the page's own
+// (MAIN) world; patching console here would only see this extension's logging.
+// Ask it for its buffer via a DOM event; both events dispatch synchronously.
+function readPageConsoleLogs() {
+  let logs = [];
+  const onLogs = (event) => {
+    try {
+      const parsed = JSON.parse(event.detail);
+      if (Array.isArray(parsed)) logs = parsed;
+    } catch (e) {
+      // Not from the capture script; ignore
     }
   };
-});
-
-// Capture unhandled errors
-window.addEventListener('error', (event) => {
-  consoleLogs.push({
-    type: 'error',
-    message: `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`,
-    timestamp: new Date().toISOString(),
-    url: window.location.href,
-    stack: event.error?.stack
-  });
-});
-
-// Capture unhandled promise rejections
-window.addEventListener('unhandledrejection', (event) => {
-  const logEntry = {
-    type: 'error',
-    timestamp: new Date().toISOString(),
-    url: window.location.href
-  };
-
-  // Check if rejection reason is an Error object
-  if (event.reason instanceof Error) {
-    logEntry.message = `Unhandled Promise Rejection: ${event.reason.name}: ${event.reason.message}`;
-    if (event.reason.stack) {
-      logEntry.stack = event.reason.stack;
-    }
-  } else {
-    logEntry.message = `Unhandled Promise Rejection: ${event.reason}`;
-  }
-
-  consoleLogs.push(logEntry);
-});
+  document.addEventListener('cred-issue-reporter:console-logs', onLogs);
+  document.dispatchEvent(new CustomEvent('cred-issue-reporter:get-console-logs'));
+  document.removeEventListener('cred-issue-reporter:console-logs', onLogs);
+  return logs.map(({ seq, ...log }) => log);
+}
 
 // Helper function to detect browser name
 function getBrowserName(userAgent) {
@@ -329,12 +248,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'getConsoleLogs') {
-    // Send latest logs to background
-    chrome.runtime.sendMessage({
-      action: 'storeConsoleLogs',
-      logs: consoleLogs
-    });
-    sendResponse({ success: true, data: consoleLogs });
+    sendResponse({ success: true, data: readPageConsoleLogs() });
   }
 
   if (request.action === 'recordingStopped') {

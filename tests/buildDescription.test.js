@@ -10,6 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const Redaction = require('../lib/redaction.js');
 
 // ---------------------------------------------------------------------------
 // Helpers: extract function source from a file and build a callable wrapper
@@ -56,6 +57,11 @@ function createBuildDescription(sourceFile, globals) {
   const sanitizeTextSrc = extractFunctionSource(source, 'sanitizeText');
   const buildDescriptionSrc = extractFunctionSource(source, 'buildDescription');
   const getExtensionFooterSrc = extractFunctionSource(source, 'getExtensionFooter');
+  // Helpers only some copies of buildDescription use
+  const optionalSrc = ['redactForExport', 'describeEnvironment']
+    .filter((name) => source.includes(`function ${name}(`))
+    .map((name) => extractFunctionSource(source, name))
+    .join('\n');
 
   const {
     settings = {},
@@ -72,8 +78,9 @@ function createBuildDescription(sourceFile, globals) {
   const factory = new Function(
     'document', 'Date', 'Set', 'String',
     'settings', 'pageInfo', 'networkRequests', 'consoleLogs',
-    'videoDataUrl', 'screenshots', 'currentTab',
+    'videoDataUrl', 'screenshots', 'currentTab', 'Redaction',
     `
+    ${optionalSrc}
     ${sanitizeTextSrc}
     ${getExtensionFooterSrc}
     ${buildDescriptionSrc}
@@ -84,7 +91,7 @@ function createBuildDescription(sourceFile, globals) {
   return factory(
     document, Date, Set, String,
     settings, pageInfo, networkRequests, consoleLogs,
-    videoDataUrl, screenshots, currentTab
+    videoDataUrl, screenshots, currentTab, Redaction
   );
 }
 
@@ -296,5 +303,64 @@ describe.each([
     const result = buildDescription();
 
     expect(result).toContain('Reported via Cred Issue Reporter (Chrome extension)');
+  });
+});
+
+describe('buildDescription in annotate/annotate.js: privacy and environment', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <input  id="description" value="Bug description" />
+      <textarea id="stepsToReproduce"></textarea>
+      <textarea id="expectedBehavior"></textarea>
+      <textarea id="actualBehavior"></textarea>
+    `;
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  const tokenUrl = 'https://app.example.com/home?access_token=abc123&tab=2';
+
+  test('masks tokens in the page URL when sanitizing is on', () => {
+    const buildDescription = createBuildDescription('annotate/annotate.js', {
+      settings: { sanitizeSensitiveData: true },
+      pageInfo: { url: tokenUrl, title: 'Home' },
+    });
+
+    const result = buildDescription();
+
+    expect(result).not.toContain('abc123');
+    expect(result).toContain('access_token=[REDACTED]&tab=2');
+  });
+
+  test('keeps the page URL as-is when sanitizing is off', () => {
+    const buildDescription = createBuildDescription('annotate/annotate.js', {
+      settings: { sanitizeSensitiveData: false },
+      pageInfo: { url: tokenUrl, title: 'Home' },
+    });
+
+    expect(buildDescription()).toContain(tokenUrl);
+  });
+
+  test('summarizes browser, OS and viewport', () => {
+    const buildDescription = createBuildDescription('annotate/annotate.js', {
+      pageInfo: {
+        url: 'https://example.com',
+        title: 'Test Page',
+        browser: { name: 'Chrome', version: '130.0' },
+        system: { os: { name: 'Windows', version: '10' } },
+        viewport: { width: 1280, height: 720 },
+        screen: { devicePixelRatio: 2 },
+      },
+    });
+
+    expect(buildDescription()).toContain('- Environment: Chrome 130.0, Windows 10, viewport 1280x720, DPR 2');
+  });
+
+  test('omits the environment line when nothing is known', () => {
+    const buildDescription = createBuildDescription('annotate/annotate.js', {});
+
+    expect(buildDescription()).not.toContain('Environment:');
   });
 });

@@ -86,6 +86,41 @@ describe('AIAssistant', () => {
       const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k' });
       await expect(ai.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(/bad key/);
     });
+
+    // A fetch that never answers, but rejects like the browser when aborted.
+    const hangingFetch = () =>
+      jest.fn((url, options) => new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          const error = new Error('The operation was aborted.');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      }));
+
+    test('gives up with a clear message when the provider does not answer', async () => {
+      global.fetch = hangingFetch();
+
+      const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k', timeoutMs: 20 });
+      await expect(ai.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(/did not respond within 1 second\./);
+    });
+
+    test('a per-call timeout overrides the default', async () => {
+      global.fetch = hangingFetch();
+
+      const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k' });
+      await expect(ai.chat([{ role: 'user', content: 'hi' }], { timeoutMs: 20 })).rejects.toThrow(/did not respond/);
+    });
+
+    test('defaults to a 60 second timeout', () => {
+      expect(new AIAssistant({}).timeoutMs).toBe(60000);
+    });
+
+    test('reports network failures that are not timeouts as unreachable', async () => {
+      global.fetch = jest.fn(() => Promise.reject(new Error('Failed to fetch')));
+
+      const ai = new AIAssistant({ endpoint: 'https://x/v1', apiKey: 'k' });
+      await expect(ai.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(/Could not reach AI endpoint: Failed to fetch/);
+    });
   });
 
   describe('extractJson', () => {

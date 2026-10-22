@@ -26,6 +26,7 @@ let autoSaveTimer = null; // Timer for debounced auto-save
 let periodicSaveTimer = null; // Timer for periodic backup
 let lastSavedState = null; // Last saved state for comparison
 let isLoadingDraft = false; // Flag to prevent auto-save during draft load
+let reportSubmitted = false; // Set once the issue is created/updated; no more draft saves
 let isNewCapture = false; // Flag to track if this is a new capture (skip draft recovery)
 const AUTO_SAVE_DEBOUNCE_MS = 3000; // 3 seconds after last change
 const PERIODIC_SAVE_MS = 120000; // 2 minutes periodic backup
@@ -55,6 +56,15 @@ function sanitizeText(text) {
   sanitized = sanitized.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
   return sanitized;
+}
+
+// Mask secrets (tokens, cookies, passwords, auth headers) in captured data
+// before it leaves the browser, unless the user turned sanitizing off.
+function redactForExport(value) {
+  if (!settings || settings.sanitizeSensitiveData === false || typeof Redaction === 'undefined') {
+    return value;
+  }
+  return typeof value === 'string' ? Redaction.redactText(value) : Redaction.redactObject(value);
 }
 
 // Initialize the page
@@ -624,7 +634,7 @@ function setupEventListeners() {
     closeAiConsentBtn.addEventListener('click', cancelAIConsent);
     document.getElementById('aiConsentOverlay').addEventListener('click', cancelAIConsent);
     document.getElementById('cancelAiConsent').addEventListener('click', cancelAIConsent);
-    document.getElementById('confirmAiConsent').addEventListener('click', confirmAIConsentAndSend);
+    document.getElementById('confirmAiConsent').addEventListener('click', confirmAIConsent);
   }
 
   // AI Preview Modal
@@ -1531,6 +1541,21 @@ async function collectTechnicalData() {
   }
 }
 
+// Start console capture in the page's own world. Pages loaded after the
+// extension was installed already have it (manifest content script); for older
+// tabs it starts now. Safe to call repeatedly.
+async function injectConsoleCapture(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content/console-capture.js'],
+      world: 'MAIN'
+    });
+  } catch (e) {
+    console.log('Console capture injection skipped:', e.message);
+  }
+}
+
 // Collect technical data from a single tab
 async function collectTechnicalDataFromSingleTab(tabId) {
   try {
@@ -1538,6 +1563,7 @@ async function collectTechnicalDataFromSingleTab(tabId) {
 
     // Ensure content script is injected
     try {
+      await injectConsoleCapture(tabId);
       await chrome.scripting.executeScript({
         target: { tabId: tabId },
         files: ['content/content.js']
@@ -1601,7 +1627,15 @@ async function collectTechnicalDataFromSingleTab(tabId) {
         });
 
         if (storageResponse && storageResponse.success) {
-          pageInfo.storage = storageResponse.data;
+          // The content script returns cookies and web storage together; keep
+          // only what the user enabled.
+          const { cookies, localStorage, sessionStorage } = storageResponse.data || {};
+          pageInfo.storage = {};
+          if (settings.includeCookies) pageInfo.storage.cookies = cookies;
+          if (settings.includeLocalStorage) {
+            pageInfo.storage.localStorage = localStorage;
+            pageInfo.storage.sessionStorage = sessionStorage;
+          }
         }
       } catch (e) {
         console.warn('[Annotate] Could not collect storage data:', e.message);
@@ -1643,6 +1677,7 @@ async function collectTechnicalDataFromMultipleTabs() {
 
         // Inject content script into this tab
         try {
+          await injectConsoleCapture(tabId);
           await chrome.scripting.executeScript({
             target: { tabId: tabId },
             files: ['content/content.js']
@@ -1730,8 +1765,10 @@ async function collectTechnicalDataFromMultipleTabs() {
     }
 
     // Store aggregated page info (use current tab's info as primary, but include all)
-    pageInfo = pageInfoArray.find(p => p._tabId === currentTab.id) || pageInfoArray[0] || {};
-    pageInfo._allTabs = pageInfoArray;
+    // Copy the primary entry so _allTabs does not contain pageInfo itself
+    // (a circular reference breaks JSON.stringify of the technical data).
+    const primaryPageInfo = pageInfoArray.find(p => p._tabId === currentTab.id) || pageInfoArray[0] || {};
+    pageInfo = { ...primaryPageInfo, _allTabs: pageInfoArray };
 
     console.log(`[Multi-Tab] Collection complete. Network: ${networkRequests.length}, Console: ${consoleLogs.length}, Pages: ${pageInfoArray.length}`);
 
@@ -1833,7 +1870,7 @@ async function onProjectChange() {
     // Load project members
     const members = await redmineAPI.getProjectMembers(projectId);
     const assigneeSelect = document.getElementById('assignee');
-    assigneeSelect.innerHTML = '<option value="">-- Unassigned --</option>';
+    assigneeSelect.innerHTML = '<option value="">-- Select Assignee --</option>';
 
     members.forEach(member => {
       if (member.user) {
@@ -1935,9 +1972,20 @@ async function actuallySubmitBugReport() {
       due_date: document.getElementById('reviewDueDateInput').value
     };
 
-    // Validate required fields
-    if (!formData.project_id || !formData.tracker_id || !formData.subject || !formData.description || !formData.priority_id || !formData.assigned_to_id || !formData.due_date) {
-      throw new Error('Please fill in all required fields (marked with *)');
+    // Validate required fields (update mode only needs the note, checked below)
+    if (currentIssueMode === 'create') {
+      const missing = [
+        ['project_id', 'Project'],
+        ['tracker_id', 'Tracker'],
+        ['subject', 'Subject'],
+        ['description', 'Description'],
+        ['priority_id', 'Priority'],
+        ['assigned_to_id', 'Assignee'],
+        ['due_date', 'Due Date']
+      ].filter(([field]) => !String(formData[field] || '').trim()).map(([, label]) => label);
+      if (missing.length > 0) {
+        throw new Error(`Please fill in the required fields: ${missing.join(', ')}`);
+      }
     }
 
     // Optional fields
@@ -2259,7 +2307,8 @@ async function actuallySubmitBugReport() {
         throw new Error('No issue selected. Please select an issue to update.');
       }
 
-      const noteText = document.getElementById('noteText').value.trim();
+      // The review modal shows the note in an editable box; submit what is there.
+      const noteText = document.getElementById('reviewDescriptionText').value.trim();
       if (!noteText) {
         throw new Error('Please enter a note/comment to add to the issue.');
       }
@@ -2290,7 +2339,7 @@ async function actuallySubmitBugReport() {
 
   } catch (error) {
     console.error('[Annotate] Error submitting bug report:', error);
-    alert(`Error submitting bug report: ${error.message}`);
+    alert(`Could not submit the report.\n\n${error.message}\n\nNothing has been lost: fix the problem and press Confirm & Submit again.`);
   } finally {
     submitBtn.disabled = false;
     btnText.textContent = 'Confirm & Submit';
@@ -2383,9 +2432,9 @@ async function generateReportWithAI() {
     stepsToReproduce: document.getElementById('stepsToReproduce').value,
     expectedBehavior: document.getElementById('expectedBehavior').value,
     actualBehavior: document.getElementById('actualBehavior').value,
-    pageInfo,
-    consoleErrors,
-    networkErrors,
+    pageInfo: redactForExport(pageInfo),
+    consoleErrors: redactForExport(consoleErrors),
+    networkErrors: redactForExport(networkErrors),
     availableTrackers,
     images
   };
@@ -2394,11 +2443,17 @@ async function generateReportWithAI() {
   showAIConsentModal(context);
 }
 
-// Build a human-readable summary of the payload and show the consent modal.
-function showAIConsentModal(context) {
+// What to do when the user answers the consent modal: { onConfirm, onCancel }.
+let aiConsentHandlers = null;
+
+// Show the consent modal listing what will be sent to the AI. Nothing is sent
+// unless the user agrees: `fillSummary(addItem)` adds one entry per kind of
+// data, and onConfirm / onCancel run on the user's answer.
+function openAIConsentModal(purpose, fillSummary, handlers) {
   const endpointEl = document.getElementById('aiConsentEndpoint');
   endpointEl.textContent =
     settings.aiEndpoint + (settings.aiModel ? ` — model: ${settings.aiModel}` : '');
+  document.getElementById('aiConsentPurpose').textContent = purpose;
 
   const summaryEl = document.getElementById('aiConsentSummary');
   summaryEl.innerHTML = '';
@@ -2419,6 +2474,24 @@ function showAIConsentModal(context) {
     summaryEl.appendChild(item);
   };
 
+  fillSummary(addItem);
+
+  aiConsentHandlers = handlers;
+  document.getElementById('aiConsentModal').classList.remove('hidden');
+}
+
+// Build a human-readable summary of the report-generation payload and ask for consent.
+function showAIConsentModal(context) {
+  openAIConsentModal('to generate a report', (addItem) => fillReportConsentSummary(addItem, context), {
+    onConfirm: confirmAIConsentAndSend,
+    onCancel: () => {
+      pendingAIContext = null;
+      showStatus('aiAssistStatus', 'AI request cancelled. No data was sent.', 'info');
+    }
+  });
+}
+
+function fillReportConsentSummary(addItem, context) {
   addItem('Your description', context.userView);
 
   const drafts = [];
@@ -2479,8 +2552,6 @@ function showAIConsentModal(context) {
   if (excluded.length) {
     addItem('NOT sent to AI', `${excluded.join(' and ')} will not be sent to the AI (only attached to the Redmine issue).`);
   }
-
-  document.getElementById('aiConsentModal').classList.remove('hidden');
 }
 
 // Close the consent modal without sending anything
@@ -2490,15 +2561,22 @@ function closeAIConsentModal() {
 
 // User declined to send data to the AI
 function cancelAIConsent() {
-  pendingAIContext = null;
+  const handlers = aiConsentHandlers;
+  aiConsentHandlers = null;
   closeAIConsentModal();
-  showStatus('aiAssistStatus', 'AI request cancelled. No data was sent.', 'info');
+  if (handlers && handlers.onCancel) handlers.onCancel();
+}
+
+// User agreed to send the data listed in the consent modal
+function confirmAIConsent() {
+  const handlers = aiConsentHandlers;
+  aiConsentHandlers = null;
+  closeAIConsentModal();
+  if (handlers && handlers.onConfirm) handlers.onConfirm();
 }
 
 // Step 2: user agreed — actually send the data to the AI and preview the result.
 async function confirmAIConsentAndSend() {
-  closeAIConsentModal();
-
   if (!pendingAIContext) return;
   const context = pendingAIContext;
   pendingAIContext = null;
@@ -2642,9 +2720,13 @@ function buildDescription() {
 
   // Add basic page info
   description += '\n\n## Page Information\n';
-  description += `- URL: ${sanitizeText(pageInfo.url || 'N/A')}\n`;
+  description += `- URL: ${sanitizeText(redactForExport(pageInfo.url) || 'N/A')}\n`;
   description += `- Title: ${sanitizeText(pageInfo.title || 'N/A')}\n`;
   description += `- Timestamp: ${new Date().toISOString()}\n`;
+  const environment = describeEnvironment(pageInfo);
+  if (environment) {
+    description += `- Environment: ${sanitizeText(environment)}\n`;
+  }
 
   // Build additional information lines, only add section if there's content
   let additionalInfo = '';
@@ -2715,6 +2797,18 @@ function buildDescription() {
   return sanitizeText(description);
 }
 
+// One-line browser / OS / viewport summary for the issue description, so
+// developers don't have to open technical-data.json for the basics.
+function describeEnvironment(info) {
+  if (!info) return '';
+  const parts = [];
+  if (info.browser?.name) parts.push(`${info.browser.name} ${info.browser.version || ''}`.trim());
+  if (info.system?.os?.name) parts.push(`${info.system.os.name} ${info.system.os.version || ''}`.trim());
+  if (info.viewport?.width && info.viewport?.height) parts.push(`viewport ${info.viewport.width}x${info.viewport.height}`);
+  if (info.screen?.devicePixelRatio && info.screen.devicePixelRatio !== 1) parts.push(`DPR ${info.screen.devicePixelRatio}`);
+  return parts.join(', ');
+}
+
 // Build technical data JSON
 function buildTechnicalData() {
   const data = {
@@ -2737,7 +2831,7 @@ function buildTechnicalData() {
     }));
   }
 
-  return JSON.stringify(data, null, 2);
+  return JSON.stringify(redactForExport(data), null, 2);
 }
 
 // Build HAR file
@@ -2840,7 +2934,7 @@ function buildHARFile(requests = null) {
     }
   };
 
-  return JSON.stringify(harLog, null, 2);
+  return JSON.stringify(redactForExport(harLog), null, 2);
 }
 
 // Helper function to get HTTP status text
@@ -2907,7 +3001,7 @@ function buildConsoleLogsFile(logs = null) {
     logsContent += '-'.repeat(80) + '\n\n';
   });
 
-  return logsContent;
+  return redactForExport(logsContent);
 }
 
 // Show success screen
@@ -2979,11 +3073,11 @@ async function populateReviewModal() {
 
       // Show selected issue details
       if (selectedIssue) {
-        reviewProjectSelect.innerHTML = `<option>${selectedIssue.project?.name || 'N/A'}</option>`;
-        reviewTrackerSelect.innerHTML = `<option>${selectedIssue.tracker?.name || 'N/A'}</option>`;
+        reviewProjectSelect.innerHTML = `<option>${escapeHtml(selectedIssue.project?.name || 'N/A')}</option>`;
+        reviewTrackerSelect.innerHTML = `<option>${escapeHtml(selectedIssue.tracker?.name || 'N/A')}</option>`;
         reviewSubjectInput.value = selectedIssue.subject || '';
-        reviewPrioritySelect.innerHTML = `<option>${selectedIssue.priority?.name || 'N/A'}</option>`;
-        reviewAssigneeSelect.innerHTML = `<option>${selectedIssue.assigned_to?.name || 'Unassigned'}</option>`;
+        reviewPrioritySelect.innerHTML = `<option>${escapeHtml(selectedIssue.priority?.name || 'N/A')}</option>`;
+        reviewAssigneeSelect.innerHTML = `<option>${escapeHtml(selectedIssue.assigned_to?.name || 'Unassigned')}</option>`;
       }
 
       // Show note text as description
@@ -2997,8 +3091,10 @@ async function populateReviewModal() {
       const prioritySelect = document.getElementById('priority');
       const assigneeSelect = document.getElementById('assignee');
 
+      // Project stays read-only here: tracker, assignee, category and version
+      // options all belong to the project chosen on the main form.
       const reviewProjectSelect = document.getElementById('reviewProjectSelect');
-      reviewProjectSelect.disabled = false;
+      reviewProjectSelect.disabled = true;
       reviewProjectSelect.innerHTML = '';
       Array.from(projectSelect.options).forEach(option => {
         const newOption = option.cloneNode(true);
@@ -3116,19 +3212,19 @@ async function populateReviewModal() {
     const pageInfoHtml = `
       <div class="info-section">
         <h4>📄 Page Details</h4>
-        <div class="info-item"><strong>URL:</strong> ${pageInfo.url || 'N/A'}</div>
-        <div class="info-item"><strong>Title:</strong> ${pageInfo.title || 'N/A'}</div>
-        <div class="info-item"><strong>Timestamp:</strong> ${pageInfo.timestamp || 'N/A'}</div>
+        <div class="info-item"><strong>URL:</strong> ${escapeHtml(redactForExport(pageInfo.url) || 'N/A')}</div>
+        <div class="info-item"><strong>Title:</strong> ${escapeHtml(pageInfo.title || 'N/A')}</div>
+        <div class="info-item"><strong>Timestamp:</strong> ${escapeHtml(pageInfo.timestamp || 'N/A')}</div>
       </div>
 
       ${pageInfo.browser ? `
       <div class="info-section">
         <h4>🌐 Browser Information</h4>
-        <div class="info-item"><strong>Name:</strong> ${pageInfo.browser.name || 'Unknown'}</div>
-        <div class="info-item"><strong>Version:</strong> ${pageInfo.browser.version || 'Unknown'}</div>
-        <div class="info-item"><strong>Vendor:</strong> ${pageInfo.browser.vendor || 'Unknown'}</div>
-        <div class="info-item"><strong>Language:</strong> ${pageInfo.browser.language || 'Unknown'}</div>
-        <div class="info-item"><strong>Platform:</strong> ${pageInfo.browser.platform || 'Unknown'}</div>
+        <div class="info-item"><strong>Name:</strong> ${escapeHtml(pageInfo.browser.name || 'Unknown')}</div>
+        <div class="info-item"><strong>Version:</strong> ${escapeHtml(pageInfo.browser.version || 'Unknown')}</div>
+        <div class="info-item"><strong>Vendor:</strong> ${escapeHtml(pageInfo.browser.vendor || 'Unknown')}</div>
+        <div class="info-item"><strong>Language:</strong> ${escapeHtml(pageInfo.browser.language || 'Unknown')}</div>
+        <div class="info-item"><strong>Platform:</strong> ${escapeHtml(pageInfo.browser.platform || 'Unknown')}</div>
         <div class="info-item"><strong>Online Status:</strong> ${pageInfo.browser.onLine ? '✅ Online' : '❌ Offline'}</div>
       </div>
       ` : ''}
@@ -3137,21 +3233,21 @@ async function populateReviewModal() {
       <div class="info-section">
         <h4>💻 System Information</h4>
         ${pageInfo.system.os ? `
-        <div class="info-item"><strong>OS Name:</strong> ${pageInfo.system.os.name || 'Unknown'}</div>
-        <div class="info-item"><strong>OS Version:</strong> ${pageInfo.system.os.version || 'Unknown'}</div>
-        <div class="info-item"><strong>Architecture:</strong> ${pageInfo.system.os.architecture || 'Unknown'}</div>
+        <div class="info-item"><strong>OS Name:</strong> ${escapeHtml(pageInfo.system.os.name || 'Unknown')}</div>
+        <div class="info-item"><strong>OS Version:</strong> ${escapeHtml(pageInfo.system.os.version || 'Unknown')}</div>
+        <div class="info-item"><strong>Architecture:</strong> ${escapeHtml(pageInfo.system.os.architecture || 'Unknown')}</div>
         ` : ''}
-        <div class="info-item"><strong>CPU Cores:</strong> ${pageInfo.system.cpuCores || 'Unknown'}</div>
-        <div class="info-item"><strong>Memory (RAM):</strong> ${pageInfo.system.deviceMemory || 'Unknown'}</div>
-        <div class="info-item"><strong>Touch Points:</strong> ${pageInfo.system.maxTouchPoints || 0}</div>
+        <div class="info-item"><strong>CPU Cores:</strong> ${escapeHtml(pageInfo.system.cpuCores || 'Unknown')}</div>
+        <div class="info-item"><strong>Memory (RAM):</strong> ${escapeHtml(pageInfo.system.deviceMemory || 'Unknown')}</div>
+        <div class="info-item"><strong>Touch Points:</strong> ${escapeHtml(pageInfo.system.maxTouchPoints || 0)}</div>
       </div>
       ` : ''}
 
       ${pageInfo.screen ? `
       <div class="info-section">
         <h4>🖥️ Screen Information</h4>
-        <div class="info-item"><strong>Resolution:</strong> ${pageInfo.screen.width} × ${pageInfo.screen.height}</div>
-        <div class="info-item"><strong>Available:</strong> ${pageInfo.screen.availWidth} × ${pageInfo.screen.availHeight}</div>
+        <div class="info-item"><strong>Resolution:</strong> ${escapeHtml(pageInfo.screen.width)} × ${escapeHtml(pageInfo.screen.height)}</div>
+        <div class="info-item"><strong>Available:</strong> ${escapeHtml(pageInfo.screen.availWidth)} × ${escapeHtml(pageInfo.screen.availHeight)}</div>
         <div class="info-item"><strong>Device Pixel Ratio:</strong> ${pageInfo.screen.devicePixelRatio || 1}</div>
       </div>
       ` : ''}
@@ -3159,18 +3255,18 @@ async function populateReviewModal() {
       ${pageInfo.viewport ? `
       <div class="info-section">
         <h4>📐 Viewport Information</h4>
-        <div class="info-item"><strong>Size:</strong> ${pageInfo.viewport.width} × ${pageInfo.viewport.height}</div>
-        <div class="info-item"><strong>Scroll Position:</strong> X: ${pageInfo.viewport.scrollX}, Y: ${pageInfo.viewport.scrollY}</div>
+        <div class="info-item"><strong>Size:</strong> ${escapeHtml(pageInfo.viewport.width)} × ${escapeHtml(pageInfo.viewport.height)}</div>
+        <div class="info-item"><strong>Scroll Position:</strong> X: ${escapeHtml(pageInfo.viewport.scrollX)}, Y: ${escapeHtml(pageInfo.viewport.scrollY)}</div>
       </div>
       ` : ''}
 
       ${pageInfo.network ? `
       <div class="info-section">
         <h4>🌐 Network Information</h4>
-        <div class="info-item"><strong>Connection Type:</strong> ${pageInfo.network.connectionType || 'Unknown'}</div>
-        <div class="info-item"><strong>Effective Type:</strong> ${pageInfo.network.effectiveType || 'Unknown'}</div>
-        <div class="info-item"><strong>Download Speed:</strong> ${pageInfo.network.downlink || 'Unknown'}</div>
-        <div class="info-item"><strong>Latency (RTT):</strong> ${pageInfo.network.rtt || 'Unknown'}</div>
+        <div class="info-item"><strong>Connection Type:</strong> ${escapeHtml(pageInfo.network.connectionType || 'Unknown')}</div>
+        <div class="info-item"><strong>Effective Type:</strong> ${escapeHtml(pageInfo.network.effectiveType || 'Unknown')}</div>
+        <div class="info-item"><strong>Download Speed:</strong> ${escapeHtml(pageInfo.network.downlink || 'Unknown')}</div>
+        <div class="info-item"><strong>Latency (RTT):</strong> ${escapeHtml(pageInfo.network.rtt || 'Unknown')}</div>
         <div class="info-item"><strong>Data Saver:</strong> ${pageInfo.network.saveData ? '✅ Enabled' : '❌ Disabled'}</div>
       </div>
       ` : ''}
@@ -3179,9 +3275,9 @@ async function populateReviewModal() {
       <div class="info-section">
         <h4>⚡ Performance Metrics</h4>
         ${pageInfo.performance.timing ? `
-        <div class="info-item"><strong>Page Load Time:</strong> ${pageInfo.performance.timing.loadTime || 'N/A'} ms</div>
-        <div class="info-item"><strong>DOM Ready Time:</strong> ${pageInfo.performance.timing.domReadyTime || 'N/A'} ms</div>
-        <div class="info-item"><strong>Response Time:</strong> ${pageInfo.performance.timing.responseTime || 'N/A'} ms</div>
+        <div class="info-item"><strong>Page Load Time:</strong> ${escapeHtml(pageInfo.performance.timing.loadTime || 'N/A')} ms</div>
+        <div class="info-item"><strong>DOM Ready Time:</strong> ${escapeHtml(pageInfo.performance.timing.domReadyTime || 'N/A')} ms</div>
+        <div class="info-item"><strong>Response Time:</strong> ${escapeHtml(pageInfo.performance.timing.responseTime || 'N/A')} ms</div>
         ` : ''}
       </div>
       ` : ''}
@@ -3190,11 +3286,11 @@ async function populateReviewModal() {
         <h4>📋 Raw JSON Data</h4>
         <details>
           <summary style="cursor: pointer; color: #2196F3; margin-bottom: 8px;">Click to view raw JSON</summary>
-          <pre class="code-block" style="margin-top: 8px;">${JSON.stringify(pageInfo, (key, value) => {
+          <pre class="code-block" style="margin-top: 8px;">${escapeHtml(JSON.stringify(redactForExport(pageInfo), (key, value) => {
             // Skip _allTabs to avoid circular reference
             if (key === '_allTabs') return undefined;
             return value;
-          }, 2)}</pre>
+          }, 2))}</pre>
         </details>
       </div>
     `;
@@ -3285,7 +3381,7 @@ async function populateReviewModal() {
           const tabTitle = requests[0]._tabTitle || 'Unknown Tab';
           const sanitizedTabName = tabTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase().substring(0, 50);
           const filename = `network-requests-${sanitizedTabName}-*.har`;
-          filesHtml += `<li style="color: #2e7d32; margin: 4px 0;"><strong>${filename}</strong> (${requests.length} requests from "${tabTitle}")</li>`;
+          filesHtml += `<li style="color: #2e7d32; margin: 4px 0;"><strong>${filename}</strong> (${requests.length} requests from "${escapeHtml(tabTitle)}")</li>`;
         }
 
         filesHtml += '</ul>';
@@ -3304,20 +3400,20 @@ async function populateReviewModal() {
           <div class="data-item-header">
             <div style="flex: 1;">
               <span class="data-item-badge">#${index + 1}</span>
-              <span class="data-item-method">${req.method || 'GET'}</span>
-              <span class="data-item-type">${req.type || 'other'}</span>
-              ${req._tabTitle ? `<span class="data-item-badge" style="background-color: #e3f2fd; color: #1976d2; margin-left: 4px;">📑 ${truncateUrl(req._tabTitle, 30)}</span>` : ''}
+              <span class="data-item-method">${escapeHtml(req.method || 'GET')}</span>
+              <span class="data-item-type">${escapeHtml(req.type || 'other')}</span>
+              ${req._tabTitle ? `<span class="data-item-badge" style="background-color: #e3f2fd; color: #1976d2; margin-left: 4px;">📑 ${escapeHtml(truncateUrl(req._tabTitle, 30))}</span>` : ''}
             </div>
             <span class="data-item-status ${statusClass}">
-              ${statusIcon} ${req.failed ? 'Failed' : (req.statusCode || 'Pending')}
+              ${statusIcon} ${req.failed ? 'Failed' : escapeHtml(req.statusCode || 'Pending')}
             </span>
           </div>
-          <div class="data-item-url" title="${req.url}">${truncateUrl(req.url, 100)}</div>
+          <div class="data-item-url" title="${escapeHtml(req.url)}">${escapeHtml(truncateUrl(req.url, 100))}</div>
           <div class="data-item-details">
-            ${req._tabUrl ? `<span>🌐 Tab: ${truncateUrl(req._tabUrl, 50)}</span>` : ''}
-            ${req.ip ? `<span>📍 IP: ${req.ip}</span>` : ''}
+            ${req._tabUrl ? `<span>🌐 Tab: ${escapeHtml(truncateUrl(req._tabUrl, 50))}</span>` : ''}
+            ${req.ip ? `<span>📍 IP: ${escapeHtml(req.ip)}</span>` : ''}
             ${req.fromCache ? '<span>💾 Cached</span>' : ''}
-            ${req.error ? `<span style="color: #f44336;">❌ Error: ${req.error}</span>` : ''}
+            ${req.error ? `<span style="color: #f44336;">❌ Error: ${escapeHtml(req.error)}</span>` : ''}
           </div>
         `;
 
@@ -3415,7 +3511,7 @@ async function populateReviewModal() {
           const tabTitle = logs[0]._tabTitle || 'Unknown Tab';
           const sanitizedTabName = tabTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase().substring(0, 50);
           const filename = `console-logs-${sanitizedTabName}-*.txt`;
-          filesHtml += `<li style="color: #1565c0; margin: 4px 0;"><strong>${filename}</strong> (${logs.length} logs from "${tabTitle}")</li>`;
+          filesHtml += `<li style="color: #1565c0; margin: 4px 0;"><strong>${filename}</strong> (${logs.length} logs from "${escapeHtml(tabTitle)}")</li>`;
         }
 
         filesHtml += '</ul>';
@@ -3425,7 +3521,7 @@ async function populateReviewModal() {
 
       consoleLogs.slice(0, 50).forEach((log, index) => {
         const item = document.createElement('div');
-        item.className = `console-item ${log.type}`;
+        item.className = `console-item ${String(log.type || 'log').replace(/[^a-z]/gi, '')}`;
 
         let typeIcon = '📝';
         let typeColor = '#666';
@@ -3448,13 +3544,13 @@ async function populateReviewModal() {
         item.innerHTML = `
           <div class="console-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
             <span class="data-item-badge">#${index + 1}</span>
-            <span style="color: ${typeColor}; font-weight: bold;">${typeIcon} ${log.type.toUpperCase()}</span>
+            <span style="color: ${typeColor}; font-weight: bold;">${typeIcon} ${escapeHtml(String(log.type || 'log').toUpperCase())}</span>
             <span class="console-timestamp" style="color: #999; font-size: 11px;">${timestamp}</span>
-            ${log._tabTitle ? `<span class="data-item-badge" style="background-color: #e3f2fd; color: #1976d2;">📑 ${truncateUrl(log._tabTitle, 25)}</span>` : ''}
+            ${log._tabTitle ? `<span class="data-item-badge" style="background-color: #e3f2fd; color: #1976d2;">📑 ${escapeHtml(truncateUrl(log._tabTitle, 25))}</span>` : ''}
           </div>
           <div class="console-message" style="margin-left: 24px; word-break: break-word;">${escapeHtml(log.message || '')}</div>
-          ${log._tabUrl ? `<div class="console-url" style="margin-left: 24px; font-size: 11px; color: #666; margin-top: 4px;">🌐 Tab: ${truncateUrl(log._tabUrl, 60)}</div>` : ''}
-          ${log.url && !log._tabUrl ? `<div class="console-url" style="margin-left: 24px; font-size: 11px; color: #666; margin-top: 4px;">📍 ${log.url}</div>` : ''}
+          ${log._tabUrl ? `<div class="console-url" style="margin-left: 24px; font-size: 11px; color: #666; margin-top: 4px;">🌐 Tab: ${escapeHtml(truncateUrl(log._tabUrl, 60))}</div>` : ''}
+          ${log.url && !log._tabUrl ? `<div class="console-url" style="margin-left: 24px; font-size: 11px; color: #666; margin-top: 4px;">📍 ${escapeHtml(log.url)}</div>` : ''}
           ${log.stack ? `
             <details style="margin-left: 24px; margin-top: 8px;">
               <summary style="cursor: pointer; color: #2196F3; font-size: 11px;">View Stack Trace</summary>
@@ -4003,8 +4099,20 @@ function isAIDuplicateCheckEnabled() {
   return !!(settings.aiDuplicateCheck && settings.aiEnabled && settings.aiEndpoint && settings.aiApiKey);
 }
 
+// Timeout for the AI duplicate ranking; the keyword matches are already shown.
+const DUPLICATE_AI_TIMEOUT_MS = 30000;
+
+// Whether a duplicate check result is no longer wanted: a newer check started,
+// or the review modal was closed or switched to update mode.
+function isDuplicateCheckStale(runId) {
+  const modalOpen = !document.getElementById('reviewModal').classList.contains('hidden');
+  return runId !== duplicateCheckRunId || !modalOpen || currentIssueMode !== 'create';
+}
+
 // Find open issues in the selected project that look like this report and list
-// them in the review modal. Never blocks or alters submission.
+// them in the review modal. Never blocks or alters submission. Matching is by
+// keywords; when AI duplicate checks are on, the reporter can then ask the AI
+// to rank the candidates, after confirming what will be sent.
 async function runDuplicateCheck() {
   const section = document.getElementById('duplicateCheckSection');
   if (!section) return;
@@ -4026,40 +4134,44 @@ async function runDuplicateCheck() {
     projectId: document.getElementById('project').value,
     subject,
     description,
-    url: pageInfo.url || '',
-    useAI: isAIDuplicateCheckEnabled()
+    url: pageInfo.url || ''
   };
-  const key = DuplicateCheck.cacheKey(report);
+  const keywordKey = DuplicateCheck.cacheKey({ ...report, useAI: false });
+  const aiKey = DuplicateCheck.cacheKey({ ...report, useAI: true });
 
   section.classList.remove('hidden');
 
-  if (duplicateCheckCache.has(key)) {
-    renderDuplicateResults(duplicateCheckCache.get(key));
+  // The reporter already agreed to an AI ranking of this exact report.
+  if (duplicateCheckCache.has(aiKey)) {
+    renderDuplicateResults(duplicateCheckCache.get(aiKey));
     return;
   }
 
-  renderDuplicateStatus(report.useAI ? 'Checking with AI…' : 'Checking…');
-  document.getElementById('duplicateCheckList').innerHTML = '';
+  let result = duplicateCheckCache.get(keywordKey);
+  if (!result) {
+    renderDuplicateStatus('Checking…');
+    document.getElementById('duplicateCheckList').innerHTML = '';
 
-  let result;
-  try {
-    result = await findDuplicateIssues(report);
-    duplicateCheckCache.set(key, result);
-  } catch (error) {
-    console.error('[Annotate] Duplicate check failed:', error);
-    result = { matches: [], error: `Couldn't check for duplicates: ${error.message}` };
+    try {
+      result = await findDuplicateIssues(report);
+      duplicateCheckCache.set(keywordKey, result);
+    } catch (error) {
+      console.error('[Annotate] Duplicate check failed:', error);
+      result = { matches: [], error: `Couldn't check for duplicates: ${error.message}` };
+    }
+
+    if (isDuplicateCheckStale(runId)) return;
   }
 
-  // Drop the result if a newer check started, or the modal was closed or
-  // switched to update mode while we were waiting.
-  const modalOpen = !document.getElementById('reviewModal').classList.contains('hidden');
-  if (runId !== duplicateCheckRunId || !modalOpen || currentIssueMode !== 'create') return;
-
   renderDuplicateResults(result);
+  if (isAIDuplicateCheckEnabled() && result.candidates && result.candidates.length > 0) {
+    renderAIDuplicateOffer(report, result, aiKey, runId);
+  }
 }
 
-// Gather candidates from Redmine, score them by keywords, and (if enabled) let
-// the AI pick the real duplicates. Returns { matches, usedAI, note }.
+// Gather candidates from Redmine and score them by keywords.
+// Returns { matches, usedAI, candidates } where candidates are the top-scored
+// issues an AI ranking would look at.
 async function findDuplicateIssues(report) {
   const baseFilters = { status_id: 'open' };
   if (report.projectId) baseFilters.project_id = report.projectId;
@@ -4079,32 +4191,80 @@ async function findDuplicateIssues(report) {
 
   const candidates = DuplicateCheck.mergeIssues(...fulfilled.map((r) => r.value.issues));
   const scored = DuplicateCheck.scoreCandidates(report, candidates, 20);
-  if (scored.length === 0) return { matches: [], usedAI: false };
 
-  const keywordMatches = () =>
-    scored
-      .filter((entry) => entry.score >= DUPLICATE_KEYWORD_MIN_SCORE)
-      .slice(0, DUPLICATE_MAX_SHOWN)
-      .map((entry) => ({
-        issue: entry.issue,
-        reason: entry.matched.length ? `Shared keywords: ${entry.matched.slice(0, 5).join(', ')}` : 'Same page',
-        confidence: null
-      }));
+  const matches = scored
+    .filter((entry) => entry.score >= DUPLICATE_KEYWORD_MIN_SCORE)
+    .slice(0, DUPLICATE_MAX_SHOWN)
+    .map((entry) => ({
+      issue: entry.issue,
+      reason: entry.matched.length ? `Shared keywords: ${entry.matched.slice(0, 5).join(', ')}` : 'Same page',
+      confidence: null
+    }));
 
-  if (!report.useAI) return { matches: keywordMatches(), usedAI: false };
+  return { matches, usedAI: false, candidates: scored.map((entry) => entry.issue) };
+}
 
+// Offer an AI ranking under the keyword results. Nothing goes to the AI until
+// the reporter agrees in the consent modal.
+function renderAIDuplicateOffer(report, keywordResult, aiKey, runId) {
+  const item = document.createElement('li');
+  item.className = 'duplicate-check-ai-offer';
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-secondary btn-small';
+  button.textContent = '✨ Check with AI…';
+  button.addEventListener('click', () => askConsentForAIDuplicateCheck(report, keywordResult, aiKey, runId));
+
+  item.appendChild(button);
+  document.getElementById('duplicateCheckList').appendChild(item);
+}
+
+function askConsentForAIDuplicateCheck(report, keywordResult, aiKey, runId) {
+  const candidates = keywordResult.candidates;
+  const url = redactForExport(report.url);
+
+  openAIConsentModal('to check whether this report duplicates an existing issue', (addItem) => {
+    addItem('Your report', [
+      `Title: ${report.subject}`,
+      report.description ? `Description: ${report.description}` : '',
+      url ? `Page URL: ${url}` : ''
+    ].filter(Boolean).join('\n'));
+    addItem(
+      `Existing open issues from Redmine (${candidates.length})`,
+      candidates.map((issue) => `#${issue.id}: ${issue.subject || ''}`).join('\n') +
+        '\n\nThe title and the first 400 characters of each issue\'s description are sent.'
+    );
+    addItem('NOT sent to AI', 'Screenshots, videos, attached documents, console logs and network requests.');
+  }, {
+    onConfirm: () => rankDuplicatesWithAI(report, keywordResult, aiKey, runId),
+    // The keyword results stay on screen; nothing was sent.
+    onCancel: () => {}
+  });
+}
+
+async function rankDuplicatesWithAI(report, keywordResult, aiKey, runId) {
+  if (isDuplicateCheckStale(runId)) return;
+
+  renderDuplicateStatus('Checking with AI…');
+  document.getElementById('duplicateCheckList').innerHTML = '';
+
+  let result;
+  let failed = false;
   try {
     const ai = new AIAssistant({
       endpoint: settings.aiEndpoint,
       apiKey: settings.aiApiKey,
-      model: settings.aiModel
+      model: settings.aiModel,
+      timeoutMs: DUPLICATE_AI_TIMEOUT_MS
     });
+    const candidates = keywordResult.candidates;
     const ranked = await ai.findDuplicates(
-      { subject: report.subject, description: report.description, url: report.url },
-      scored.map((entry) => entry.issue)
+      { subject: report.subject, description: report.description, url: redactForExport(report.url) },
+      candidates
     );
-    const byId = new Map(scored.map((entry) => [Number(entry.issue.id), entry.issue]));
-    return {
+    const byId = new Map(candidates.map((issue) => [Number(issue.id), issue]));
+    result = {
       matches: ranked.slice(0, DUPLICATE_MAX_SHOWN).map((m) => ({
         issue: byId.get(m.id),
         reason: m.reason,
@@ -4112,14 +4272,18 @@ async function findDuplicateIssues(report) {
       })),
       usedAI: true
     };
+    duplicateCheckCache.set(aiKey, result);
   } catch (error) {
     console.error('[Annotate] AI duplicate check failed, using keyword matches:', error);
-    return {
-      matches: keywordMatches(),
-      usedAI: false,
-      note: 'AI check failed, showing keyword matches.'
-    };
+    failed = true;
+    result = { ...keywordResult, note: `AI check failed (${error.message.replace(/\.$/, '')}). Showing keyword matches.` };
   }
+
+  if (isDuplicateCheckStale(runId)) return;
+
+  renderDuplicateResults(result);
+  // Let the reporter retry after a failure (e.g. a timeout).
+  if (failed) renderAIDuplicateOffer(report, keywordResult, aiKey, runId);
 }
 
 function renderDuplicateStatus(text, type = '') {
@@ -4281,10 +4445,13 @@ function truncateUrl(url, maxLength = 80) {
 
 // Helper function to escape HTML
 function escapeHtml(text) {
-  if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  if (text === null || text === undefined || text === '') return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // =====================================================
@@ -4396,7 +4563,7 @@ function setupFormChangeTracking() {
 
 // Mark as dirty and schedule auto-save
 function markDirtyAndScheduleSave() {
-  if (isLoadingDraft) return; // Don't trigger save while loading
+  if (isLoadingDraft || reportSubmitted) return; // Don't trigger save while loading or after submit
 
   isDirty = true;
   updateDraftStatusIndicator('unsaved');
@@ -4489,7 +4656,7 @@ function buildDraftObject() {
 
 // Auto-save draft
 async function autoSaveDraft() {
-  if (isLoadingDraft) return;
+  if (isLoadingDraft || reportSubmitted) return;
 
   try {
     updateDraftStatusIndicator('saving');
@@ -4989,6 +5156,13 @@ function formatTimeAgo(timestamp) {
 
 // Clear draft after successful submission
 async function clearDraftAfterSubmission() {
+  // A pending debounced or periodic save would otherwise re-create the draft
+  // of a report that has already been filed.
+  reportSubmitted = true;
+  clearTimeout(autoSaveTimer);
+  clearInterval(periodicSaveTimer);
+  isDirty = false;
+
   if (currentDraftId) {
     try {
       await draftStorage.deleteDraft(currentDraftId);

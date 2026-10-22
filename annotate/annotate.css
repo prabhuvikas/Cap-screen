@@ -2586,3 +2586,7 @@ main {
   flex-shrink: 0;
   white-space: nowrap;
 }
+
+.duplicate-check-ai-offer {
+  margin-top: 8px;
+}
